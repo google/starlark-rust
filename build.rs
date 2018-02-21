@@ -12,24 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The syntax module that handle lexing and parsing
+extern crate lalrpop;
 
-pub mod errors;
-
-#[cfg(test)]
-#[macro_use]
-mod testutil;
-
-pub mod lexer;
-pub mod ast;
-mod grammar {
-    include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
-    #[cfg(test)]
-    mod tests {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/syntax/grammar.tests.rs"
-        ));
-    }
+fn main() {
+    println!("cargo:rerun-if-changed=syntax/grammar.lalrpop");
+    lalrpop::Configuration::new()
+        .use_cargo_dir_conventions()
+        .always_use_colors()
+        .emit_report(true)
+        .process_file("syntax/grammar.lalrpop")
+        .unwrap();
 }
-pub mod parser;

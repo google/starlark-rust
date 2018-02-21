@@ -19,8 +19,10 @@ extern crate codemap_diagnostic;
 
 use getopts::Options;
 use std::env;
+use std::sync::{Arc, Mutex};
 use starlark::syntax::errors::SyntaxError;
 use starlark::syntax::lexer::Lexer;
+use starlark::syntax::parser::parse_file;
 use std::fs::File;
 use std::io::Read;
 use codemap_diagnostic::{ColorConfig, Emitter};
@@ -35,8 +37,16 @@ fn lex(filename: &str) {
     for r in Lexer::new(&content) {
         match r {
             Ok((_i, t, _j)) => println!("{:?}", t),
-            Err(x) => emitter.emit(&[x.to_diagnostic(file_map.span)])
+            Err(x) => emitter.emit(&[x.to_diagnostic(file_map.span)]),
         }
+    }
+}
+
+fn print_ast(filename: &str, build_file: bool) {
+    let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
+    match parse_file(&map, filename, build_file) {
+        Ok(s) => println!("{}", s.node),
+        Err(x) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[x]),
     }
 }
 
@@ -49,6 +59,7 @@ Usage: {} command [options] [arg1..argn]
 
 Available commands:
   lex: parse files given in arguments and return the list of lexical tokens
+  ast: generate the ASTs from argument given in parameter
 ", $program);
             eprint!("{}", $opts.usage(&brief));
         }
@@ -65,8 +76,14 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
 
-    let /* mut */ opts = Options::new();
+    let mut opts = Options::new();
+    opts.optflag(
+        "b",
+        "build_file",
+        "Parse the build file format instead of full Skylark",
+    );
     let matches = opts.parse(&args[1..]).unwrap();
+    let build_file = matches.opt_present("b");
     let command = if !matches.free.is_empty() {
         matches.free[0].clone()
     } else {
@@ -78,7 +95,12 @@ fn main() {
             for i in matches.free.into_iter().skip(1) {
                 lex(&i);
             }
-        },
-        cmd => print_usage!(program, opts, "Invalid command: {}", cmd)
+        }
+        "ast" => {
+            for i in matches.free.into_iter().skip(1) {
+                print_ast(&i, build_file);
+            }
+        }
+        cmd => print_usage!(program, opts, "Invalid command: {}", cmd),
     }
 }

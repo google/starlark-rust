@@ -1,0 +1,392 @@
+// Copyright 2018 The Starlark in Rust Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use codemap::Span;
+use super::lexer;
+use super::ast::*;
+
+grammar<'input>(text: &'input str, file_span: Span);
+
+#[inline]
+ASTS<E>: AstStatement = <l:@L> <e:E> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+ASTE<E>: AstExpr = <l:@L> <e:E> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+ASTP<E>: AstParameter = <l:@L> <e:E> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+ASTA<E>: AstArgument = <l:@L> <e:E> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+ASTC<E>: AstClause = <l:@L> <e:E> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+integer: AstInt = <l:@L> <e:"INTEGER"> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+string: AstString = <l:@L> <e:"STRING"> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+#[inline]
+identifier: AstString = <l:@L> <e:"IDENTIFIER"> <r:@R>
+    => e.to_ast(file_span.subspan(l, r));
+
+COMMA<E>: Vec<E> =
+    <v0:(<E> ",")*> <e1:E?>
+        => v0.into_iter().chain(e1).collect();
+
+pub starlark: AstStatement = ASTS<starlark_>;
+starlark_: Statement = "\n"* <(<TopStmt> "\n"*)*>
+    => Statement::Statements(<>);
+
+pub build_file: AstStatement = ASTS<build_file_>;
+build_file_: Statement = "\n"* <(<BuildTopStmt> "\n"+)*>
+    => Statement::Statements(<>);
+
+TopStmt: AstStatement = { DefStmt, SimpleStmt<BuildTopStmt> };
+BuildTopStmt: AstStatement = { AssignStmt, ExprStmt, LoadStmt };
+
+DefStmt: AstStatement = ASTS<DefStmt_>;
+DefStmt_: Statement =
+  "def" <identifier> "(" <COMMA<Parameter>> ")" ":" <Suite>
+      =>? Statement::check_def(<>);
+
+Parameter: AstParameter = ASTP<Parameter_>;
+Parameter_: Parameter = {
+    <identifier> "=" <Test> => Parameter::WithDefaultValue(<>),
+    <identifier>            => Parameter::Normal(<>),
+    "*" <identifier>        => Parameter::Args(<>),
+    "**" <identifier>       => Parameter::KWArgs(<>),
+};
+
+Suite: AstStatement = {
+    SimpleStmt<SmallStmt>,
+    "\n"+ "INDENT" <l:@L> "\n"* <v:(<Stmt> "\n"*)+> <r:@R> "DEDENT"
+        => Statement::Statements(v).to_ast(file_span.subspan(l, r))
+};
+
+Stmt: AstStatement = { IfStmt, ForStmt, SimpleStmt<SmallStmt> };
+
+IfBody: AstStatement = ASTS<IfBody_>;
+IfBody_: Statement = <c:Test> ":" <s:Suite> <el:ElseStmt?> => {
+    match el {
+        None   => Statement::If(c, s),
+        Some(e) => Statement::IfElse(c, s, e)
+    }
+};
+
+IfStmt: AstStatement = "if" <IfBody>;
+ElseStmt: AstStatement = {
+    "elif" <IfBody>,
+    "else" ":" <Suite>
+};
+
+ForStmt: AstStatement = ASTS<ForStmt_>;
+ForStmt_: Statement = <c:ForInClause> ":" <s:Suite>
+    => Statement::For(c, s);
+
+SimpleStmt<S>: AstStatement =
+    <l:@L> <e:S> <v:(";" <S>)*> <r:@R> "\n" => {
+        if v.is_empty() {
+            e
+        } else {
+            Statement::Statements(
+                vec![e].into_iter().chain(v.into_iter()).collect())
+                    .to_ast(file_span.subspan(l, r))
+        }
+    };
+
+SmallStmt: AstStatement = {
+    <l:@L> "return" <e:TestList?> <r:@R>
+        => Statement::Return(e).to_ast(file_span.subspan(l, r)),
+    <@L> "break" <@R>
+        => Statement::Break.to_ast(file_span.subspan(<>)),
+    <@L> "continue" <@R>
+        => Statement::Continue.to_ast(file_span.subspan(<>)),
+    <@L> "pass" <@R>
+        => Statement::Pass.to_ast(file_span.subspan(<>)),
+    AssignStmt,
+    ExprStmt
+};
+
+AssignOp: AssignOp = {
+    "=" => AssignOp::Assign,
+    "+=" => AssignOp::Increment,
+    "-=" => AssignOp::Decrement,
+    "*=" => AssignOp::Multiplier,
+    "/=" => AssignOp::Divider,
+    "%=" => AssignOp::Percent,
+};
+
+AssignStmt: AstStatement = ASTS<AssignStmt_>;
+AssignStmt_: Statement = <TestList> <AssignOp> <TestList>
+        => Statement::Assign(<>);
+
+// In python ExprStmt is an AssignStmt (
+// https://docs.python.org/3/reference/grammar.html). This ExprStmt is
+// according to the spec provided on https://github.com/google/skylark. It
+// enable parsing docstring and method calls.
+ExprStmt: AstStatement = ASTS<ExprStmt_>;
+ExprStmt_: Statement = <PrimaryExpr> => Statement::Expression(<>);
+
+LoadStmt: AstStatement = ASTS<LoadStmt_>;
+LoadStmt_: Statement = "load" "(" <string> <("," <LoadStmtSyms>)+> ","? ")"
+    => Statement::Load(<>);
+
+LoadStmtBindingName: AstString = <identifier> "=";
+
+LoadStmtSyms: (AstString, AstString) = <id:LoadStmtBindingName?> <n:string>
+    => (id.unwrap_or(n.clone()), n);
+
+// Expression
+L<E>: AstExpr = <l:@L> <v:(<E> ",")*> <e:E> <f:","?> <r:@R>
+    => {
+        if f.is_some() || !v.is_empty() {
+            Expr::Tuple(v.into_iter().chain(vec![e].into_iter()).collect())
+                .to_ast(file_span.subspan(l, r))
+        } else {
+            e
+        }
+    };
+
+pub ExprList: AstExpr = L<Expr>;
+
+pub TestList: AstExpr = L<Test>;
+
+PipedExpr: AstExpr = {
+    <l:@L> <e1:ArithmExpr> "|" <e2:PipedExpr> <r:@R>
+      => Expr::Op(BinOp::Pipe, e1, e2).to_ast(file_span.subspan(l, r)),
+    ArithmExpr
+};
+
+PrimaryExpr: AstExpr = {
+    <l:@L> <e:PrimaryExpr> "." <i:identifier> <r:@R>
+        => Expr::Dot(e, i).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e:PrimaryExpr> "(" <a:COMMA<Argument>> ")" <r:@R>
+        =>? Ok(Expr::check_call(e, a)?.to_ast(file_span.subspan(l, r))),
+    <l:@L> <e:PrimaryExpr> "[" <i1:Test?> ":" <i2:Test?> <i3:OptionalSlice?> "]"
+        <r:@R> => Expr::Slice(e, i1, i2, i3).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e:PrimaryExpr> "[" <i:TestList> "]" <r:@R>
+        => Expr::ArrayIndirection(e, i).to_ast(file_span.subspan(l, r)),
+    Operand
+};
+
+OptionalSlice: AstExpr = ":" <Test>;
+
+// Note that the order of arguments (args, named, *args, **kwargs) is enforced
+// at the syntax evaluation, not by the Grammar.
+Argument: AstArgument = ASTA<Argument_>;
+Argument_: Argument = {
+    <Test>                    => Argument::Positional(<>),
+    <identifier> "=" <Test>   => Argument::Named(<>),
+    "*" <Test>                => Argument::ArgsArray(<>),
+    "**" <Test>               => Argument::KWArgsDict(<>)
+};
+
+Operand: AstExpr = {
+    <l:@L> <i:identifier> <r:@R>
+        => Expr::Identifier(i).to_ast(file_span.subspan(l, r)),
+    <l:@L> <i:integer> <r:@R>
+        => Expr::IntLitteral(i).to_ast(file_span.subspan(l, r)),
+    <l:@L> <s:string> <r:@R>
+        => Expr::StringLitteral(s).to_ast(file_span.subspan(l, r)),
+    <l:@L> "[" <e:COMMA<Test>> "]" <r:@R>
+        => Expr::List(e).to_ast(file_span.subspan(l, r)),
+    ListComp,
+    <l:@L> "{" <e:COMMA<DictEntry>> "}" <r:@R>
+        => Expr::Dict(e).to_ast(file_span.subspan(l, r)),
+    DictComp,
+    <l:@L> "(" <e:TestList?> ")" <r:@R>
+        => match e {
+            Some(t) => t,
+            None => Expr::Tuple(vec![]).to_ast(file_span.subspan(l, r))
+        }
+};
+
+DictEntry: (AstExpr, AstExpr) = <Test> ":" <Test> => (<>);
+
+ListComp: AstExpr = ASTE<ListComp_>;
+ListComp_: Expr = "[" <Test> <CompClause>  "]"
+    => Expr::ListComprehension(<>);
+
+DictComp: AstExpr = ASTE<DictComp_>;
+DictComp_: Expr = "{" <DictEntry> <CompClause>"}"
+    => Expr::DictComprehension(<>);
+
+CompClause: Vec<AstClause> = <e:ForInClause> <v:CompIter*>
+    => vec![e].into_iter().chain(v.into_iter()).collect();
+
+CompIter = {ForInClause, IfClause};
+
+ForInClause: AstClause = ASTC<ForInClause_>;
+ForInClause_: Clause = "for" <ExprList> "in" <OrTest>
+    => Clause::For(<>);
+IfClause: AstClause = ASTC<IfClause_>;
+IfClause_: Clause = "if" <OrTest>
+    => Clause::If(<>);
+
+// Base expression. Priorities are taken from Python 3 grammar.
+Test = IfTest;
+
+IfTest: AstExpr = {
+    <l:@L> <e1:OrTest> "if" <t:OrTest> "else" <e2:IfTest> <r:@R>
+        => Expr::If(t, e1, e2).to_ast(file_span.subspan(l, r)),
+    OrTest
+};
+
+// Binary operators
+OrTest: AstExpr = {
+    <l:@L> <e1:AndTest> "or" <e2:OrTest> <r:@R>
+        => Expr::Op(BinOp::Or, e1, e2).to_ast(file_span.subspan(l, r)),
+    AndTest,
+};
+
+AndTest: AstExpr =  {
+    <l:@L> <e1:NotTest> "and" <e2:AndTest> <r:@R>
+        => Expr::Op(BinOp::And, e1, e2).to_ast(file_span.subspan(l, r)),
+    NotTest,
+};
+
+NotTest: AstExpr = {
+  <l:@L> "not" <e:NotTest> <r:@R>
+      => Expr::Not(e).to_ast(file_span.subspan(l, r)),
+  CompTest,
+};
+
+CompTest: AstExpr = {
+    <l:@L> <e1:Expr> "==" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::EqualsTo, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> "!=" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::Different, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> "<" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::LowerThan, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> ">" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::GreaterThan, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> "<=" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::LowerOrEqual, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> ">=" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::GreaterOrEqual, e1, e2)
+                      .to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> "in" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::In, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:Expr> "not in" <e2:CompTest> <r:@R>
+        => Expr::Op(BinOp::NotIn, e1, e2).to_ast(file_span.subspan(l, r)),
+    Expr
+};
+
+Expr: AstExpr = {
+    <l:@L> <e1:ArithmExpr> "|" <e2:Expr> <r:@R>
+        => Expr::Op(BinOp::Pipe, e1, e2).to_ast(file_span.subspan(l, r)),
+    ArithmExpr,
+};
+
+ArithmExpr: AstExpr = {
+    <l:@L> <e1:ProductExpr> "+" <e2:ArithmExpr> <r:@R>
+        => Expr::Op(BinOp::Addition, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:ProductExpr> "-" <e2:ArithmExpr> <r:@R>
+        => Expr::Op(BinOp::Substraction, e1, e2)
+              .to_ast(file_span.subspan(l, r)),
+    ProductExpr
+};
+
+ProductExpr: AstExpr = {
+    <l:@L> <e1:FactorExpr> "*" <e2:ProductExpr> <r:@R>
+        => Expr::Op(BinOp::Multiplication, e1, e2)
+            .to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:FactorExpr> "%" <e2:ProductExpr> <r:@R>
+        => Expr::Op(BinOp::Percent, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:FactorExpr> "/" <e2:ProductExpr> <r:@R>
+        => Expr::Op(BinOp::Division, e1, e2).to_ast(file_span.subspan(l, r)),
+    FactorExpr
+};
+
+FactorExpr: AstExpr = {
+    <l:@L> "+" <e:FactorExpr> <r:@R>
+        => Expr::Plus(e).to_ast(file_span.subspan(l, r)),
+    <l:@L> "-" <e:FactorExpr> <r:@R>
+        => Expr::Minus(e).to_ast(file_span.subspan(l, r)),
+    PrimaryExpr
+};
+
+extern {
+    type Location = u64;
+    type Error = lexer::LexerError;
+
+    enum lexer::Token {
+      "INDENT" => lexer::Token::Indent,
+      "DEDENT" => lexer::Token::Dedent,
+      "\n"     => lexer::Token::Newline,
+      // Keywords
+      "and" => lexer::Token::And,
+      "else" => lexer::Token::Else,
+      "load" => lexer::Token::Load,
+      "break" => lexer::Token::Break,
+      "for" => lexer::Token::For,
+      "not" => lexer::Token::Not,
+      "not in" => lexer::Token::NotIn,
+      "continue" => lexer::Token::Continue,
+      "if" => lexer::Token::If,
+      "or" => lexer::Token::Or,
+      "def" => lexer::Token::Def,
+      "in" => lexer::Token::In,
+      "pass" => lexer::Token::Pass,
+      "elif" => lexer::Token::Elif,
+      "return" => lexer::Token::Return,
+      // Symbols
+      "," => lexer::Token::Comma,
+      ";" => lexer::Token::Semicolon,
+      ":" => lexer::Token::Colon,
+      "+=" => lexer::Token::PlusEqual,
+      "-=" => lexer::Token::MinusEqual,
+      "*=" => lexer::Token::StarEqual,
+      "/=" => lexer::Token::SlashEqual,
+      "%=" => lexer::Token::PercentEqual,
+      "==" => lexer::Token::DoubleEqual,
+      "!=" => lexer::Token::BangEqual,
+      "<=" => lexer::Token::LowerEqual,
+      ">=" => lexer::Token::GreaterEqual,
+      "**" => lexer::Token::Doublestar,
+      "=" => lexer::Token::Equal,
+      "<" => lexer::Token::LowerThan,
+      ">" => lexer::Token::GreaterThan,
+      "-" => lexer::Token::Minus,
+      "+" => lexer::Token::Plus,
+      "*" => lexer::Token::Star,
+      "%" => lexer::Token::Percent,
+      "/" => lexer::Token::Slash,
+      "." => lexer::Token::Dot,
+      "|" => lexer::Token::Pipe,
+      // Brackets
+      "[" => lexer::Token::OpeningBracket,
+      "{" => lexer::Token::OpeningCurlyBracket,
+      "(" => lexer::Token::OpeningParenthesis,
+      "]" => lexer::Token::ClosingBracket,
+      "}" => lexer::Token::ClosingCurlyBracket,
+      ")" => lexer::Token::ClosingParenthesis,
+
+
+      "RESERVED" => lexer::Token::Reserved(<String>),
+      "IDENTIFIER" => lexer::Token::Identifier(<String>),
+      "INTEGER" => lexer::Token::IntegerLitteral(<i64>),
+      "STRING" => lexer::Token::StringLitteral(<String>)
+    }
+}

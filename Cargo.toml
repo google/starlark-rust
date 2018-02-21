@@ -2,11 +2,16 @@
 name = "starlark"
 version = "0.1.0"
 authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
+build = "build.rs"
+
+[build-dependencies]
+lalrpop = "0.14.0"
 
 [dependencies]
 codemap = "0.1.1"
 codemap-diagnostic = "0.1"
 getopts = "0.2"
+lalrpop-util = "0.14.0"
 
 [lib]
 path = "lib.rs"
