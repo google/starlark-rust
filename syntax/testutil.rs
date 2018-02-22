@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The syntax module that handle lexing and parsing
-
-pub mod errors;
-
-#[cfg(test)]
-#[macro_use]
-mod testutil;
-
-pub mod lexer;
+macro_rules! assert_diagnostics {
+    ($e: expr, $m: expr) => (
+        if !$e.is_empty() {
+            let nb_errors = $e.len();
+            let locked = $m.lock();
+            let codemap = locked.unwrap();
+            let mut emitter = codemap_diagnostic::Emitter::stderr(
+                codemap_diagnostic::ColorConfig::Always, Some(&codemap));
+            emitter.emit(&$e);
+            panic!("There was {} parse errors", nb_errors);
+        }
+    )
+}

@@ -13,9 +13,32 @@
 // limitations under the License.
 
 extern crate getopts;
+extern crate starlark;
+extern crate codemap;
+extern crate codemap_diagnostic;
 
 use getopts::Options;
 use std::env;
+use starlark::syntax::errors::SyntaxError;
+use starlark::syntax::lexer::Lexer;
+use std::fs::File;
+use std::io::Read;
+use codemap_diagnostic::{ColorConfig, Emitter};
+
+fn lex(filename: &str) {
+    let mut map = codemap::CodeMap::new();
+    let mut content = String::new();
+    let mut file = File::open(filename).unwrap();
+    file.read_to_string(&mut content).unwrap();
+    let file_map = map.add_file(filename.to_string(), content.clone());
+    let mut emitter = Emitter::stderr(ColorConfig::Always, Some(&map));
+    for r in Lexer::new(&content) {
+        match r {
+            Ok((_i, t, _j)) => println!("{:?}", t),
+            Err(x) => emitter.emit(&[x.to_diagnostic(file_map.span)])
+        }
+    }
+}
 
 macro_rules! print_usage {
     ($program: expr, $opts: expr) => (
@@ -25,6 +48,7 @@ macro_rules! print_usage {
 Usage: {} command [options] [arg1..argn]
 
 Available commands:
+  lex: parse files given in arguments and return the list of lexical tokens
 ", $program);
             eprint!("{}", $opts.usage(&brief));
         }
@@ -50,6 +74,11 @@ fn main() {
         return;
     };
     match &command[..] {
+        "lex" => {
+            for i in matches.free.into_iter().skip(1) {
+                lex(&i);
+            }
+        },
         cmd => print_usage!(program, opts, "Invalid command: {}", cmd)
     }
 }
