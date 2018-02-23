@@ -1,0 +1,17 @@
+[package]
+name = "starlark"
+version = "0.1.0"
+authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
+
+[dependencies]
+getopts = "0.2"
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "starlark"
+path = "main.rs"
+
+[features]
+trace = []
