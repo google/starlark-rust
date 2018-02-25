@@ -13,3 +13,5 @@
 // limitations under the License.
 
 //! The syntax module that handle lexing and parsing
+
+pub mod errors;

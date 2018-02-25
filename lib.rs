@@ -13,6 +13,8 @@
 // limitations under the License.
 
 pub mod syntax;
+extern crate codemap;
+extern crate codemap_diagnostic;
 
 #[cfg(test)]
 mod tests {}
