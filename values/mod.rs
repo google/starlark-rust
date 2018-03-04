@@ -31,6 +31,7 @@ use std::fmt;
 use syntax::errors::SyntaxError;
 use std::collections::HashMap;
 use std::hash::{Hasher, Hash};
+use environment::Environment;
 use codemap::Span;
 use codemap_diagnostic::{Level, Diagnostic, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
@@ -277,6 +278,7 @@ pub trait TypedValue {
     /// # Parameters
     ///
     /// * call_stack: the calling stack, to detect recursion
+    /// * env: the environment for the call.
     /// * positional: the list of arguments passed positionally.
     /// * named: the list of argument that were named.
     /// * args: if provided, the `*args` argument.
@@ -284,6 +286,7 @@ pub trait TypedValue {
     fn call(
         &self,
         call_stack: &Vec<String>,
+        env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
         args: Option<Value>,
@@ -533,7 +536,7 @@ macro_rules! not_supported {
         }
     };
     (call) => {
-        fn call(&self, _call_stack: &Vec<String>, 
+        fn call(&self, _call_stack: &Vec<String>, _env: Environment,
                 _positional: Vec<Value>, _named: HashMap<String, Value>,
                 _args: Option<Value>, _kwargs: Option<Value>) -> ValueResult {
             Err(ValueError::OperationNotSupported {
@@ -765,6 +768,7 @@ impl TypedValue for Value {
     fn call(
         &self,
         call_stack: &Vec<String>,
+        env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
         args: Option<Value>,
@@ -772,6 +776,7 @@ impl TypedValue for Value {
     ) -> ValueResult {
         self.value.borrow().call(
             call_stack,
+            env,
             positional,
             named,
             args,

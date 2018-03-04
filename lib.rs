@@ -15,6 +15,7 @@
 pub mod syntax;
 pub mod values;
 pub mod environment;
+pub mod eval;
 extern crate codemap;
 extern crate codemap_diagnostic;
 extern crate linked_hash_map;

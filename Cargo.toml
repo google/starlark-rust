@@ -13,6 +13,7 @@ codemap-diagnostic = "0.1"
 getopts = "0.2"
 lalrpop-util = "0.14.0"
 linked-hash-map = "0.5.1"
+linefeed = "0.4"
 
 [lib]
 path = "lib.rs"

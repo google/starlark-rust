@@ -15,6 +15,8 @@
 //! Function as a TypedValue
 use super::*;
 use syntax::ast::AstStatement;
+use environment::Environment;
+use eval::eval_def;
 
 #[derive(Debug, Clone)]
 pub enum FunctionParameter {
@@ -32,7 +34,7 @@ pub enum FunctionType {
 }
 
 pub struct Function {
-    function: Box<Fn(&Vec<String>, Vec<Value>) -> ValueResult>,
+    function: Box<Fn(&Vec<String>, Environment, Vec<Value>) -> ValueResult>,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
@@ -145,7 +147,7 @@ macro_rules! check_identifier {
 impl Function {
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&Vec<String>, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&Vec<String>, Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -161,7 +163,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&Vec<String>, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&Vec<String>, Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -174,11 +176,12 @@ impl Function {
         name: String,
         module: String,
         signature: Vec<FunctionParameter>,
-        _stmts: AstStatement,
+        stmts: AstStatement,
     ) -> Value {
+        let signature_cp = signature.clone();
         Value::new(Function {
-            function: Box::new(move |_stack, _v| {
-		unimplemented!() // TODO
+            function: Box::new(move |stack, env, v| {
+                eval_def(stack, &signature_cp, &stmts, env, v)
             }),
             signature,
             function_type: FunctionType::Def(name, module),
@@ -252,6 +255,7 @@ impl TypedValue for Function {
     fn call(
         &self,
         call_stack: &Vec<String>,
+        env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
         args: Option<Value>,
@@ -340,9 +344,10 @@ impl TypedValue for Function {
         if args_iter.next().is_some() || !kwargs_dict.is_empty() {
             return Err(FunctionError::ExtraParameter.into());
         }
-        // Finally call the function
+        // Finally call the function with a new child environment
         (*self.function)(
             call_stack,
+            env.child(&format!("{}#{}", env.name(), &self.to_str())),
             v,
         )
     }
@@ -373,6 +378,7 @@ impl TypedValue for WrappedMethod {
     fn call(
         &self,
         call_stack: &Vec<String>,
+        env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
         args: Option<Value>,
@@ -386,6 +392,7 @@ impl TypedValue for WrappedMethod {
             .collect();
         self.method.call(
             call_stack,
+            env,
             positional,
             named,
             args,
