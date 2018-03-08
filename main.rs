@@ -21,7 +21,7 @@ use getopts::Options;
 use std::env;
 use starlark::eval::interactive::eval_file;
 use starlark::eval::repl::repl;
-use starlark::environment::Environment;
+use starlark::stdlib::global_environment;
 
 macro_rules! print_usage {
     ($program: expr, $opts: expr) => (
@@ -63,7 +63,7 @@ fn main() {
             } else {
                 let build_file = matches.opt_present("b");
                 let opt_repl = matches.opt_present("r");
-                let global = Environment::new("global");
+                let global = global_environment();
                 global.freeze();
                 for i in matches.free.into_iter() {
                     eval_file(&i, build_file, &mut global.child(&i));

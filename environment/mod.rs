@@ -121,6 +121,11 @@ impl Environment {
         self.env.borrow().get_type_value(obj, id)
     }
 
+    /// List the attribute of a type
+    pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
+        self.env.borrow().list_type_value(obj)
+    }
+
     /// Create a new child environment for this environment
     pub fn child(&self, name: &str) -> Environment {
         Environment {
@@ -136,8 +141,9 @@ impl Environment {
 
     /// Create a new child environment
     /// Freeze the environment, all its value will become immutable after that
-    pub fn freeze(&self) {
-        self.env.borrow_mut().freeze()
+    pub fn freeze(&self) -> &Self {
+        self.env.borrow_mut().freeze();
+        self
     }
 
     /// Return the name of this module
@@ -168,6 +174,11 @@ impl Environment {
             )),
             _ => self.set(new_name, env.get(symbol)?),
         }
+    }
+
+    /// Return the parent environment (or `None` if there is no parent).
+    pub fn get_parent(&self) -> Option<Environment> {
+        self.env.borrow().get_parent()
     }
 }
 
@@ -229,5 +240,21 @@ impl EnvironmentContent {
             }
             None => None,
         }
+    }
+
+    /// List the attribute of a type
+    pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
+        let mut r = Vec::new();
+        if let Some(ref d) = self.type_objs.get(obj.get_type()) {
+            for k in d.keys() {
+                r.push(k.clone());
+            }
+        }
+        r
+    }
+
+    /// Return the parent environment (or `None` if there is no parent).
+    pub fn get_parent(&self) -> Option<Environment> {
+        self.parent.clone()
     }
 }

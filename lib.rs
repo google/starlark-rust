@@ -75,7 +75,10 @@
 pub mod syntax;
 pub mod values;
 pub mod environment;
+#[macro_use]
 pub mod eval;
+#[macro_use]
+pub mod stdlib;
 extern crate codemap;
 extern crate codemap_diagnostic;
 extern crate linked_hash_map;

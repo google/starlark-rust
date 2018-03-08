@@ -1,0 +1,350 @@
+// Copyright 2018 The Starlark in Rust Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Define the `starlark_module!` macro to reduce written boilerplate when adding
+//! native functions to starlark.
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! starlark_signature {
+    ($signature:ident) => {};
+    ($signature:ident call_stack $e:ident) => {};
+    ($signature:ident env $e:ident) => {};
+    ($signature:ident * $t:ident) => {
+        $signature.push(function::FunctionParameter::ArgsArray(stringify!($t).to_owned()));
+    };
+    ($signature:ident ** $t:ident) => {
+        $signature.push(function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
+    };
+    ($signature:ident # $t:ident) => {
+        $signature.push(function::FunctionParameter::Normal(format!("${}", stringify!($t))));
+    };
+    ($signature:ident $t:ident) => {
+        $signature.push(function::FunctionParameter::Normal(stringify!($t).to_owned()));
+    };
+    ($signature:ident # $t:ident = $e:expr) => {
+        $signature.push(
+            function::FunctionParameter::WithDefaultValue(
+                format!("${}", stringify!($t)),
+                Value::from($e)
+            )
+        );
+    };
+    ($signature:ident $t:ident = $e:expr) => {
+        $signature.push(
+            function::FunctionParameter::WithDefaultValue(
+                stringify!($t).to_owned(),
+                Value::from($e)
+            )
+        );
+    };
+    ($signature:ident call_stack $e:ident, $($rest:tt)*) => {
+        starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident env $e:ident, $($rest:tt)*) => {
+        starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident * $t:ident, $($rest:tt)* ) => {
+        starlark_signature!($signature * $t); starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident ** $t:ident,  $($rest:tt)* ) => {
+        starlark_signature!($signature ** $t); starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident # $t:ident, $($rest:tt)* ) => {
+        starlark_signature!($signature # $t); starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident $t:ident, $($rest:tt)* ) => {
+        starlark_signature!($signature $t); starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident # $t:ident = $e:expr, $($rest:tt)* ) => {
+        starlark_signature!($signature # $t = $e); starlark_signature!($signature $($rest)*);
+    };
+    ($signature:ident $t:ident = $e:expr, $($rest:tt)* ) => {
+        starlark_signature!($signature $t = $e); starlark_signature!($signature $($rest)*);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! starlark_signature_extraction {
+    ($args:ident $call_stack:ident ) => {};
+    ($args:ident $call_stack:ident $env:ident call_stack $e:ident ) => { let $e = $call_stack; };
+    ($args:ident $call_stack:ident $env:ident env $e:ident ) => { let $e = $env; };
+    ($args:ident $call_stack:ident $env:ident * $t:ident) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+    };
+    ($args:ident $call_stack:ident $env:ident ** $t:ident) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+    };
+    ($args:ident $call_stack:ident $env:ident # $t:ident) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+    };
+    ($args:ident $call_stack:ident $env:ident $t:ident) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+    };
+    ($args:ident $call_stack:ident $env:ident # $t:ident = $e:expr) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+    };
+    ($args:ident $call_stack:ident $env:ident $t:ident = $e:expr) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+    };
+    ($args:ident $call_stack:ident $env:ident call_stack $e:ident, $($rest:tt)*) => {
+        let $e = $call_stack;
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident env $e:ident, $($rest:tt)*) => {
+        let $e = $env;
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident * $t:ident, $($rest:tt)* ) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident ** $t:ident,  $($rest:tt)* ) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident # $t:ident, $($rest:tt)* ) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident $t:ident, $($rest:tt)* ) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident # $t:ident = $e:expr, $($rest:tt)* ) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident $t:ident = $e:expr, $($rest:tt)* ) => {
+        #[allow(unused_mut)]
+        let mut $t = $args.next().unwrap();
+        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! starlark_fun {
+    ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
+        $(#[$attr])*
+        pub fn $fn(
+            __call_stack: &Vec<String>,
+            __env: Environment,
+            args: Vec<Value>
+        ) -> ValueResult {
+            let mut __args = args.iter();
+            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
+            $($content)*
+        }
+    };
+    ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($rest:tt)*) => {
+        $(#[$attr])*
+        pub fn $fn(
+            __call_stack: &Vec<String>,
+            __env: Environment,
+            args: Vec<Value>
+        ) -> ValueResult {
+            let mut __args = args.into_iter();
+            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
+            $($content)*
+        }
+        starlark_fun! {
+            $($rest)*
+        }
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! starlark_signatures {
+    ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
+        {
+            let name = stringify!($name).trim_matches('_');
+            let mut signature = Vec::new();
+            starlark_signature!(signature $($signature)*);
+            $env(name, function::Function::new(name.to_owned(), &$name, signature));
+        }
+    };
+    ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }
+            $($rest:tt)*) => {
+        {
+            let name = stringify!($name).trim_matches('_');
+            let mut signature = Vec::new();
+            starlark_signature!(signature $($signature)*);
+            $env(name, function::Function::new(name.to_owned(), &$name, signature));
+        }
+        starlark_signatures!{ $env,
+            $($rest)*
+        }
+    }
+}
+
+
+/// Declare a starlark module that store one or several function
+///
+/// To declare a module with name `name`, the macro would be called:
+///
+/// ```rust,ignore
+/// starlark_module!{ name =>
+///    // Starlark function definition goes there
+/// }
+/// ```
+///
+/// For instance, the following example would declare two functions `str`, `my_fun` and `dbg` in a
+/// module named `my_starlark_module`:
+///
+/// ```rust
+/// # #[macro_use] extern crate starlark;
+/// # use starlark::values::*;
+/// # use starlark::environment::Environment;
+/// starlark_module!{ my_starlark_module =>
+///     // Declare a 'str' function (_ are trimmed away and just here to avoid collision with
+///     // reserved keyword)
+///     // #a argument will be binded to a `a` Rust value, the '#' prevent the argument from
+///     // being used by name when calling the method.
+///     __str__(#a) {
+///       Ok(Value::new(a.to_str().to_owned()))
+///     }
+///
+///     // Declare a function my_fun that takes one positional parameter 'a', a named and
+///     // positional parameter 'b', a args array 'args' and a keyword dictionary `kwargs`
+///     my_fun(#a, b, c = 1, *args, **kwargs) {
+///       // ...
+/// # Ok(Value::new(true))
+///     }
+///
+///     // It is also possible to capture the calling environment with `env name`
+///     // (type `starlark::enviroment::Environment`) and the call stack with
+///     // `call_stack name` (type `Vec<String>`). For example a `dbg` function that print the
+///     // environment and the call stack of the caller:
+///     dbg(call_stack cs, env environ) {
+///        println!(
+///            "In {}:{}",
+///            if let Some(x) = environ.get_parent() { x.name() } else { "<root>".to_owned() },
+///            cs.iter().skip(1).fold(String::new(), |a, x| format!("{}\n{}", a, x))
+///        );
+///        Ok(Value::from(None))
+///     }
+/// }
+/// #
+/// # fn main() {
+/// #    let env = my_starlark_module(Environment::new("test"));
+/// #    assert_eq!(env.get("str").unwrap().get_type(), "function");
+/// #    assert_eq!(env.get("my_fun").unwrap().get_type(), "function");
+/// # }
+/// ```
+///
+/// The module would declare a function `my_starlark_module` that can be called to add the
+/// corresponding functions to an environment.
+///
+/// ```
+/// # #[macro_use] extern crate starlark;
+/// # use starlark::values::*;
+/// # use starlark::environment::Environment;
+/// # starlark_module!{ my_starlark_module =>
+/// #     __str__(#a) { Ok(Value::new(a.to_str().to_owned())) }
+/// #     my_fun(#a, b, c = 1, *args, **kwargs) { Ok(Value::new(true)) }
+/// # }
+/// # fn main() {
+/// #    let env =
+/// my_starlark_module(Environment::new("test"))
+/// # ;
+/// #    assert_eq!(env.get("str").unwrap().get_type(), "function");
+/// #    assert_eq!(env.get("my_fun").unwrap().get_type(), "function");
+/// # }
+/// ```
+///
+/// # Type module
+///
+/// Additionally a module can be declared for a specific type, e.g. adding a function `hello` to
+/// the `string` type would look like:
+///
+/// ```rust
+/// # #[macro_use] extern crate starlark;
+/// # use starlark::values::*;
+/// # use starlark::environment::Environment;
+/// starlark_module!{ my_starlark_module string =>
+///     // The first argument is always self in that module but we use "this" because "self" is a
+///     // a rust keyword.
+///     hello(this) {
+///        Ok(Value::new(
+///            format!("Hello, {}", this.to_str())
+///        ))
+///     }
+/// }
+/// #
+/// # fn main() {
+/// #    let env = my_starlark_module(Environment::new("test"));
+/// #    assert_eq!(env.get_type_value(&Value::from(""), "hello").unwrap().get_type(), "function");
+/// # }
+/// ```
+#[macro_export]
+macro_rules! starlark_module {
+    ($name:ident $type:ident => $($t:tt)*) => (
+        starlark_fun!{
+            $($t)*
+        }
+
+        #[doc(hidden)]
+        pub fn $name(env: Environment) -> Environment {
+            starlark_signatures!{ |a, b| { env.add_type_value(stringify!($type), a, b); },
+                $($t)*
+            }
+            env
+        }
+    );
+    ($name:ident => $($t:tt)*) => (
+        starlark_fun!{
+            $($t)*
+        }
+
+        #[doc(hidden)]
+        pub fn $name(env: Environment) -> Environment {
+            starlark_signatures!{ |a, b| { env.set(a, b).unwrap(); },
+                $($t)*
+            }
+            env
+        }
+    )
+}
+
+/// Shortcut for returning an error from the code, message and label.
+///
+/// # Parameters:
+///
+/// * $code is a short code to uniquely identify the error.
+/// * $message is the long explanation for the user of the error.
+/// * $label is a a short description of the error to be put next to the code.
+#[macro_export]
+macro_rules! starlark_err {
+     ($code:expr, $message: expr, $label: expr) => (
+         return Err(RuntimeError {
+             code: $code,
+             message: $message,
+             label: $label,
+         }.into())
+     )
+ }

@@ -21,7 +21,7 @@ use values::TypedValue;
 use eval;
 
 /// Execute a starlark snippet with an empty environment.
-pub fn starlark_exec(snippet: &str) -> Result<bool, Diagnostic> {
+pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
     Ok(
@@ -31,25 +31,35 @@ pub fn starlark_exec(snippet: &str) -> Result<bool, Diagnostic> {
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.
-macro_rules! starlark_ok {
-    ($t:expr) => (
-        assert!(testutil::starlark_exec($t).unwrap());
+macro_rules! starlark_ok_fn {
+    ($fn: path, $t:expr) => (
+        assert!($fn($t).unwrap());
     );
-    ($t1:expr, $t2:expr) => (
-        assert!(testutil::starlark_exec(&format!("{}{}", $t1, $t2)).unwrap());
+    ($fn: path, $t1:expr, $t2:expr) => (
+        assert!($fn(&format!("{}{}", $t1, $t2)).unwrap());
     );
 }
 
 /// Test that the execution of a starlark code raise an error
-macro_rules! starlark_fail {
-    ($t:expr) => (
-        assert!(testutil::starlark_exec($t).is_err());
+macro_rules! starlark_fail_fn {
+    ($fn: path, $t:expr) => (
+        assert!($fn($t).is_err());
     );
-    ($t:expr, $c:expr) => (
-        assert_eq!($c, testutil::starlark_exec($t).err().unwrap().code.unwrap());
+    ($fn: path, $t:expr, $c:expr) => (
+        assert_eq!($c, $fn($t).err().unwrap().code.unwrap());
     );
-    ($t1:expr, $t2: expr, $c:expr) => (
-        assert_eq!($c, testutil::starlark_exec(&format!("{}{}", $t1, $t2))
+    ($fn: path, $t1:expr, $t2: expr, $c:expr) => (
+        assert_eq!($c, $fn(&format!("{}{}", $t1, $t2))
                 .err().unwrap().code.unwrap());
     );
+}
+
+/// A simple macro to execute a Starlark snippet and fails if the last statement is false.
+macro_rules! starlark_ok {
+    ($($t:expr),+) => (starlark_ok_fn!(testutil::starlark_empty, $($t),+))
+}
+
+/// Test that the execution of a starlark code raise an error
+macro_rules! starlark_fail {
+    ($($t:expr),+) => (starlark_fail_fn!(testutil::starlark_empty, $($t),+))
 }
