@@ -163,6 +163,7 @@ macro_rules! iotry {
 /// * content: the content to parse
 /// * build: set to true if you want to parse a BUILD file or false to parse a .bzl file.
 /// * lexer: the lexer to use for parsing
+#[doc(hidden)]
 pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
@@ -196,6 +197,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
 /// * filename: the name of the file being parsed, for diagnostics
 /// * content: the content to parse
 /// * build: set to true if you want to parse a BUILD file or false to parse a .bzl file.
+#[doc(hidden)]
 pub fn parse(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
@@ -218,6 +220,7 @@ pub fn parse(
 /// # Note
 ///
 /// This method unwrap the path to a unicode string, which can panic.
+#[doc(hidden)]
 pub fn parse_file(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,

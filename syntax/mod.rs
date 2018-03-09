@@ -14,13 +14,16 @@
 
 //! The syntax module that handle lexing and parsing
 
+#[doc(hidden)]
 pub mod errors;
 
 #[cfg(test)]
 #[macro_use]
 mod testutil;
 
+#[doc(hidden)]
 pub mod lexer;
+#[doc(hidden)]
 pub mod ast;
 mod grammar {
     include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
@@ -32,4 +35,5 @@ mod grammar {
         ));
     }
 }
+#[doc(hidden)]
 pub mod parser;

@@ -29,6 +29,7 @@ const NOT_FOUND_ERROR_CODE: &'static str = "CM01";
 const CANNOT_IMPORT_ERROR_CODE: &'static str = "CE02";
 
 #[derive(Debug)]
+#[doc(hidden)]
 pub enum EnvironmentError {
     /// Raised when trying to change a variable on a frozen environment.
     TryingToMutateFrozenEnvironment,

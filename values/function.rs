@@ -19,6 +19,7 @@ use environment::Environment;
 use eval::eval_def;
 
 #[derive(Debug, Clone)]
+#[doc(hidden)]
 pub enum FunctionParameter {
     Normal(String),
     WithDefaultValue(String, Value),
@@ -27,6 +28,7 @@ pub enum FunctionParameter {
 }
 
 #[derive(Debug, Clone)]
+#[doc(hidden)]
 pub enum FunctionType {
     Native(String),
     NativeMethod(String, String),

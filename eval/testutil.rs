@@ -24,7 +24,10 @@ use eval;
 pub fn starlark_exec(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    Ok(eval::eval_str(&map, snippet, false, &mut env)?.to_bool())
+    Ok(
+        eval::simple::eval(&map, "<test>", snippet, false, &mut env)?
+            .to_bool(),
+    )
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.

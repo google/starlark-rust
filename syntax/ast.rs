@@ -22,14 +22,22 @@ extern crate lalrpop_util;
 
 // Boxed types used for storing information from the parsing will be used especially for the
 // location of the AST item
+#[doc(hidden)]
 pub type AstExpr = Box<Spanned<Expr>>;
+#[doc(hidden)]
 pub type AstArgument = Spanned<Argument>;
+#[doc(hidden)]
 pub type AstString = Spanned<String>;
+#[doc(hidden)]
 pub type AstParameter = Spanned<Parameter>;
+#[doc(hidden)]
 pub type AstClause = Spanned<Clause>;
+#[doc(hidden)]
 pub type AstInt = Spanned<i64>;
+#[doc(hidden)]
 pub type AstStatement = Box<Spanned<Statement>>;
 
+#[doc(hidden)]
 pub trait ToAst<T> {
     fn to_ast(self, span: Span) -> T;
 }
@@ -50,6 +58,7 @@ macro_rules! to_ast_trait {
 to_ast_trait!(i64, AstInt);
 to_ast_trait!(String, AstString);
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Argument {
     Positional(AstExpr),
@@ -59,6 +68,7 @@ pub enum Argument {
 }
 to_ast_trait!(Argument, AstArgument);
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Parameter {
     Normal(AstString),
@@ -68,6 +78,7 @@ pub enum Parameter {
 }
 to_ast_trait!(Parameter, AstParameter);
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Expr {
     Tuple(Vec<AstExpr>),
@@ -165,6 +176,7 @@ impl Expr {
     }
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Clause {
     For(AstExpr, AstExpr),
@@ -172,6 +184,7 @@ pub enum Clause {
 }
 to_ast_trait!(Clause, AstClause);
 
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     Or,
@@ -192,6 +205,7 @@ pub enum BinOp {
     Pipe,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub enum AssignOp {
     Assign,
@@ -202,6 +216,7 @@ pub enum AssignOp {
     Percent,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Statement {
     Break,

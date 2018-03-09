@@ -40,13 +40,20 @@ macro_rules! eval_vector {
 
 // TODO: move that code in some common error code list?
 // CE prefix = Critical Evaluation
+#[doc(hidden)]
 pub const BREAK_ERROR_CODE: &'static str = "CE00";
+#[doc(hidden)]
 pub const CONTINUE_ERROR_CODE: &'static str = "CE01";
+#[doc(hidden)]
 pub const RETURN_ERROR_CODE: &'static str = "CE02";
+#[doc(hidden)]
 pub const INCORRECT_LEFT_VALUE_ERROR_CODE: &'static str = "CE03";
+#[doc(hidden)]
 pub const INCORRECT_UNPACK_ERROR_CODE: &'static str = "CE04";
+#[doc(hidden)]
 pub const RECURSION_ERROR_CODE: &'static str = "CE05";
 
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum EvalException {
     // Flow control statement reached
@@ -211,61 +218,6 @@ impl FileLoader for () {
     fn load(&self, _path: &str) -> Result<Environment, EvalException> {
         // If we reach here, this is a bug.
         unreachable!();
-    }
-}
-
-/// A simple FileLoader that load file from disk and cache the result in a hashmap.
-#[derive(Clone)]
-pub struct SimpleFileLoader {
-    map: Arc<Mutex<HashMap<String, Environment>>>,
-    parent_env: Option<Environment>,
-    codemap: Arc<Mutex<CodeMap>>,
-}
-
-impl SimpleFileLoader {
-    /// Create a new simple file loader without global enviroment
-    pub fn new(map: &Arc<Mutex<CodeMap>>) -> SimpleFileLoader {
-        SimpleFileLoader {
-            map: Arc::new(Mutex::new(HashMap::new())),
-            parent_env: None,
-            codemap: map.clone(),
-        }
-    }
-
-    pub fn with_parent(map: &Arc<Mutex<CodeMap>>, parent_env: Environment) -> SimpleFileLoader {
-        SimpleFileLoader {
-            map: Arc::new(Mutex::new(HashMap::new())),
-            parent_env: Some(parent_env.clone()),
-            codemap: map.clone(),
-        }
-    }
-}
-
-impl FileLoader for SimpleFileLoader {
-    fn load(&self, path: &str) -> Result<Environment, EvalException> {
-        {
-            let lock = self.map.lock().unwrap();
-            if lock.contains_key(path) {
-                return Ok(lock.get(path).unwrap().clone());
-            }
-        } // Release the lock
-        let env = match self.parent_env {
-            Some(ref e) => e.child(path),
-            None => Environment::new(path),
-        };
-        match parse_file(&self.codemap, path, false) {
-            Err(d) => return Err(EvalException::DiagnosedError(d)),
-            Ok(stmts) => {
-                let mut context = EvaluationContext::new(env.clone(), self.clone());
-                stmts.eval(&mut context)?;
-            }
-        }
-        env.freeze();
-        self.map.lock().unwrap().insert(
-            path.to_owned(),
-            env.clone(),
-        );
-        Ok(env)
     }
 }
 
@@ -671,6 +623,7 @@ impl<T: FileLoader> Evaluate<T> for AstStatement {
 }
 
 /// A method for consumption by def funcitons
+#[doc(hidden)]
 pub fn eval_def(
     call_stack: &Vec<String>,
     signature: &Vec<FunctionParameter>,
@@ -716,16 +669,17 @@ pub fn eval_def(
 /// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
-pub fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
+/// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoader>(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
     build: bool,
     lexer: T2,
     env: &mut Environment,
+    file_loader: T3,
 ) -> Result<Value, Diagnostic> {
-    // TODO: make the loader a parameter
-    let mut context = EvaluationContext::new(env.clone(), SimpleFileLoader::new(map));
+    let mut context = EvaluationContext::new(env.clone(), file_loader);
     match parse_lexer(map, filename, content, build, lexer)?.eval(
         &mut context,
     ) {
@@ -743,36 +697,20 @@ pub fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
 /// * content: the content to evaluate
 /// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
 /// * env: the environment to mutate during the evaluation
-pub fn eval(
+/// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+pub fn eval<T: FileLoader>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     content: &str,
     build: bool,
     env: &mut Environment,
+    file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    // TODO: make the loader a parameter
-    let mut context = EvaluationContext::new(env.clone(), SimpleFileLoader::new(map));
+    let mut context = EvaluationContext::new(env.clone(), file_loader);
     match parse(map, path, content, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
-}
-
-/// Evaluate a string content, mutate the environment accordingly and return the evaluated value.
-///
-/// # Arguments
-///
-/// * map: the codemap object used for diagnostics
-/// * content: the content to evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
-/// * env: the environment to mutate during the evaluation
-pub fn eval_str(
-    map: &Arc<Mutex<CodeMap>>,
-    content: &str,
-    build: bool,
-    env: &mut Environment,
-) -> Result<Value, Diagnostic> {
-    eval(map, "<inline>", content, build, env)
 }
 
 /// Evaluate a file, mutate the environment accordingly and return the evaluated value.
@@ -783,19 +721,24 @@ pub fn eval_str(
 /// * path: the file to parse and evaluate
 /// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
 /// * env: the environment to mutate during the evaluation
-pub fn eval_file(
+/// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+pub fn eval_file<T: FileLoader>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     build: bool,
     env: &mut Environment,
+    file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    // TODO: make the loader a parameter
-    let mut context = EvaluationContext::new(env.clone(), SimpleFileLoader::new(map));
+    let mut context = EvaluationContext::new(env.clone(), file_loader);
     match parse_file(map, path, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
 }
+
+pub mod simple;
+pub mod interactive;
+pub mod repl;
 
 #[cfg(test)]
 #[macro_use]

@@ -21,9 +21,58 @@
 //!
 //! __Note__: we use _sequence_, _iterable_ and _indexable_ according to the
 //! definition in the [Starlark specification](
-//! https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md
-//! #sequence-types).
+//! https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#sequence-types).
 //! We also use the term _container_ for denoting any of those type that can hold several values.
+//!
+//!
+//! # Defining a new type
+//!
+//! Defining a new Starlark type can be done by implenting the [TypedValue](trait.TypedValue.html)
+//! trait. All method of that trait are operation needed by Starlark interpreter to understand the
+//! type. The [not_supported!](macro.not_supported.html) macro let us tell which operation is not
+//! supported by the current type.
+//!
+//! For example the `NoneType` trait implementation is the following:
+//!
+//! ```rust,ignore
+//! /// Define the NoneType type
+//! impl TypedValue for Option<()> {
+//!     immutable!();
+//!     fn to_str(&self) -> String {
+//!         "None".to_owned()
+//!     }
+//!     fn to_repr(&self) -> String {
+//!         self.to_str()
+//!     }
+//!     not_supported!(to_int);
+//!     fn get_type(&self) -> &'static str {
+//!         "NoneType"
+//!     }
+//!     fn to_bool(&self) -> bool {
+//!         false
+//!     }
+//!     // just took the result of hash(None) in macos python 2.7.10 interpreter.
+//!     fn get_hash(&self) -> Result<u64, ValueError> {
+//!         Ok(9223380832852120682)
+//!     }
+//!     fn compare(&self, other: Value) -> Ordering { default_compare(self, other) }
+//!     not_supported!(binop);
+//!     not_supported!(container);
+//!     not_supported!(function);
+//! }
+//! ```
+//!
+//! In addition to the `TypedValue` trait, it is recommended to implement the `From` trait
+//! for all type that can convert to the added type but parameterized it with the `Into<Value>`
+//! type. For example the unary tuple `From` trait is defined as followed:
+//!
+//! ```rust,ignore
+//! impl<T: Into<Value>> From<(T,)> for Tuple {
+//!     fn from(a: (T,)) -> Tuple {
+//!         Tuple { content: vec![a.0.into()] }
+//!     }
+//! }
+//! ```
 use std::cmp::Ordering;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -1247,6 +1296,7 @@ impl<'a> From<&'a str> for Value {
 
 // A convenient macro for testing and documentation.
 #[macro_export]
+#[doc(hidden)]
 macro_rules! int_op {
     ($v1:tt . $op:ident ( $v2:expr ) ) => {
         $v1.$op(Value::new($v2)).unwrap().to_int().unwrap()
