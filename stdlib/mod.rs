@@ -36,6 +36,7 @@ const NUL_RANGE_STEP_ERROR_CODE: &'static str = "CR06";
 
 #[macro_use]
 pub mod macros;
+pub mod string;
 
 starlark_module!{global_functions =>
 
@@ -242,9 +243,8 @@ starlark_module!{global_functions =>
     /// ```
     /// # use starlark::stdlib::starlark_default;
     /// # assert!(starlark_default(stringify!((
-    /// dir("abc")
-    /// # == []))).unwrap()); // TODO: remove == [] once attribute have been added to string and test
-    /// #                     // that some function are there
+    /// "capitalize" in dir("abc")
+    /// # ))).unwrap());
     /// ```
     dir(env env, x) {
         match x.dir_attr() {
@@ -573,7 +573,7 @@ pub fn global_environment() -> Environment {
     env.set("None", Value::new(None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
-    global_functions(env)
+    string::global(global_functions(env))
 }
 
 /// Execute a starlark snippet with the default environment for test and return the truth value
@@ -592,7 +592,7 @@ pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::starlark_default;
     use std::sync;
     use codemap::CodeMap;
@@ -601,7 +601,7 @@ mod tests {
     use eval::simple::eval;
     use values::TypedValue;
 
-    fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
+    pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
         let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
         let mut env = global_environment().freeze().child("test");
         match eval(&map, "<test>", snippet, false, &mut env) {

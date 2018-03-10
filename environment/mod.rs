@@ -235,22 +235,34 @@ impl EnvironmentContent {
             Some(ref d) => {
                 match d.get(id) {
                     Some(&ref v) => Some(v.clone()),
-                    None => None,
+                    None => match self.parent {
+                        Some(ref p) => p.get_type_value(obj, id),
+                        None => None,
+                    }
                 }
             }
-            None => None,
+            None => match self.parent {
+                Some(ref p) => p.get_type_value(obj, id),
+                None => None,
+            }
         }
     }
 
     /// List the attribute of a type
     pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
-        let mut r = Vec::new();
         if let Some(ref d) = self.type_objs.get(obj.get_type()) {
+            let mut r = Vec::new();
             for k in d.keys() {
                 r.push(k.clone());
             }
+            r
+        } else {
+            if let Some(ref p) = self.parent {
+                p.list_type_value(obj)
+            } else {
+                Vec::new()
+            }
         }
-        r
     }
 
     /// Return the parent environment (or `None` if there is no parent).

@@ -89,14 +89,14 @@ use linked_hash_map::LinkedHashMap;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
-const NOT_SUPPORTED_ERROR_CODE: &'static str = "CV00";
-const IMMUTABLE_ERROR_CODE: &'static str = "CV01";
-const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &'static str = "CV02";
-const OUT_OF_BOUND_ERROR_CODE: &'static str = "CV03";
-const NOT_HASHABLE_VALUE_ERROR_CODE: &'static str = "CV04";
-const KEY_NOT_FOUND_ERROR_CODE: &'static str = "CV05";
-const INTERPOLATION_FORMAT_ERROR_CODE: &'static str = "CV06";
-const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &'static str = "CV07";
+pub const NOT_SUPPORTED_ERROR_CODE: &'static str = "CV00";
+pub const IMMUTABLE_ERROR_CODE: &'static str = "CV01";
+pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &'static str = "CV02";
+pub const OUT_OF_BOUND_ERROR_CODE: &'static str = "CV03";
+pub const NOT_HASHABLE_VALUE_ERROR_CODE: &'static str = "CV04";
+pub const KEY_NOT_FOUND_ERROR_CODE: &'static str = "CV05";
+pub const INTERPOLATION_FORMAT_ERROR_CODE: &'static str = "CV06";
+pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &'static str = "CV07";
 
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Debug)]

@@ -174,7 +174,35 @@ macro_rules! starlark_fun {
         starlark_fun! {
             $($rest)*
         }
-    }
+    };
+    ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
+        $(#[$attr])*
+        pub fn $fn(
+            __call_stack: &Vec<String>,
+            __env: Environment,
+            args: Vec<Value>
+        ) -> ValueResult {
+            let mut __args = args.into_iter();
+            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
+            $($content)*
+        }
+    };
+    ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }
+            $($rest:tt)*) => {
+        $(#[$attr])*
+        pub fn $fn(
+            __call_stack: &Vec<String>,
+            __env: Environment,
+            args: Vec<Value>
+        ) -> ValueResult {
+            let mut __args = args.into_iter();
+            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
+            $($content)*
+        }
+        starlark_fun! {
+            $($rest)*
+        }
+    };
 }
 
 #[doc(hidden)]
@@ -185,7 +213,7 @@ macro_rules! starlark_signatures {
             let name = stringify!($name).trim_matches('_');
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
-            $env(name, function::Function::new(name.to_owned(), &$name, signature));
+            $env.set(name, function::Function::new(name.to_owned(), &$name, signature)).unwrap();
         }
     };
     ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }
@@ -194,7 +222,30 @@ macro_rules! starlark_signatures {
             let name = stringify!($name).trim_matches('_');
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
-            $env(name, function::Function::new(name.to_owned(), &$name, signature));
+            $env.set(name, function::Function::new(name.to_owned(), &$name, signature)).unwrap();
+        }
+        starlark_signatures!{ $env,
+            $($rest)*
+        }
+    };
+    ($env:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* )
+            { $($content:tt)* }) => {
+        {
+            let name = stringify!($name).trim_matches('_');
+            let mut signature = Vec::new();
+            starlark_signature!(signature $($signature)*);
+            $env.add_type_value(stringify!($ty), name,
+                function::Function::new(name.to_owned(), &$name, signature));
+        }
+    };
+    ($env:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* ) { $($content:tt)* }
+            $($rest:tt)*) => {
+        {
+            let name = stringify!($name).trim_matches('_');
+            let mut signature = Vec::new();
+            starlark_signature!(signature $($signature)*);
+            $env.add_type_value(stringify!($ty), name,
+                function::Function::new(name.to_owned(), &$name, signature));
         }
         starlark_signatures!{ $env,
             $($rest)*
@@ -277,19 +328,17 @@ macro_rules! starlark_signatures {
 /// # }
 /// ```
 ///
-/// # Type module
-///
-/// Additionally a module can be declared for a specific type, e.g. adding a function `hello` to
-/// the `string` type would look like:
+/// Additionally function might be declared for a type by prefixing them by `type.`, e.g the
+/// definition of a `hello` function for the `string` type would look like:
 ///
 /// ```rust
 /// # #[macro_use] extern crate starlark;
 /// # use starlark::values::*;
 /// # use starlark::environment::Environment;
-/// starlark_module!{ my_starlark_module string =>
+/// starlark_module!{ my_starlark_module =>
 ///     // The first argument is always self in that module but we use "this" because "self" is a
 ///     // a rust keyword.
-///     hello(this) {
+///     string.hello(this) {
 ///        Ok(Value::new(
 ///            format!("Hello, {}", this.to_str())
 ///        ))
@@ -303,19 +352,6 @@ macro_rules! starlark_signatures {
 /// ```
 #[macro_export]
 macro_rules! starlark_module {
-    ($name:ident $type:ident => $($t:tt)*) => (
-        starlark_fun!{
-            $($t)*
-        }
-
-        #[doc(hidden)]
-        pub fn $name(env: Environment) -> Environment {
-            starlark_signatures!{ |a, b| { env.add_type_value(stringify!($type), a, b); },
-                $($t)*
-            }
-            env
-        }
-    );
     ($name:ident => $($t:tt)*) => (
         starlark_fun!{
             $($t)*
@@ -323,7 +359,7 @@ macro_rules! starlark_module {
 
         #[doc(hidden)]
         pub fn $name(env: Environment) -> Environment {
-            starlark_signatures!{ |a, b| { env.set(a, b).unwrap(); },
+            starlark_signatures!{ env,
                 $($t)*
             }
             env
@@ -340,11 +376,72 @@ macro_rules! starlark_module {
 /// * $label is a a short description of the error to be put next to the code.
 #[macro_export]
 macro_rules! starlark_err {
-     ($code:expr, $message: expr, $label: expr) => (
-         return Err(RuntimeError {
-             code: $code,
-             message: $message,
-             label: $label,
-         }.into())
-     )
- }
+    ($code:expr, $message: expr, $label: expr) => (
+        return Err(RuntimeError {
+            code: $code,
+            message: $message,
+            label: $label,
+        }.into())
+    )
+}
+
+/// A shortcut to assert the type of a value
+///
+/// # Parameters:
+///
+/// * $e the value to check type for.
+/// * $fn the function name (&'static str).
+/// * $ty the expected type (ident)
+#[macro_export]
+macro_rules! check_type {
+    ($e:ident, $fn:expr, $ty:ident) => {
+        if $e.get_type() != stringify!($ty) {
+            starlark_err!(
+                INCORRECT_PARAMETER_TYPE_ERROR_CODE,
+                format!(
+                    concat!(
+                        $fn,
+                        "() expect a ",
+                        stringify!($ty),
+                        " as first parameter while",
+                        "got a value of type {}."
+                    ),
+                    $e.get_type()
+                ),
+                format!(concat!("type {} while expected ", stringify!($ty)), $e.get_type())
+            )
+        }
+    }
+}
+
+/// Convert 2 indices according to Starlark indices convertion for function like .index.
+///
+/// # Parameters:
+///
+/// * $this: the identifier of self object
+/// * $start: the variable denoting the start index
+/// * $end: the variable denoting the end index (optional)
+#[macro_export]
+macro_rules! convert_indices {
+    ($this: ident, $start: ident, $end: ident) => {
+        let len = $this.length()?;
+        let $end = if $end.get_type() == "NoneType" { len } else { $end.to_int()? };
+        let $start = if $start.get_type() == "NoneType" { 0 } else { $start.to_int()? };
+        let $end = if $end < 0 { $end + len } else { $end };
+        let $start = if $start < 0 { $start + len } else { $start };
+        let $end = if $end < 0 { 0 } else {
+            if $end > len { len as usize } else { $end as usize }
+        };
+        let $start = if $start < 0 { 0 } else {
+            if $start > len { len as usize } else { $start as usize }
+        };
+    };
+    ($this: ident, $start: ident) => {
+        let len = $this.length()?;
+        let $start = if $start.get_type() == "NoneType" { 0 } else { $start.to_int()? };
+        let $start = if $start < 0 { $start + len } else { $start };
+        let $start = if $start < 0 { 0 } else {
+            if $start > len { len as usize } else { $start as usize }
+        };
+    }
+}

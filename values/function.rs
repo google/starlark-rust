@@ -101,7 +101,7 @@ impl Into<RuntimeError> for FunctionError {
                 } => {
                     format!(
                         "Missing parameter {} for call to {}",
-                        missing,
+                        missing.trim_left_matches("$"),
                         repr(&function_type, &signature)
                     )
                 }
@@ -190,7 +190,7 @@ impl Function {
         })
     }
 
-    pub fn new_self_call(method: Value, self_obj: Value) -> Value {
+    pub fn new_self_call(self_obj: Value, method: Value) -> Value {
         Value::new(WrappedMethod { method, self_obj })
     }
 }
@@ -390,9 +390,9 @@ impl TypedValue for WrappedMethod {
     ) -> ValueResult {
         // The only thing that this wrapper does is insert self at the beginning of the positional
         // vector
-        let positional: Vec<Value> = positional
+        let positional: Vec<Value> = Some(self.self_obj.clone())
             .into_iter()
-            .chain(Some(self.self_obj.clone()))
+            .chain(positional.into_iter())
             .collect();
         self.method.call(
             call_stack,
