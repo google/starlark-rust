@@ -49,8 +49,7 @@ and `cargo run` to run the command-line interpreter.
 
 ### List of feature needed to be implemented before releasing
 
-- Finish the implementation of the standard library.
-- Add conformance tests from other implementation.
+- Add conformance tests from other implementations.
 
 ### Possible improvements and optimizations
 

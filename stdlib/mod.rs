@@ -38,6 +38,7 @@ const NUL_RANGE_STEP_ERROR_CODE: &'static str = "CR06";
 pub mod macros;
 pub mod string;
 pub mod list;
+pub mod dict;
 
 starlark_module!{global_functions =>
 
@@ -574,7 +575,7 @@ pub fn global_environment() -> Environment {
     env.set("None", Value::new(None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
-    list::global(string::global(global_functions(env)))
+    dict::global(list::global(string::global(global_functions(env))))
 }
 
 /// Execute a starlark snippet with the default environment for test and return the truth value
@@ -782,7 +783,7 @@ pub mod tests {
     fn test_reversed() {
         starlark_ok!("(reversed(['a', 'b', 'c']) == ['c', 'b', 'a'])");
         starlark_ok!("(reversed(range(5)) == [4, 3, 2, 1, 0])");
-        // TODO starlark_ok!("(reversed({'one': 1, 'two': 2}.keys()) == ['two', 'one'])");
+        starlark_ok!("(reversed({'one': 1, 'two': 2}.keys()) == ['two', 'one'])");
     }
 
     #[test]

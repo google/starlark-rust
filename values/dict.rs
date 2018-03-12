@@ -32,6 +32,38 @@ impl Dictionary {
             content: LinkedHashMap::new(),
         })
     }
+
+    pub fn apply(
+        v: &Value,
+        f: &Fn(&LinkedHashMap<Value, Value>) -> ValueResult
+    ) -> ValueResult {
+        if v.get_type() != "dict" {
+            Err(ValueError::IncorrectParameterType)
+        } else {
+            let mut v = v.clone();
+            v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
+                f(&x.content)
+            })
+        }
+    }
+
+    pub fn mutate(
+        v: &Value,
+        f: &Fn(&mut LinkedHashMap<Value, Value>) -> ValueResult
+    ) -> ValueResult {
+        if v.get_type() != "dict" {
+            Err(ValueError::IncorrectParameterType)
+        } else {
+            let mut v = v.clone();
+            v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
+                if x.frozen {
+                    Err(ValueError::CannotMutateImmutableValue)
+                } else {
+                    f(&mut x.content)
+                }
+            })
+        }
+    }
 }
 
 impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> From<HashMap<T1, T2>>
@@ -65,7 +97,7 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> F
 /// Define the tuple type
 impl TypedValue for Dictionary {
     any!();
-    
+
     fn immutable(&self) -> bool {
         self.frozen
     }
