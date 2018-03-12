@@ -37,6 +37,7 @@ const NUL_RANGE_STEP_ERROR_CODE: &'static str = "CR06";
 #[macro_use]
 pub mod macros;
 pub mod string;
+pub mod list;
 
 starlark_module!{global_functions =>
 
@@ -573,7 +574,7 @@ pub fn global_environment() -> Environment {
     env.set("None", Value::new(None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
-    string::global(global_functions(env))
+    list::global(string::global(global_functions(env)))
 }
 
 /// Execute a starlark snippet with the default environment for test and return the truth value

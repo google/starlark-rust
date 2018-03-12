@@ -46,6 +46,24 @@ impl List {
             content: Vec::new(),
         })
     }
+
+    pub fn mutate(
+        v: &Value,
+        f: &Fn(&mut Vec<Value>) -> ValueResult
+    ) -> ValueResult {
+        if v.get_type() != "list" {
+            Err(ValueError::IncorrectParameterType)
+        } else {
+            let mut v = v.clone();
+            v.downcast_apply(|x: &mut List| -> ValueResult {
+                if x.frozen {
+                    Err(ValueError::CannotMutateImmutableValue)
+                } else {
+                    f(&mut x.content)
+                }
+            })
+        }
+    }
 }
 
 impl TypedValue for List {
