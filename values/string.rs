@@ -21,6 +21,7 @@ use std;
 
 impl TypedValue for String {
     immutable!();
+    any!();
 
     fn to_str(&self) -> String {
         self.clone()

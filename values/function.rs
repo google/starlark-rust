@@ -229,6 +229,7 @@ fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> Str
 /// Define the function type
 impl TypedValue for Function {
     immutable!();
+    any!();
 
     fn to_str(&self) -> String {
         self.function_type.to_str()
@@ -360,6 +361,7 @@ impl TypedValue for Function {
 
 impl TypedValue for WrappedMethod {
     immutable!();
+    any!();
 
     fn to_str(&self) -> String {
         self.method.to_str()

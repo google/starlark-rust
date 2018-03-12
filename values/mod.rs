@@ -38,6 +38,7 @@
 //! /// Define the NoneType type
 //! impl TypedValue for Option<()> {
 //!     immutable!();
+//!     any!();  // Generally you don't want to imlement any_apply() yourself.
 //!     fn to_str(&self) -> String {
 //!         "None".to_owned()
 //!     }
@@ -77,6 +78,7 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
+use std::any::Any;
 use syntax::errors::SyntaxError;
 use std::collections::HashMap;
 use std::hash::{Hasher, Hash};
@@ -261,6 +263,8 @@ impl PartialEq for ValueError {
 }
 
 /// A value in Starlark.
+///
+/// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
 pub struct Value {
     value: Rc<RefCell<TypedValue>>,
@@ -277,10 +281,13 @@ impl Value {
 
 /// A trait for a value with a type that all variable container
 /// will implement.
-// TODO: should the trait be also Any?
 pub trait TypedValue {
     /// Return true if the value is immutable.
     fn immutable(&self) -> bool;
+
+    /// Apply F on self converted to a mutable any. This allow for operation on the native type.
+    /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
+    fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult;
 
     /// Freeze, i.e make the value immutable.
     fn freeze(&mut self);
@@ -558,6 +565,14 @@ impl fmt::Debug for TypedValue {
     }
 }
 
+macro_rules! any {
+    () => {
+        fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
+            f(self)
+        }
+    }
+}
+
 /// A macro to declare method of the trait TypedValue as not supported. This macro take a
 /// comma separated list of identifier that can either be the name of a function or set of
 /// functions:
@@ -787,6 +802,10 @@ macro_rules! immutable {
 }
 
 impl TypedValue for Value {
+    fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
+        self.value.borrow_mut().any_apply(f)
+    }
+
     fn immutable(&self) -> bool {
         self.value.borrow().immutable()
     }
@@ -940,6 +959,7 @@ impl Hash for Value {
 /// Define the NoneType type
 impl TypedValue for Option<()> {
     immutable!();
+    any!();
     fn to_str(&self) -> String {
         "None".to_owned()
     }
@@ -966,6 +986,7 @@ impl TypedValue for Option<()> {
 /// Define the int type
 impl TypedValue for i64 {
     immutable!();
+    any!();
     fn to_str(&self) -> String {
         format!("{}", self)
     }
@@ -1014,6 +1035,7 @@ impl TypedValue for i64 {
 /// Define the bool type
 impl TypedValue for bool {
     immutable!();
+    any!();
     fn to_str(&self) -> String {
         if *self {
             "True".to_owned()
@@ -1188,6 +1210,11 @@ impl TypedValue {
 }
 
 impl Value {
+    /// A convenient wrapper around any_apply to actually operate on the underlying type
+    pub fn downcast_apply<T: Any, F>(&mut self, f: F) -> ValueResult where F: Fn(&mut T) -> ValueResult {
+        self.any_apply(&move |x| f(x.downcast_mut().unwrap()))
+    }
+
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
         self.value.borrow().convert_index(len)
     }

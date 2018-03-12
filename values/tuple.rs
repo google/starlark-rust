@@ -209,6 +209,8 @@ impl<
 }
 
 impl TypedValue for Tuple {
+    any!();
+
     fn immutable(&self) -> bool {
         true
     }

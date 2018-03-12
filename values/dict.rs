@@ -64,6 +64,8 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> F
 
 /// Define the tuple type
 impl TypedValue for Dictionary {
+    any!();
+    
     fn immutable(&self) -> bool {
         self.frozen
     }

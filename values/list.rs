@@ -49,6 +49,8 @@ impl List {
 }
 
 impl TypedValue for List {
+    any!();
+
     fn immutable(&self) -> bool {
         self.frozen
     }
