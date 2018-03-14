@@ -67,7 +67,7 @@ pub enum EvalException {
     // Incorrect number of value to unpack (expected, got)
     IncorrectNumberOfValueToUnpack(Span, i64, i64),
     // Recursion
-    Recursion(Span, String, Vec<String>),
+    Recursion(Span, String, Vec<(String, String)>),
 }
 
 type EvalResult = Result<Value, EvalException>;
@@ -172,7 +172,7 @@ impl Into<Diagnostic> for EvalException {
                         "Function {} recursed, call stack:{}",
                         f,
                         stack.iter().rev().fold(String::new(), |a, s| {
-                            format!("{}\n  {}", a, s)
+                            format!("{}\n  {}", a, s.1)
                         })
                     ),
                     code: Some(RECURSION_ERROR_CODE.to_owned()),
@@ -200,15 +200,17 @@ pub trait FileLoader: Clone {
 pub struct EvaluationContext<T: FileLoader> {
     env: Environment,
     loader: T,
-    call_stack: Vec<String>,
+    call_stack: Vec<(String, String)>,
+    map: Arc<Mutex<CodeMap>>
 }
 
 impl<T: FileLoader> EvaluationContext<T> {
-    fn new(env: Environment, loader: T) -> Self {
+    fn new(env: Environment, loader: T, map: Arc<Mutex<CodeMap>>) -> Self {
         EvaluationContext {
             call_stack: Vec::new(),
             env,
             loader,
+            map
         }
     }
 }
@@ -321,12 +323,24 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
                     None
                 };
                 let f = e.eval(context)?;
-                let fname = f.to_str();
+                let fname = f.to_repr();
+                let descr = f.to_str();
                 let mut new_stack = context.call_stack.clone();
-                if context.call_stack.iter().any(|x| *x == fname) {
+                if context.call_stack.iter().any(|x| x.0 == fname) {
                     Err(EvalException::Recursion(self.span, fname, new_stack))
                 } else {
-                    new_stack.push(fname);
+                    let loc = {
+                        context.map.lock().unwrap().look_up_pos(self.span.low())
+                    };
+                    new_stack.push((
+                        fname,
+                        format!(
+                            "call to {} at {}:{}",
+                            descr,
+                            loc.file.name(),
+                            loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
+                        )
+                    ));
                     t!(
                         e.eval(context)?.call(
                             &new_stack,
@@ -595,6 +609,7 @@ impl<T: FileLoader> Evaluate<T> for AstStatement {
                     context.env.name(),
                     p,
                     stmts.clone(),
+                    context.map.clone(),
                 );
                 t!(context.env.set(&name.node, f.clone()), name)?;
                 Ok(f)
@@ -625,11 +640,12 @@ impl<T: FileLoader> Evaluate<T> for AstStatement {
 /// A method for consumption by def funcitons
 #[doc(hidden)]
 pub fn eval_def(
-    call_stack: &Vec<String>,
+    call_stack: &Vec<(String, String)>,
     signature: &Vec<FunctionParameter>,
     stmts: &AstStatement,
     env: Environment,
     args: Vec<Value>,
+    map: Arc<Mutex<CodeMap>>
 ) -> ValueResult {
     // argument binding
     let mut it2 = args.iter();
@@ -650,6 +666,7 @@ pub fn eval_def(
         call_stack: call_stack.clone(),
         env,
         loader: (),
+        map: map.clone(),
     };
     match stmts.eval(&mut ctx) {
         Err(EvalException::Return(_s, ret)) => Ok(ret),
@@ -679,7 +696,7 @@ fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoa
     env: &mut Environment,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), file_loader);
+    let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
     match parse_lexer(map, filename, content, build, lexer)?.eval(
         &mut context,
     ) {
@@ -706,7 +723,7 @@ pub fn eval<T: FileLoader>(
     env: &mut Environment,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), file_loader);
+    let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
     match parse(map, path, content, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -729,7 +746,7 @@ pub fn eval_file<T: FileLoader>(
     env: &mut Environment,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), file_loader);
+    let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
     match parse_file(map, path, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),

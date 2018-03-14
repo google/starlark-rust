@@ -151,7 +151,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<String>,
+            __call_stack: &Vec<(String, String)>,
             __env: Environment,
             args: Vec<Value>
         ) -> ValueResult {
@@ -163,7 +163,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($rest:tt)*) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<String>,
+            __call_stack: &Vec<(String, String)>,
             __env: Environment,
             args: Vec<Value>
         ) -> ValueResult {
@@ -178,7 +178,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<String>,
+            __call_stack: &Vec<(String, String)>,
             __env: Environment,
             args: Vec<Value>
         ) -> ValueResult {
@@ -191,7 +191,7 @@ macro_rules! starlark_fun {
             $($rest:tt)*) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<String>,
+            __call_stack: &Vec<(String, String)>,
             __env: Environment,
             args: Vec<Value>
         ) -> ValueResult {
@@ -295,7 +295,7 @@ macro_rules! starlark_signatures {
 ///        println!(
 ///            "In {}:{}",
 ///            if let Some(x) = environ.get_parent() { x.name() } else { "<root>".to_owned() },
-///            cs.iter().skip(1).fold(String::new(), |a, x| format!("{}\n{}", a, x))
+///            cs.iter().skip(1).fold(String::new(), |a, x| format!("{}\n{}", a, x.1))
 ///        );
 ///        Ok(Value::from(None))
 ///     }

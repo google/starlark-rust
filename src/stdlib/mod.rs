@@ -33,6 +33,7 @@ const INT_CONVERSION_FAILED_ERROR_CODE: &'static str = "CR03";
 const ORD_EXPECT_ONE_CHAR_ERROR_CODE: &'static str = "CR04";
 const EMPTY_ITERABLE_ERROR_CODE: &'static str = "CR05";
 const NUL_RANGE_STEP_ERROR_CODE: &'static str = "CR06";
+const USER_FAILURE_ERROR_CODE: &'static str = "CR99";
 
 #[macro_use]
 pub mod macros;
@@ -41,6 +42,23 @@ pub mod list;
 pub mod dict;
 
 starlark_module!{global_functions =>
+    /// fail: fail the execution
+    ///
+    /// Examples:
+    /// ```python
+    /// fail("this is an error")  # Will fail with "this is an error"
+    /// ```
+    fail(call_stack st, msg) {
+        starlark_err!(
+            USER_FAILURE_ERROR_CODE,
+            format!(
+                "fail(): {}{}",
+                msg.to_str(),
+                st.into_iter().rev().fold(String::new(), |a,s| format!("{}\n    {}", a, s.1))
+            ),
+            msg.to_str()
+        )
+    }
 
     /// [any](
     /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#any

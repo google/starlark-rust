@@ -17,6 +17,8 @@ use super::*;
 use syntax::ast::AstStatement;
 use environment::Environment;
 use eval::eval_def;
+use codemap::CodeMap;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -36,7 +38,7 @@ pub enum FunctionType {
 }
 
 pub struct Function {
-    function: Box<Fn(&Vec<String>, Environment, Vec<Value>) -> ValueResult>,
+    function: Box<Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult>,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
@@ -149,7 +151,7 @@ macro_rules! check_identifier {
 impl Function {
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&Vec<String>, Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -165,7 +167,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&Vec<String>, Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -179,11 +181,12 @@ impl Function {
         module: String,
         signature: Vec<FunctionParameter>,
         stmts: AstStatement,
+        map: Arc<Mutex<CodeMap>>,
     ) -> Value {
         let signature_cp = signature.clone();
         Value::new(Function {
             function: Box::new(move |stack, env, v| {
-                eval_def(stack, &signature_cp, &stmts, env, v)
+                eval_def(stack, &signature_cp, &stmts, env, v, map.clone())
             }),
             signature,
             function_type: FunctionType::Def(name, module),
@@ -197,6 +200,16 @@ impl Function {
 
 impl FunctionType {
     fn to_str(&self) -> String {
+        match self {
+            &FunctionType::Native(ref name) => name.clone(),
+            &FunctionType::NativeMethod(ref function_type, ref name) => {
+                format!("{}.{}", function_type, name)
+            }
+            &FunctionType::Def(ref name, ..) => name.clone(),
+        }
+    }
+
+    fn to_repr(&self) -> String {
         match self {
             &FunctionType::Native(ref name) => format!("<native function {}>", name),
             &FunctionType::NativeMethod(ref function_type, ref name) => {
@@ -223,7 +236,24 @@ fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> Str
             }
         })
         .collect();
-    format!("{}: ({})", function_type.to_str(), v.join(", "))
+    format!("{}({})", function_type.to_repr(), v.join(", "))
+}
+
+fn to_str(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> String {
+    let v: Vec<String> = signature
+        .iter()
+        .map(|x| -> String {
+            match x {
+                &FunctionParameter::Normal(ref name) => name.clone(),
+                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                    format!("{} = {}", name, value.to_repr())
+                }
+                &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
+                &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
+            }
+        })
+        .collect();
+    format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
 /// Define the function type
@@ -232,7 +262,7 @@ impl TypedValue for Function {
     any!();
 
     fn to_str(&self) -> String {
-        self.function_type.to_str()
+        to_str(&self.function_type, &self.signature)
     }
     fn to_repr(&self) -> String {
         repr(&self.function_type, &self.signature)
@@ -257,7 +287,7 @@ impl TypedValue for Function {
 
     fn call(
         &self,
-        call_stack: &Vec<String>,
+        call_stack: &Vec<(String, String)>,
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
@@ -381,7 +411,7 @@ impl TypedValue for WrappedMethod {
 
     fn call(
         &self,
-        call_stack: &Vec<String>,
+        call_stack: &Vec<(String, String)>,
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,

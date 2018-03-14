@@ -341,7 +341,7 @@ pub trait TypedValue {
     /// * kwargs: if provided, the `**kwargs` argument.
     fn call(
         &self,
-        call_stack: &Vec<String>,
+        call_stack: &Vec<(String, String)>,
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
@@ -600,7 +600,7 @@ macro_rules! not_supported {
         }
     };
     (call) => {
-        fn call(&self, _call_stack: &Vec<String>, _env: Environment,
+        fn call(&self, _call_stack: &Vec<(String, String)>, _env: Environment,
                 _positional: Vec<Value>, _named: HashMap<String, Value>,
                 _args: Option<Value>, _kwargs: Option<Value>) -> ValueResult {
             Err(ValueError::OperationNotSupported {
@@ -835,7 +835,7 @@ impl TypedValue for Value {
     }
     fn call(
         &self,
-        call_stack: &Vec<String>,
+        call_stack: &Vec<(String, String)>,
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,

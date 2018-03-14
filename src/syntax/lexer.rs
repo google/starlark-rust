@@ -1318,6 +1318,41 @@ def _impl(ctx):
     }
 
     #[test]
+    fn test_span() {
+        let expected = vec![
+            (0, Token::Newline, 1),
+            (1, Token::Def, 4),
+            (5, Token::Identifier("test".to_owned()), 9),
+            (9, Token::OpeningParenthesis, 10),
+            (10, Token::Identifier("a".to_owned()), 11),
+            (11, Token::ClosingParenthesis, 12),
+            (12, Token::Colon, 13),
+            (13, Token::Newline, 14),
+            (14, Token::Indent, 16),
+            (16, Token::Identifier("fail".to_owned()), 20),
+            (20, Token::OpeningParenthesis, 21),
+            (21, Token::Identifier("a".to_owned()), 22),
+            (22, Token::ClosingParenthesis, 23),
+            (23, Token::Newline, 24),
+            (24, Token::Newline, 25),
+            (25, Token::Dedent, 25),
+            (25, Token::Identifier("test".to_owned()), 29),
+            (29, Token::OpeningParenthesis, 30),
+            (30, Token::StringLitteral("abc".to_owned()), 35),
+            (35, Token::ClosingParenthesis, 36),
+            (36, Token::Newline, 37),
+        ];
+        let actual : Vec<(u64, Token, u64)> = super::Lexer::new(r#"
+def test(a):
+  fail(a)
+
+test("abc")
+"#
+).map(|x| x.unwrap()).collect();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
     fn test_buffered() {
         let r = collect_result_buffered(vec!["\"\"\"A docstring.\"\"\"\n"]);
         assert_eq!(

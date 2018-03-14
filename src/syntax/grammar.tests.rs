@@ -159,6 +159,36 @@ fn test_return() {
 }
 
 #[test]
+fn test_fncall_span() {
+    let content = r#"def fn(a):
+  fail(a)
+
+fn(1)
+
+fail(2)
+"#;
+    let lexer = super::lexer::Lexer::new(content);
+    let mut codemap = codemap::CodeMap::new();
+    let filespan = codemap.add_file("<test>".to_owned(), content.to_string()).span;
+    match parse_starlark(content, filespan, lexer) {
+        Ok(x) => match x.node {
+            Statement::Statements(bv) => {
+                let lines : Vec<usize> =
+                    bv.iter().map(|x| codemap.look_up_pos(x.span.low()).position.line).collect();
+                assert_eq!(lines, vec![0, 3, 5])
+            },
+            y => panic!("Expected statements, got {:?}", y),
+        }
+        Err(e) => {
+            let codemap = Arc::new(Mutex::new(codemap));
+            let d = [e.to_diagnostic(filespan)];
+            assert_diagnostics!(d, codemap);
+            panic!("Got errors!");
+        }
+    }
+}
+
+#[test]
 fn smoke_test() {
     let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
     let mut diagnostics = Vec::new();
