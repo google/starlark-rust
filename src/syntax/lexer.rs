@@ -1363,7 +1363,7 @@ def _impl(ctx):
         let codemap = Arc::new(Mutex::new(codemap::CodeMap::new()));
         let mut diagnostics = Vec::new();
 
-        d.push("syntax/testcases");
+        d.push("src/syntax/testcases");
         let paths = fs::read_dir(d.as_path()).unwrap();
         for p in paths {
             let entry = p.unwrap();

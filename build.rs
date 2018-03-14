@@ -15,11 +15,11 @@
 extern crate lalrpop;
 
 fn main() {
-    println!("cargo:rerun-if-changed=syntax/grammar.lalrpop");
+    println!("cargo:rerun-if-changed=src/syntax/grammar.lalrpop");
     lalrpop::Configuration::new()
         .use_cargo_dir_conventions()
         .always_use_colors()
         .emit_report(true)
-        .process_file("syntax/grammar.lalrpop")
+        .process_file("src/syntax/grammar.lalrpop")
         .unwrap();
 }

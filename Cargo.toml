@@ -16,11 +16,9 @@ linked-hash-map = "0.5.1"
 linefeed = "0.4"
 
 [lib]
-path = "lib.rs"
 
 [[bin]]
 name = "starlark"
-path = "main.rs"
 
 [features]
 trace = []

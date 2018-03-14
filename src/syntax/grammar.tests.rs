@@ -163,7 +163,7 @@ fn smoke_test() {
     let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
     let mut diagnostics = Vec::new();
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    d.push("syntax/testcases");
+    d.push("src/syntax/testcases");
     let paths = fs::read_dir(d.as_path()).unwrap();
     for p in paths {
         let path_entry = p.unwrap().path();

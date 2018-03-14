@@ -31,7 +31,7 @@ mod grammar {
     mod tests {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/syntax/grammar.tests.rs"
+            "/src/syntax/grammar.tests.rs"
         ));
     }
 }
