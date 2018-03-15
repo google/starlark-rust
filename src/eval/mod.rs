@@ -380,14 +380,14 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
             Expr::Not(ref s) => Ok(Value::new(!s.eval(context)?.to_bool())),
             Expr::Minus(ref s) => t!(s.eval(context)?.minus(), self),
             Expr::Plus(ref s) => t!(s.eval(context)?.plus(), self),
-            Expr::Op(BinOp::Or, ref l, ref r) => Ok(Value::new(
-                l.eval(context)?.to_bool() ||
-                    r.eval(context)?.to_bool(),
-            )),
-            Expr::Op(BinOp::And, ref l, ref r) => Ok(Value::new(
-                l.eval(context)?.to_bool() &&
-                    r.eval(context)?.to_bool(),
-            )),
+            Expr::Op(BinOp::Or, ref l, ref r) => {
+                let l = l.eval(context)?;
+                Ok(if l.to_bool() { l } else { r.eval(context)? })
+            },
+            Expr::Op(BinOp::And, ref l, ref r) => {
+                let l = l.eval(context)?;
+                Ok(if !l.to_bool() { l } else { r.eval(context)? })
+            }
             Expr::Op(BinOp::EqualsTo, ref l, ref r) => Ok(Value::new(
                 l.eval(context)? == r.eval(context)?,
             )),
