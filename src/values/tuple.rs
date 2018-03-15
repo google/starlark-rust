@@ -24,6 +24,32 @@ pub struct Tuple {
     content: Vec<Value>,
 }
 
+#[doc(hidden)]
+pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &Vec<Value>) -> Vec<Value> {
+    let (low, take, astride) = if stride < 0 {
+        (stop + 1, start - stop, -stride)
+    } else {
+        (start, stop - start, stride)
+    };
+    let mut v: Vec<Value> = content
+        .iter()
+        .skip(low as usize)
+        .take(take as usize)
+        .map(|x| x.clone())
+        .collect();
+    if stride < 0 {
+        v.reverse();
+    }
+    v.into_iter()
+        .enumerate()
+        .filter_map(|x| if 0 == (x.0 as i64 % astride) {
+            Some(x.1)
+        } else {
+            None
+        })
+        .collect()
+}
+
 impl Tuple {
     pub fn new(values: &[Value]) -> Value {
         let mut result = Tuple { content: Vec::new() };
@@ -301,26 +327,7 @@ impl TypedValue for Tuple {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        let (low, take, astride) = if stride < 0 {
-            (stop + 1, start - stop, -stride)
-        } else {
-            (start, stop - start, stride)
-        };
-        let mut v: Vec<Value> = self.content
-            .iter()
-            .skip(low as usize)
-            .take(take as usize)
-            .enumerate()
-            .filter_map(|x| if 0 == (x.0 as i64 % astride) {
-                Some(x.1.clone())
-            } else {
-                None
-            })
-            .collect();
-        if stride < 0 {
-            v.reverse();
-        }
-        Ok(Tuple::new(&v))
+        Ok(Tuple::new(&slice_vector(start, stop, stride, &self.content)))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {

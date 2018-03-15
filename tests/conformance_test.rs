@@ -53,7 +53,7 @@ def assert_(cond, msg="assertion failed"):
     prelude.freeze();
     for content in read_input(path) {
         let err = if let Some(x) = content.find("###") {
-            let err = content.get(x+3..).unwrap();
+            let err = content.get(x+3..).unwrap().trim();
             err.get(..err.find("\n").unwrap_or(err.len())).unwrap()
         } else { "" };
         match eval(

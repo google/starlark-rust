@@ -1174,18 +1174,22 @@ impl TypedValue {
         max: i64,
     ) -> Result<i64, ValueError> {
         if let Some(v) = v1 {
-            match v.to_int() {
-                Ok(x) => {
-                    let i = if x < 0 { len + x } else { x };
-                    if i < min {
-                        Ok(min)
-                    } else if i > max {
-                        Ok(max)
-                    } else {
-                        Ok(i)
+            if v.get_type() == "NoneType" {
+                Ok(default)
+            } else {
+                match v.to_int() {
+                    Ok(x) => {
+                        let i = if x < 0 { len + x } else { x };
+                        if i < min {
+                            Ok(min)
+                        } else if i > max {
+                            Ok(max)
+                        } else {
+                            Ok(i)
+                        }
                     }
+                    Err(..) => Err(ValueError::IncorrectParameterType),
                 }
-                Err(..) => Err(ValueError::IncorrectParameterType),
             }
         } else {
             Ok(default)
@@ -1268,7 +1272,9 @@ impl TypedValue {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> Result<(i64, i64, i64), ValueError> {
-        match stride.unwrap_or(Value::new(1)).to_int() {
+        let stride = stride.unwrap_or(Value::new(1));
+        let stride = if stride.get_type() == "NoneType" { Ok(1) } else { stride.to_int() };
+        match stride {
             Ok(0) => Err(ValueError::IndexOutOfBound(0)),
             Ok(stride) => {
                 let def_start = if stride < 0 { len - 1 } else { 0 };

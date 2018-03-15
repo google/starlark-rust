@@ -170,26 +170,7 @@ impl TypedValue for List {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        let (low, take, astride) = if stride < 0 {
-            (stop + 1, start - stop, -stride)
-        } else {
-            (start, stop - start, stride)
-        };
-        let mut v: Vec<Value> = self.content
-            .iter()
-            .skip(low as usize)
-            .take(take as usize)
-            .enumerate()
-            .filter_map(|x| if 0 == (x.0 as i64 % astride) {
-                Some(x.1.clone())
-            } else {
-                None
-            })
-            .collect();
-        if stride < 0 {
-            v.reverse();
-        }
-        Ok(Value::from(v))
+        Ok(Value::from(tuple::slice_vector(start, stop, stride, &self.content)))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {

@@ -184,8 +184,11 @@ PrimaryExpr: AstExpr = {
         => Expr::Dot(e, i).to_ast(file_span.subspan(l, r)),
     <l:@L> <e:PrimaryExpr> "(" <a:COMMA<Argument>> ")" <r:@R>
         =>? Ok(Expr::check_call(e, a)?.to_ast(file_span.subspan(l, r))),
-    <l:@L> <e:PrimaryExpr> "[" <i1:Test?> ":" <i2:Test?> <i3:OptionalSlice?> "]"
-        <r:@R> => Expr::Slice(e, i1, i2, i3).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e:PrimaryExpr> "[" <i1:Test?> ":" <i2:Test?> <i3:(":" <Test?>)?> "]"
+        <r:@R> => {
+          Expr::Slice(e, i1, i2, i3.unwrap_or(None))
+              .to_ast(file_span.subspan(l, r))
+        },
     <l:@L> <e:PrimaryExpr> "[" <i:TestList> "]" <r:@R>
         => Expr::ArrayIndirection(e, i).to_ast(file_span.subspan(l, r)),
     Operand
