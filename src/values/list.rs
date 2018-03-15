@@ -189,7 +189,7 @@ impl TypedValue for List {
         if stride < 0 {
             v.reverse();
         }
-        Ok(Tuple::new(&v))
+        Ok(Value::from(v))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
@@ -284,7 +284,7 @@ impl TypedValue for List {
     }
 
     not_supported!(attr, function);
-    not_supported!(plus, minus, sub, div, pipe, percent);
+    not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
 }
 
 #[cfg(test)]

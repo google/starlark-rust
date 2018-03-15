@@ -119,6 +119,7 @@ pub enum Token {
     MinusEqual, // '-='
     StarEqual, // '*='
     SlashEqual, // '/='
+    DoubleSlashEqual, // '//='
     PercentEqual, // '%='
     DoubleEqual, // '=='
     BangEqual, // '!='
@@ -133,6 +134,7 @@ pub enum Token {
     Star, // '*'
     Percent, // '%'
     Slash, // '/'
+    DoubleSlash, // '//'
     Dot, // '.'
     Pipe, // '|'
     // Brackets
@@ -177,6 +179,7 @@ impl fmt::Display for Token {
             &Token::MinusEqual => write!(f, "symbol '-='"),
             &Token::StarEqual => write!(f, "symbol '*='"),
             &Token::SlashEqual => write!(f, "symbol '/='"),
+            &Token::DoubleSlashEqual => write!(f, "symbol '//='"),
             &Token::PercentEqual => write!(f, "symbol '%='"),
             &Token::DoubleEqual => write!(f, "symbol '=='"),
             &Token::BangEqual => write!(f, "symbol '!='"),
@@ -191,6 +194,7 @@ impl fmt::Display for Token {
             &Token::Star => write!(f, "symbol '*'"),
             &Token::Percent => write!(f, "symbol '%'"),
             &Token::Slash => write!(f, "symbol '/'"),
+            &Token::DoubleSlash => write!(f, "symbol '//'"),
             &Token::Dot => write!(f, "symbol '.'"),
             &Token::Pipe => write!(f, "symbol '|'"),
             &Token::OpeningBracket => write!(f, "symbol '['"),
@@ -871,7 +875,16 @@ impl Lexer {
                 return if self.peek_char() == '=' {
                     self.consume(Token::SlashEqual)
                 } else {
-                    self.end(Token::Slash)
+                    if self.peek_char() == '/' {
+                        self.pop();
+                        if self.peek_char() == '=' {
+                            self.consume(Token::DoubleSlashEqual)
+                        } else {
+                            self.end(Token::DoubleSlash)
+                        }
+                    } else {
+                        self.end(Token::Slash)
+                    }
                 };
             }
             '%' => {
@@ -1091,7 +1104,7 @@ mod tests {
     #[test]
     fn test_symbols() {
         let r = collect_result(
-            ", ; : += -= *= /= %= == != <= >= ** = < > - + * % / . { } [ ] ( ) |",
+            ", ; : += -= *= /= //= %= == != <= >= ** = < > - + * % / // . { } [ ] ( ) |",
         );
         assert_eq!(
             &[
@@ -1102,6 +1115,7 @@ mod tests {
                 Token::MinusEqual,
                 Token::StarEqual,
                 Token::SlashEqual,
+                Token::DoubleSlashEqual,
                 Token::PercentEqual,
                 Token::DoubleEqual,
                 Token::BangEqual,
@@ -1116,6 +1130,7 @@ mod tests {
                 Token::Star,
                 Token::Percent,
                 Token::Slash,
+                Token::DoubleSlash,
                 Token::Dot,
                 Token::OpeningCurlyBracket,
                 Token::ClosingCurlyBracket,

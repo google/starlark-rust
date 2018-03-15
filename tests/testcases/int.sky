@@ -61,6 +61,6 @@ def compound():
 compound()
 
 ---
-1 / 0  ### integer division by zero
+1 / 0  ### divide by zero
 ---
-1 % 0  ### integer modulo by zero
+1 % 0  ### divide by zero

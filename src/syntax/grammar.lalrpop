@@ -134,6 +134,7 @@ AssignOp: AssignOp = {
     "-=" => AssignOp::Decrement,
     "*=" => AssignOp::Multiplier,
     "/=" => AssignOp::Divider,
+    "//=" => AssignOp::FloorDivider,
     "%=" => AssignOp::Percent,
 };
 
@@ -146,7 +147,7 @@ AssignStmt_: Statement = <TestList> <AssignOp> <TestList>
 // according to the spec provided on https://github.com/google/skylark. It
 // enable parsing docstring and method calls.
 ExprStmt: AstStatement = ASTS<ExprStmt_>;
-ExprStmt_: Statement = <PrimaryExpr> => Statement::Expression(<>);
+ExprStmt_: Statement = <OrTest> => Statement::Expression(<>);
 
 LoadStmt: AstStatement = ASTS<LoadStmt_>;
 LoadStmt_: Statement = "load" "(" <string> <("," <LoadStmtSyms>)+> ","? ")"
@@ -173,9 +174,9 @@ pub ExprList: AstExpr = L<Expr>;
 pub TestList: AstExpr = L<Test>;
 
 PipedExpr: AstExpr = {
-    <l:@L> <e1:ArithmExpr> "|" <e2:PipedExpr> <r:@R>
+    <l:@L> <e1:AddExpr> "|" <e2:PipedExpr> <r:@R>
       => Expr::Op(BinOp::Pipe, e1, e2).to_ast(file_span.subspan(l, r)),
-    ArithmExpr
+    AddExpr
 };
 
 PrimaryExpr: AstExpr = {
@@ -294,28 +295,34 @@ CompTest: AstExpr = {
 };
 
 Expr: AstExpr = {
-    <l:@L> <e1:ArithmExpr> "|" <e2:Expr> <r:@R>
+    <l:@L> <e1:AddExpr> "|" <e2:Expr> <r:@R>
         => Expr::Op(BinOp::Pipe, e1, e2).to_ast(file_span.subspan(l, r)),
-    ArithmExpr,
+    AddExpr,
 };
 
-ArithmExpr: AstExpr = {
-    <l:@L> <e1:ProductExpr> "+" <e2:ArithmExpr> <r:@R>
+AddExpr: AstExpr = {
+    <l:@L> <e1:SubExpr> "+" <e2:AddExpr> <r:@R>
         => Expr::Op(BinOp::Addition, e1, e2).to_ast(file_span.subspan(l, r)),
-    <l:@L> <e1:ProductExpr> "-" <e2:ArithmExpr> <r:@R>
+    SubExpr,
+};
+
+SubExpr: AstExpr = {
+    <l:@L> <e1:ProductExpr> "-" <e2:SubExpr> <r:@R>
         => Expr::Op(BinOp::Substraction, e1, e2)
               .to_ast(file_span.subspan(l, r)),
     ProductExpr
 };
 
 ProductExpr: AstExpr = {
-    <l:@L> <e1:FactorExpr> "*" <e2:ProductExpr> <r:@R>
+    <l:@L> <e1:ProductExpr> "*" <e2:FactorExpr> <r:@R>
         => Expr::Op(BinOp::Multiplication, e1, e2)
             .to_ast(file_span.subspan(l, r)),
-    <l:@L> <e1:FactorExpr> "%" <e2:ProductExpr> <r:@R>
+    <l:@L> <e1:ProductExpr> "%" <e2:FactorExpr> <r:@R>
         => Expr::Op(BinOp::Percent, e1, e2).to_ast(file_span.subspan(l, r)),
-    <l:@L> <e1:FactorExpr> "/" <e2:ProductExpr> <r:@R>
+    <l:@L> <e1:ProductExpr> "/" <e2:FactorExpr> <r:@R>
         => Expr::Op(BinOp::Division, e1, e2).to_ast(file_span.subspan(l, r)),
+    <l:@L> <e1:ProductExpr> "//" <e2:FactorExpr> <r:@R>
+        => Expr::Op(BinOp::FloorDivision, e1, e2).to_ast(file_span.subspan(l, r)),
     FactorExpr
 };
 
@@ -359,6 +366,7 @@ extern {
       "-=" => lexer::Token::MinusEqual,
       "*=" => lexer::Token::StarEqual,
       "/=" => lexer::Token::SlashEqual,
+      "//=" => lexer::Token::DoubleSlashEqual,
       "%=" => lexer::Token::PercentEqual,
       "==" => lexer::Token::DoubleEqual,
       "!=" => lexer::Token::BangEqual,
@@ -373,6 +381,7 @@ extern {
       "*" => lexer::Token::Star,
       "%" => lexer::Token::Percent,
       "/" => lexer::Token::Slash,
+      "//" => lexer::Token::DoubleSlash,
       "." => lexer::Token::Dot,
       "|" => lexer::Token::Pipe,
       // Brackets

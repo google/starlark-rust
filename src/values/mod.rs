@@ -97,6 +97,7 @@ pub const NOT_HASHABLE_VALUE_ERROR_CODE: &'static str = "CV04";
 pub const KEY_NOT_FOUND_ERROR_CODE: &'static str = "CV05";
 pub const INTERPOLATION_FORMAT_ERROR_CODE: &'static str = "CV06";
 pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &'static str = "CV07";
+pub const DIVISION_BY_ZERO_ERROR_CODE: &'static str = "CV08";
 
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Debug)]
@@ -107,6 +108,13 @@ pub enum ValueError {
         left: String,
         right: Option<String>,
     },
+    /// The operation is not supported for this type because type is not of a certain category.
+    TypeNotX {
+        object_type: String,
+        op: String
+    },
+    /// Division by 0
+    DivisionByZero,
     /// Trying to modify an immutable value.
     CannotMutateImmutableValue,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
@@ -167,6 +175,11 @@ impl SyntaxError for ValueError {
                             ref left,
                             right: None,
                         } => format!("{} not supported for type {}", op, left),
+                        ValueError::TypeNotX {
+                            ref object_type,
+                            ref op,
+                        } => format!("The type '{}' is not {}", object_type, op),
+                        ValueError::DivisionByZero => "Division by zero".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
@@ -197,6 +210,11 @@ impl SyntaxError for ValueError {
                             ref left,
                             right: None,
                         } => format!("Cannot {} on type {}", op, left),
+                        ValueError::TypeNotX {
+                            ref object_type,
+                            ref op,
+                        } => format!("The type '{}' is not {}", object_type, op),
+                        ValueError::DivisionByZero => "Cannot divide by zero".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
@@ -227,6 +245,8 @@ impl SyntaxError for ValueError {
                     code: Some(
                         match self {
                             ValueError::OperationNotSupported { .. } => NOT_SUPPORTED_ERROR_CODE,
+                            ValueError::TypeNotX { .. } => NOT_SUPPORTED_ERROR_CODE,
+                            ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
                             ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,
                             ValueError::IncorrectParameterType => {
                                 INCORRECT_PARAMETER_TYPE_ERROR_CODE
@@ -540,7 +560,7 @@ pub trait TypedValue {
     /// ```
     fn percent(&self, other: Value) -> ValueResult;
 
-    /// Divide the current value with `other`. On integer it is a floored division
+    /// Divide the current value with `other`.  division.
     ///
     /// # Examples
     ///
@@ -552,6 +572,20 @@ pub trait TypedValue {
     /// # }
     /// ```
     fn div(&self, other: Value) -> ValueResult;
+
+
+    /// Floor division between the current value and `other`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[macro_use] extern crate starlark;
+    /// # use starlark::values::*;
+    /// # fn main() {
+    /// assert_eq!(3, int_op!(7.floor_div(2)));  // 7.div(2) = 7 / 2 = 3
+    /// # }
+    /// ```
+    fn floor_div(&self, other: Value) -> ValueResult;
 
     /// Apply the operator pipe to the current value and `other`.
     ///
@@ -676,8 +710,10 @@ macro_rules! not_supported {
     };
     (into_iter) => {
         fn into_iter(&self) -> Result<Box<Iterator<Item=Value>>, ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: "iterate".to_owned(), left: self.get_type().to_owned(), right: None })
+            Err(ValueError::TypeNotX {
+                object_type: self.get_type().to_owned(),
+                op: "iterable".to_owned()
+            })
         }
     };
     // Special type: iterable, sequence, indexable, container, function
@@ -688,7 +724,7 @@ macro_rules! not_supported {
     (attr) => { not_supported!(get_attr, has_attr, set_attr, dir_attr); };
     (container) => { not_supported!(iterable, sequence, indexable, attr); };
     (function) => { not_supported!(call); };
-    (arithmetic) => { not_supported!(plus, minus, add, sub, mul, div); };
+    (arithmetic) => { not_supported!(plus, minus, add, sub, mul, div, floor_div); };
     (binop) => { not_supported!(arithmetic, percent, pipe); };
     // Generic
     (is_in) => {
@@ -719,6 +755,14 @@ macro_rules! not_supported {
         fn div(&self, other: Value) -> ValueResult {
             Err(ValueError::OperationNotSupported {
                 op: "/".to_owned(),
+                left: self.get_type().to_owned(),
+                right: Some(other.get_type().to_owned()) })
+        }
+    };
+    (floor_div) => {
+        fn floor_div(&self, other: Value) -> ValueResult {
+            Err(ValueError::OperationNotSupported {
+                op: "//".to_owned(),
                 left: self.get_type().to_owned(),
                 right: Some(other.get_type().to_owned()) })
         }
@@ -909,6 +953,9 @@ impl TypedValue for Value {
     fn div(&self, other: Value) -> ValueResult {
         self.value.borrow().div(other)
     }
+    fn floor_div(&self, other: Value) -> ValueResult {
+        self.value.borrow().floor_div(other)
+    }
     fn pipe(&self, other: Value) -> ValueResult {
         self.value.borrow().pipe(other)
     }
@@ -1022,10 +1069,26 @@ impl TypedValue for i64 {
         arithm_op!(self * other)
     }
     fn percent(&self, other: Value) -> ValueResult {
-        arithm_op!(self % other)
+        let other = other.to_int()?;
+        if other == 0 { return Err(ValueError::DivisionByZero); }
+        let me = self.to_int()?;
+        let r = me % other;
+        if r == 0 {
+            Ok(Value::new(0))
+        } else {
+            Ok(Value::new(if other.signum() != r.signum() { r + other } else { r } ))
+        }
     }
     fn div(&self, other: Value) -> ValueResult {
-        arithm_op!(self / other)
+        self.floor_div(other)
+    }
+    fn floor_div(&self, other: Value) -> ValueResult {
+        let other = other.to_int()?;
+        if other == 0 { return Err(ValueError::DivisionByZero); }
+        let me = self.to_int()?;
+        let sig = other.signum() * me.signum();
+        let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
+        Ok(Value::new(me / other - offset))
     }
     not_supported!(container);
     not_supported!(function);
@@ -1075,10 +1138,26 @@ impl TypedValue for bool {
         arithm_op!(self * other)
     }
     fn percent(&self, other: Value) -> ValueResult {
-        arithm_op!(self % other)
+        let other = other.to_int()?;
+        if other == 0 { return Err(ValueError::DivisionByZero); }
+        let me = self.to_int()?;
+        let r = me % other;
+        if r == 0 {
+            Ok(Value::new(0))
+        } else {
+            Ok(Value::new(if other.signum() != r.signum() { r + other } else { r } ))
+        }
     }
     fn div(&self, other: Value) -> ValueResult {
-        arithm_op!(self / other)
+        self.floor_div(other)
+    }
+    fn floor_div(&self, other: Value) -> ValueResult {
+        let other = other.to_int()?;
+        if other == 0 { return Err(ValueError::DivisionByZero); }
+        let me = self.to_int()?;
+        let sig = other.signum() * me.signum();
+        let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
+        Ok(Value::new(me / other - offset))
     }
     not_supported!(container);
     not_supported!(function);

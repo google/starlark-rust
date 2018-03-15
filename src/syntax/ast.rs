@@ -202,6 +202,7 @@ pub enum BinOp {
     Multiplication,
     Percent,
     Division,
+    FloorDivision,
     Pipe,
 }
 
@@ -213,6 +214,7 @@ pub enum AssignOp {
     Decrement,
     Multiplier,
     Divider,
+    FloorDivider,
     Percent,
 }
 
@@ -341,6 +343,7 @@ impl fmt::Display for BinOp {
             BinOp::Multiplication => write!(f, " * "),
             BinOp::Percent => write!(f, " % "),
             BinOp::Division => write!(f, " / "),
+            BinOp::FloorDivision => write!(f, " // "),
             BinOp::Pipe => write!(f, " | "),
         }
     }
@@ -354,6 +357,7 @@ impl fmt::Display for AssignOp {
             AssignOp::Decrement => write!(f, " += "),
             AssignOp::Multiplier => write!(f, " *= "),
             AssignOp::Divider => write!(f, " /= "),
+            AssignOp::FloorDivider => write!(f, " //= "),
             AssignOp::Percent => write!(f, " %= "),
         }
     }

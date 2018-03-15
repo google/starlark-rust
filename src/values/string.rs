@@ -263,7 +263,7 @@ impl TypedValue for String {
 
     not_supported!(set_indexable);
     not_supported!(attr, function);
-    not_supported!(plus, minus, sub, div, pipe);
+    not_supported!(plus, minus, sub, div, pipe, floor_div);
 }
 
 #[cfg(test)]

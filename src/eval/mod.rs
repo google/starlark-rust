@@ -429,6 +429,9 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
             Expr::Op(BinOp::Division, ref l, ref r) => {
                 t!(l.eval(context)?.div(r.eval(context)?), self)
             }
+            Expr::Op(BinOp::FloorDivision, ref l, ref r) => {
+                t!(l.eval(context)?.floor_div(r.eval(context)?), self)
+            }
             Expr::Op(BinOp::Pipe, ref l, ref r) => {
                 t!(l.eval(context)?.pipe(r.eval(context)?), self)
             }
@@ -550,6 +553,11 @@ impl<T: FileLoader> Evaluate<T> for AstStatement {
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.div(r), self)?)
+            }
+            Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
+                let l = lhs.eval(context)?;
+                let r = rhs.eval(context)?;
+                lhs.set(context, t!(l.floor_div(r), self)?)
             }
             Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
                 let l = lhs.eval(context)?;
