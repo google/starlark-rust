@@ -363,6 +363,33 @@ starlark_module!{global_functions =>
         if a.get_type() == "string" {
             let s = a.to_str();
             let radix = radix.to_int()? as u32;
+            let radix = if radix == 0 {
+                match s.clone().get(0..2) {
+                    Some("0b") | Some("0B") => 2,
+                    Some("0o") | Some("0O") => 8,
+                    Some("0x") | Some("0X") => 16,
+                    Some(x) => if x.get(0..0).unwrap() == "0" { 8 } else { 10 },
+                    None => 10
+                }
+            } else { radix };
+            let s = match radix {
+                16 => if s.starts_with("0x") || s.starts_with("0X") {
+                    s.get(2..).unwrap().to_string()
+                } else { s },
+                8 => if s.starts_with("0o") || s.starts_with("0O") {
+                    s.get(2..).unwrap().to_string()
+                } else {
+                    if s.starts_with("0") {
+                        s.get(1..).unwrap().to_string()
+                    } else {
+                        s
+                    }
+                },
+                2 => if s.starts_with("0b") || s.starts_with("0B") {
+                    s.get(2..).unwrap().to_string()
+                } else { s },
+                _ => s
+            };
             match i64::from_str_radix(&s, radix) {
                 Ok(i) => Ok(Value::new(i)),
                 Err(x) => starlark_err!(
