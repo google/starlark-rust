@@ -1120,8 +1120,7 @@ starlark_module!{global =>
     ///
     /// `S.splitlines([keepends])` returns a list whose elements are the
     /// successive lines of S, that is, the strings formed by splitting S at
-    /// line terminators (currently assumed to be a newline, `\n`,
-    /// regardless of platform).
+    /// line terminators ('\n', '\r' or '\r\n').
     ///
     /// The optional argument, `keepends`, is interpreted as a Boolean.
     /// If true, line terminators are preserved in the result, though
@@ -1145,18 +1144,25 @@ starlark_module!{global =>
         let keepends = keepends.to_bool();
         let mut lines = Vec::new();
         loop {
-            if let Some(x) = s.find('\n') {
+            if let Some(x) = s.find(|x| x == '\n' || x == '\r') {
+                let y = x;
+                let x = match s.get(y..y+2) {
+                    Some("\n\r") | Some("\r\n") => y + 2,
+                    _ => y + 1
+                };
                 if keepends {
-                    lines.push(s.get(..x+1).unwrap())
-                } else {
                     lines.push(s.get(..x).unwrap())
+                } else {
+                    lines.push(s.get(..y).unwrap())
                 }
                 if x == s.len() - 1 {
                     ok!(lines);
                 }
-                s = s.get(x+1..).unwrap();
+                s = s.get(x..).unwrap();
             } else {
-                lines.push(s);
+                if !s.is_empty() {
+                    lines.push(s);
+                }
                 ok!(lines);
             }
         }
