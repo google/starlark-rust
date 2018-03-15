@@ -19,26 +19,26 @@ assert_eq(int('0XFF', 0), 255)
 assert_eq(int('0xFF', 16), 255)
 
 ---
-int('1.5') ### invalid literal for int\(\) with base 10
+int('1.5') ### invalid digit found in string
 ---
-int('ab') ### invalid literal for int\(\) with base 10: "ab"
+int('ab') ### invalid digit found in string
 ---
-int(None) ### None is not of type string or int or bool
+int(None) ### Cannot int() on type NoneType
 ---
-int('123', 3) ### invalid literal for int\(\) with base 3: "123"
+int('123', 3) ### invalid digit found in string
 ---
-int('FF', 15) ### invalid literal for int\(\) with base 15: "FF"
+int('FF', 15) ### invalid digit found in string
 ---
-int('123', -1) ### int\(\) base must be >= 2 and <= 36
+int('123', -1) ### int() base must be >= 2 and <= 36
 ---
-int('123', 1) ### int\(\) base must be >= 2 and <= 36
+int('123', 1) ### int() base must be >= 2 and <= 36
 ---
-int('123', 37) ### int\(\) base must be >= 2 and <= 36
+int('123', 37) ### int() base must be >= 2 and <= 36
 ---
-int('0xFF', 8) ### invalid literal for int\(\) with base 8: "0xFF"
+int('0xFF', 8) ### invalid digit found in string
 ---
-int(True, 2) ### int\(\) can't convert non-string with explicit base
+int(True, 2) ### int() cannot convert non-string with explicit base
 ---
-int(1, 2) ### int\(\) can't convert non-string with explicit base
+int(1, 2) ### int() cannot convert non-string with explicit base
 ---
-int(True, 10) ### int\(\) can't convert non-string with explicit base
+int(True, 10) ### int() cannot convert non-string with explicit base

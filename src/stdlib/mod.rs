@@ -359,10 +359,20 @@ starlark_module!{global_functions =>
         Ok(Value::new(a.get_hash()? as i64))
     }
 
-    int(#a, #radix = 10) {
+    int(#a, #radix = None) {
         if a.get_type() == "string" {
             let s = a.to_str();
-            let radix = radix.to_int()? as u32;
+            let radix = if radix.get_type() == "NoneType" { 0 } else { radix.to_int()? };
+            if radix == 1 || radix < 0 || radix > 36 {
+                starlark_err!(
+                    INT_CONVERSION_FAILED_ERROR_CODE,
+                    format!(
+                        "{} is not a valid base, int() base must be >= 2 and <= 36",
+                        radix,
+                    ),
+                    format!("Invalid base {}", radix)
+                )
+            }
             let radix = if radix == 0 {
                 match s.clone().get(0..2) {
                     Some("0b") | Some("0B") => 2,
@@ -371,7 +381,7 @@ starlark_module!{global_functions =>
                     Some(x) => if x.get(0..0).unwrap() == "0" { 8 } else { 10 },
                     None => 10
                 }
-            } else { radix };
+            } else { radix as u32 };
             let s = match radix {
                 16 => if s.starts_with("0x") || s.starts_with("0X") {
                     s.get(2..).unwrap().to_string()
@@ -404,6 +414,13 @@ starlark_module!{global_functions =>
                 ),
             }
         } else {
+            if radix.get_type() != "NoneType" {
+                starlark_err!(
+                    INT_CONVERSION_FAILED_ERROR_CODE,
+                    "int() cannot convert non-string with explicit base".to_owned(),
+                    format!("Explict radix '{}' provided with non-string", radix.to_repr())
+                )
+            }
             Ok(Value::new(a.to_int()?))
         }
     }
