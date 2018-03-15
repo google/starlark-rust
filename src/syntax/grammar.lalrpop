@@ -105,7 +105,7 @@ ForStmt_: Statement = <c:ForInClause> ":" <s:Suite>
     => Statement::For(c, s);
 
 SimpleStmt<S>: AstStatement =
-    <l:@L> <e:S> <v:(";" <S>)*> <r:@R> "\n" => {
+    <l:@L> <e:S> <v:(";" <S>)*> ";"? <r:@R> "\n" => {
         if v.is_empty() {
             e
         } else {
