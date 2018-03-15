@@ -655,12 +655,10 @@ starlark_module!{global =>
             } else {
                 if last_space {
                     if c.is_lowercase() {
-                        println!("Got non title: {}", c);
                         ok!(false);
                     }
                 } else {
                     if c.is_uppercase() {
-                        println!("Got non title: {}", c);
                         ok!(false);
                     }
                 }
