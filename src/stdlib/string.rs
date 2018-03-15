@@ -782,7 +782,7 @@ starlark_module!{global =>
     /// https://github.com/google/skylark/blob/3705afa472e466b8b061cce44b47c9ddc6db696d/doc/spec.md#string·partition
     /// ): partition a string in 3 components
     ///
-    /// `S.partition(x)` splits string S into three parts and returns them as
+    /// `S.partition(x = " ")` splits string S into three parts and returns them as
     /// a tuple: the portion before the first occurrence of string `x`, `x` itself,
     /// and the portion following it.
     /// If S does not contain `x`, `partition` returns `(S, "", "")`.
@@ -797,7 +797,7 @@ starlark_module!{global =>
     /// "one/two/three".partition("/")	 == ("one", "/", "two/three")
     /// # )"#).unwrap());
     /// ```
-    string.partition(this, #needle) {
+    string.partition(this, #needle = " ") {
         check_string!(needle, partition);
         let needle = needle.to_str();
         let this = this.to_str();
@@ -922,7 +922,7 @@ starlark_module!{global =>
     /// https://github.com/google/skylark/blob/3705afa472e466b8b061cce44b47c9ddc6db696d/doc/spec.md#string·rpartition
     /// ): partition a string in 3 elements.
     ///
-    /// `S.rpartition(x)` is like `partition`, but splits `S` at the last occurrence of `x`.
+    /// `S.rpartition([x = ' '])` is like `partition`, but splits `S` at the last occurrence of `x`.
     ///
     /// Examples:
     ///
@@ -932,7 +932,7 @@ starlark_module!{global =>
     /// "one/two/three".rpartition("/")	 == ("one/two", "/", "three")
     /// # )"#).unwrap());
     /// ```
-    string.rpartition(this, #needle) {
+    string.rpartition(this, #needle = " ") {
         check_string!(needle, partition);
         let needle = needle.to_str();
         let this = this.to_str();
