@@ -303,14 +303,18 @@ mod tests {
 
     #[test]
     fn test_index() {
-        starlark_ok!(r#"x = ["b", "a", "n", "a", "n", "a"]; (
-            x.index("a") == 1 and x.index("a", 2) == 3 and x.index("a", -2) == 5)"#);
+        starlark_ok!(
+            r#"x = ["b", "a", "n", "a", "n", "a"]; (
+            x.index("a") == 1 and x.index("a", 2) == 3 and x.index("a", -2) == 5)"#
+        );
     }
 
     #[test]
     fn test_insert() {
-        starlark_ok!(r#"x = ["b", "c", "e"]; x.insert(0, "a"); x.insert(-1, "d"); (
-            x == ["a", "b", "c", "d", "e"])"#);
+        starlark_ok!(
+            r#"x = ["b", "c", "e"]; x.insert(0, "a"); x.insert(-1, "d"); (
+            x == ["a", "b", "c", "d", "e"])"#
+        );
     }
 
     #[test]
@@ -320,10 +324,12 @@ mod tests {
 
     #[test]
     fn test_remove() {
-        starlark_ok!(r#"x = [1, 2, 3, 2]
+        starlark_ok!(
+            r#"x = [1, 2, 3, 2]
 x.remove(2); t1 = x == [1, 3, 2]
 x.remove(2); t2 = x == [1, 3]
-(t1 and t2)"#);
+(t1 and t2)"#
+        );
         starlark_fail!(
             r#"x = [1, 2, 3, 2]; x.remove(2); x.remove(2); x.remove(2)"#,
             LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE

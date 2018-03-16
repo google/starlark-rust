@@ -235,15 +235,19 @@ impl EnvironmentContent {
             Some(ref d) => {
                 match d.get(id) {
                     Some(&ref v) => Some(v.clone()),
-                    None => match self.parent {
-                        Some(ref p) => p.get_type_value(obj, id),
-                        None => None,
+                    None => {
+                        match self.parent {
+                            Some(ref p) => p.get_type_value(obj, id),
+                            None => None,
+                        }
                     }
                 }
             }
-            None => match self.parent {
-                Some(ref p) => p.get_type_value(obj, id),
-                None => None,
+            None => {
+                match self.parent {
+                    Some(ref p) => p.get_type_value(obj, id),
+                    None => None,
+                }
             }
         }
     }

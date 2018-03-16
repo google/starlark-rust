@@ -33,23 +33,18 @@ impl Dictionary {
         })
     }
 
-    pub fn apply(
-        v: &Value,
-        f: &Fn(&LinkedHashMap<Value, Value>) -> ValueResult
-    ) -> ValueResult {
+    pub fn apply(v: &Value, f: &Fn(&LinkedHashMap<Value, Value>) -> ValueResult) -> ValueResult {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
         } else {
             let mut v = v.clone();
-            v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
-                f(&x.content)
-            })
+            v.downcast_apply(|x: &mut Dictionary| -> ValueResult { f(&x.content) })
         }
     }
 
     pub fn mutate(
         v: &Value,
-        f: &Fn(&mut LinkedHashMap<Value, Value>) -> ValueResult
+        f: &Fn(&mut LinkedHashMap<Value, Value>) -> ValueResult,
     ) -> ValueResult {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
@@ -80,8 +75,10 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> F
     }
 }
 
-impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> From<LinkedHashMap<T1, T2>>
-    for Dictionary {
+impl<
+    T1: Into<Value> + Hash + Eq + Clone,
+    T2: Into<Value> + Hash + Eq + Clone,
+> From<LinkedHashMap<T1, T2>> for Dictionary {
     fn from(a: LinkedHashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
             frozen: false,
@@ -137,8 +134,8 @@ impl TypedValue for Dictionary {
 
     fn compare(&self, other: &Value) -> Ordering {
         if other.get_type() == "dict" {
-            let mut v1 : Vec<Value> = self.into_iter().unwrap().collect();
-            let mut v2 : Vec<Value> = other.into_iter().unwrap().collect();
+            let mut v1: Vec<Value> = self.into_iter().unwrap().collect();
+            let mut v2: Vec<Value> = other.into_iter().unwrap().collect();
             // We sort the keys because the dictionary preserve insertion order but ordering does
             // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
             v1.sort();

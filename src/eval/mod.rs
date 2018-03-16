@@ -201,7 +201,7 @@ pub struct EvaluationContext<T: FileLoader> {
     env: Environment,
     loader: T,
     call_stack: Vec<(String, String)>,
-    map: Arc<Mutex<CodeMap>>
+    map: Arc<Mutex<CodeMap>>,
 }
 
 impl<T: FileLoader> EvaluationContext<T> {
@@ -210,7 +210,7 @@ impl<T: FileLoader> EvaluationContext<T> {
             call_stack: Vec::new(),
             env,
             loader,
-            map
+            map,
         }
     }
 }
@@ -339,7 +339,7 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
                             descr,
                             loc.file.name(),
                             loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
-                        )
+                        ),
                     ));
                     t!(
                         e.eval(context)?.call(
@@ -383,7 +383,7 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
             Expr::Op(BinOp::Or, ref l, ref r) => {
                 let l = l.eval(context)?;
                 Ok(if l.to_bool() { l } else { r.eval(context)? })
-            },
+            }
             Expr::Op(BinOp::And, ref l, ref r) => {
                 let l = l.eval(context)?;
                 Ok(if !l.to_bool() { l } else { r.eval(context)? })
@@ -408,7 +408,7 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
             )),
             Expr::Op(BinOp::In, ref l, ref r) => {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)
-            },
+            }
             Expr::Op(BinOp::NotIn, ref l, ref r) => Ok(Value::new(
                 t!(
                     r.eval(context)?.is_in(&l.eval(context)?),
@@ -655,7 +655,7 @@ pub fn eval_def(
     stmts: &AstStatement,
     env: Environment,
     args: Vec<Value>,
-    map: Arc<Mutex<CodeMap>>
+    map: Arc<Mutex<CodeMap>>,
 ) -> ValueResult {
     // argument binding
     let mut it2 = args.iter();

@@ -670,7 +670,7 @@ pub mod tests {
         let mut env = global_environment().freeze().child("test");
         match eval(&map, "<test>", snippet, false, &mut env) {
             Ok(v) => Ok(v.to_bool()),
-            Err(d) => Err(d)
+            Err(d) => Err(d),
         }
     }
 
@@ -761,7 +761,9 @@ pub mod tests {
 
     #[test]
     fn test_enumerate() {
-        starlark_ok!("(enumerate(['zero', 'one', 'two']) == [(0, 'zero'), (1, 'one'), (2, 'two')])");
+        starlark_ok!(
+            "(enumerate(['zero', 'one', 'two']) == [(0, 'zero'), (1, 'one'), (2, 'two')])"
+        );
         starlark_ok!("(enumerate(['one', 'two'], 1) == [(1, 'one'), (2, 'two')])");
     }
 

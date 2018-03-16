@@ -109,10 +109,7 @@ pub enum ValueError {
         right: Option<String>,
     },
     /// The operation is not supported for this type because type is not of a certain category.
-    TypeNotX {
-        object_type: String,
-        op: String
-    },
+    TypeNotX { object_type: String, op: String },
     /// Division by 0
     DivisionByZero,
     /// Trying to modify an immutable value.
@@ -1070,13 +1067,19 @@ impl TypedValue for i64 {
     }
     fn percent(&self, other: Value) -> ValueResult {
         let other = other.to_int()?;
-        if other == 0 { return Err(ValueError::DivisionByZero); }
+        if other == 0 {
+            return Err(ValueError::DivisionByZero);
+        }
         let me = self.to_int()?;
         let r = me % other;
         if r == 0 {
             Ok(Value::new(0))
         } else {
-            Ok(Value::new(if other.signum() != r.signum() { r + other } else { r } ))
+            Ok(Value::new(if other.signum() != r.signum() {
+                r + other
+            } else {
+                r
+            }))
         }
     }
     fn div(&self, other: Value) -> ValueResult {
@@ -1084,7 +1087,9 @@ impl TypedValue for i64 {
     }
     fn floor_div(&self, other: Value) -> ValueResult {
         let other = other.to_int()?;
-        if other == 0 { return Err(ValueError::DivisionByZero); }
+        if other == 0 {
+            return Err(ValueError::DivisionByZero);
+        }
         let me = self.to_int()?;
         let sig = other.signum() * me.signum();
         let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
@@ -1139,13 +1144,19 @@ impl TypedValue for bool {
     }
     fn percent(&self, other: Value) -> ValueResult {
         let other = other.to_int()?;
-        if other == 0 { return Err(ValueError::DivisionByZero); }
+        if other == 0 {
+            return Err(ValueError::DivisionByZero);
+        }
         let me = self.to_int()?;
         let r = me % other;
         if r == 0 {
             Ok(Value::new(0))
         } else {
-            Ok(Value::new(if other.signum() != r.signum() { r + other } else { r } ))
+            Ok(Value::new(if other.signum() != r.signum() {
+                r + other
+            } else {
+                r
+            }))
         }
     }
     fn div(&self, other: Value) -> ValueResult {
@@ -1153,7 +1164,9 @@ impl TypedValue for bool {
     }
     fn floor_div(&self, other: Value) -> ValueResult {
         let other = other.to_int()?;
-        if other == 0 { return Err(ValueError::DivisionByZero); }
+        if other == 0 {
+            return Err(ValueError::DivisionByZero);
+        }
         let me = self.to_int()?;
         let sig = other.signum() * me.signum();
         let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
@@ -1273,7 +1286,11 @@ impl TypedValue {
         stride: Option<Value>,
     ) -> Result<(i64, i64, i64), ValueError> {
         let stride = stride.unwrap_or(Value::new(1));
-        let stride = if stride.get_type() == "NoneType" { Ok(1) } else { stride.to_int() };
+        let stride = if stride.get_type() == "NoneType" {
+            Ok(1)
+        } else {
+            stride.to_int()
+        };
         match stride {
             Ok(0) => Err(ValueError::IndexOutOfBound(0)),
             Ok(stride) => {
@@ -1296,7 +1313,10 @@ impl TypedValue {
 
 impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
-    pub fn downcast_apply<T: Any, F>(&mut self, f: F) -> ValueResult where F: Fn(&mut T) -> ValueResult {
+    pub fn downcast_apply<T: Any, F>(&mut self, f: F) -> ValueResult
+    where
+        F: Fn(&mut T) -> ValueResult,
+    {
         self.any_apply(&move |x| f(x.downcast_mut().unwrap()))
     }
 
@@ -1393,8 +1413,10 @@ impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Hash + Clone> F
         Value::new(dict::Dictionary::from(a))
     }
 }
-impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Hash + Clone> From<LinkedHashMap<T1, T2>>
-    for Value {
+impl<
+    T1: Into<Value> + Eq + Hash + Clone,
+    T2: Into<Value> + Eq + Hash + Clone,
+> From<LinkedHashMap<T1, T2>> for Value {
     fn from(a: LinkedHashMap<T1, T2>) -> Value {
         Value::new(dict::Dictionary::from(a))
     }

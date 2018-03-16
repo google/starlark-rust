@@ -37,7 +37,10 @@ pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
 pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    Ok(eval::simple::eval(&map, "<test>", snippet, false, &mut env)?.to_bool())
+    Ok(
+        eval::simple::eval(&map, "<test>", snippet, false, &mut env)?
+            .to_bool(),
+    )
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.

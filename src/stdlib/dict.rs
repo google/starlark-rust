@@ -394,8 +394,10 @@ mod tests {
 
     #[test]
     fn test_get() {
-        starlark_ok!(r#"x = {"one": 1, "two": 2}; (
-            x.get("one") == 1 and x.get("three") == None and x.get("three", 0) == 0)"#);
+        starlark_ok!(
+            r#"x = {"one": 1, "two": 2}; (
+            x.get("one") == 1 and x.get("three") == None and x.get("three", 0) == 0)"#
+        );
     }
 
     #[test]
@@ -410,36 +412,47 @@ mod tests {
 
     #[test]
     fn test_pop() {
-        starlark_ok!(r#"x = {"one": 1, "two": 2}; (
-            x.pop("one") == 1 and x == {"two": 2} and x.pop("three", 0) == 0)"#);
-        starlark_fail!(r#"x = {"one": 1}; x.pop("four")"#, DICT_KEY_NOT_FOUND_ERROR_CODE);
+        starlark_ok!(
+            r#"x = {"one": 1, "two": 2}; (
+            x.pop("one") == 1 and x == {"two": 2} and x.pop("three", 0) == 0)"#
+        );
+        starlark_fail!(
+            r#"x = {"one": 1}; x.pop("four")"#,
+            DICT_KEY_NOT_FOUND_ERROR_CODE
+        );
     }
 
     #[test]
     fn test_popitem() {
-        starlark_ok!(r#"x = {"one": 1, "two": 2}; (
-            x.popitem() == ("one", 1) and x.popitem() == ("two", 2))"#);
+        starlark_ok!(
+            r#"x = {"one": 1, "two": 2}; (
+            x.popitem() == ("one", 1) and x.popitem() == ("two", 2))"#
+        );
         starlark_fail!(r#"x = {}; x.popitem()"#, POP_ON_EMPTY_DICT_ERROR_CODE);
     }
 
     #[test]
     fn test_setdefault() {
-        starlark_ok!(r#"x = {"one": 1, "two": 2}; (
+        starlark_ok!(
+            r#"x = {"one": 1, "two": 2}; (
             x.setdefault("one") == 1 and
             x.setdefault("three", 0) == 0 and
             x == {"one": 1, "two": 2, "three": 0} and
             x.setdefault("four") == None and
-            x == {"one": 1, "two": 2, "three": 0, "four": None })"#);
+            x == {"one": 1, "two": 2, "three": 0, "four": None })"#
+        );
     }
 
     #[test]
     fn test_update() {
-        starlark_ok!(r#"
+        starlark_ok!(
+            r#"
 x = {}
 x.update([("a", 1), ("b", 2)], c=3)
 x.update({"d": 4})
 x.update(e=5)
-(x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5})"#);
+(x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5})"#
+        );
     }
 
     #[test]

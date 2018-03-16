@@ -169,15 +169,20 @@ fail(2)
 "#;
     let lexer = super::lexer::Lexer::new(content);
     let mut codemap = codemap::CodeMap::new();
-    let filespan = codemap.add_file("<test>".to_owned(), content.to_string()).span;
+    let filespan = codemap
+        .add_file("<test>".to_owned(), content.to_string())
+        .span;
     match parse_starlark(content, filespan, lexer) {
-        Ok(x) => match x.node {
-            Statement::Statements(bv) => {
-                let lines : Vec<usize> =
-                    bv.iter().map(|x| codemap.look_up_pos(x.span.low()).position.line).collect();
-                assert_eq!(lines, vec![0, 3, 5])
-            },
-            y => panic!("Expected statements, got {:?}", y),
+        Ok(x) => {
+            match x.node {
+                Statement::Statements(bv) => {
+                    let lines: Vec<usize> = bv.iter()
+                        .map(|x| codemap.look_up_pos(x.span.low()).position.line)
+                        .collect();
+                    assert_eq!(lines, vec![0, 3, 5])
+                }
+                y => panic!("Expected statements, got {:?}", y),
+            }
         }
         Err(e) => {
             let codemap = Arc::new(Mutex::new(codemap));

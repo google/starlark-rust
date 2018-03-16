@@ -1369,13 +1369,15 @@ def _impl(ctx):
             (35, Token::ClosingParenthesis, 36),
             (36, Token::Newline, 37),
         ];
-        let actual : Vec<(u64, Token, u64)> = super::Lexer::new(r#"
+        let actual: Vec<(u64, Token, u64)> = super::Lexer::new(
+            r#"
 def test(a):
   fail(a)
 
 test("abc")
-"#
-).map(|x| x.unwrap()).collect();
+"#,
+        ).map(|x| x.unwrap())
+            .collect();
         assert_eq!(expected, actual);
     }
 

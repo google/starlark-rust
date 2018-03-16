@@ -46,13 +46,19 @@ fn conformance_test_cases(path: &str) {
     for p in paths {
         let path_entry = p.unwrap().path();
         let path = path_entry.strip_prefix(&base).unwrap().to_str().unwrap();
-        if path_entry.extension().unwrap().to_str().unwrap() != "md" { // Exclude markdown files
-            write!(outfile, r#"
+        if path_entry.extension().unwrap().to_str().unwrap() != "md" {
+            // Exclude markdown files
+            write!(
+                outfile,
+                r#"
 #[test]
 fn test_{}() {{
     do_conformance_test("{}")
 }}
-        "#, path_entry.file_stem().unwrap().to_str().unwrap(), path).unwrap();
+        "#,
+                path_entry.file_stem().unwrap().to_str().unwrap(),
+                path
+            ).unwrap();
         }
     }
 }

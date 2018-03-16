@@ -20,10 +20,10 @@ use std::str::FromStr;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &'static str = "UF00";
-pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE:  &'static str = "UF01";
-pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE:  &'static str = "UF02";
-pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE:  &'static str = "UF03";
-pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE:  &'static str = "UF04";
+pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE: &'static str = "UF01";
+pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE: &'static str = "UF02";
+pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE: &'static str = "UF03";
+pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE: &'static str = "UF04";
 
 macro_rules! ok {
     ($e:expr) => { return Ok(Value::from($e)); }
@@ -35,37 +35,39 @@ macro_rules! check_string {
     }
 }
 
-fn format_capture<T: Iterator<Item=Value>>(
+fn format_capture<T: Iterator<Item = Value>>(
     capture: &str,
     it: &mut T,
     captured_by_index: &mut bool,
     captured_by_order: &mut bool,
     args: &Value,
-    kwargs: &Value
+    kwargs: &Value,
 ) -> Result<String, ValueError> {
     let (n, conv) = {
         if let Some(x) = capture.find('!') {
-            (capture.get(1..x).unwrap(), capture.get(x+1..).unwrap())
+            (capture.get(1..x).unwrap(), capture.get(x + 1..).unwrap())
         } else {
             (capture.get(1..).unwrap(), "s")
         }
     };
     let conv_s = |x: Value| x.to_str();
     let conv_r = |x: Value| x.to_repr();
-    let conv : &Fn(Value) -> String = match conv {
+    let conv: &Fn(Value) -> String = match conv {
         "s" => &conv_s,
         "r" => &conv_r,
-        c => starlark_err!(
-            FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE,
-            format!(
-                concat!(
+        c => {
+            starlark_err!(
+                FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE,
+                format!(
+                    concat!(
                     "'{}' is not a valid format string specifier, only ",
                     "'s' and 'r' are valid specifiers",
                 ),
-                c
-            ),
-            "Invalid format string specifier".to_owned()
-        )
+                    c
+                ),
+                "Invalid format string specifier".to_owned()
+            )
+        }
     };
     if n.is_empty() {
         if *captured_by_index {
@@ -107,8 +109,9 @@ fn format_capture<T: Iterator<Item=Value>>(
         } else {
             if let Some(x) = n.chars().find(|c| match c {
                 &'.' | &',' | &'[' | &']' => true,
-                _ => false
-            }) {
+                _ => false,
+            })
+            {
                 starlark_err!(
                     FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
                     format!("Invalid character '{}' inside replacement field", x),
@@ -1305,7 +1308,7 @@ mod tests {
 
     #[test]
     fn test_format_capture() {
-        let args = Value::from(vec!["1","2","3"]);
+        let args = Value::from(vec!["1", "2", "3"]);
         let mut kwargs = dict::Dictionary::new();
         let mut it = args.into_iter().unwrap();
         let mut captured_by_index = false;
@@ -1314,30 +1317,102 @@ mod tests {
         kwargs.set_at(Value::from("a"), Value::from("x")).unwrap();
         kwargs.set_at(Value::from("b"), Value::from("y")).unwrap();
         kwargs.set_at(Value::from("c"), Value::from("z")).unwrap();
-        assert_eq!(format_capture("{", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).unwrap(), "1");
-        assert_eq!(format_capture("{!s", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).unwrap(), "2");
-        assert_eq!(format_capture("{!r", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).unwrap(), "'3'");
-        assert_eq!(format_capture("{a!r", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).unwrap(), "'x'");
-        assert_eq!(format_capture("{a!s", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).unwrap(), "x");
-        assert!(format_capture("{1", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).is_err());
+        assert_eq!(
+            format_capture(
+                "{",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).unwrap(),
+            "1"
+        );
+        assert_eq!(
+            format_capture(
+                "{!s",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).unwrap(),
+            "2"
+        );
+        assert_eq!(
+            format_capture(
+                "{!r",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).unwrap(),
+            "'3'"
+        );
+        assert_eq!(
+            format_capture(
+                "{a!r",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).unwrap(),
+            "'x'"
+        );
+        assert_eq!(
+            format_capture(
+                "{a!s",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).unwrap(),
+            "x"
+        );
+        assert!(
+            format_capture(
+                "{1",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).is_err()
+        );
         captured_by_order = false;
         it = args.into_iter().unwrap();
-        assert_eq!(format_capture("{1", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).unwrap(), "2");
-        assert!(format_capture("{", &mut it, &mut captured_by_index, &mut captured_by_order,
-                &args, &kwargs).is_err());
+        assert_eq!(
+            format_capture(
+                "{1",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).unwrap(),
+            "2"
+        );
+        assert!(
+            format_capture(
+                "{",
+                &mut it,
+                &mut captured_by_index,
+                &mut captured_by_order,
+                &args,
+                &kwargs,
+            ).is_err()
+        );
     }
 
     #[test]
     fn test_elems() {
-        starlark_ok!(r#"(list("Hello, 世界".elems()) == [
-                            72, 101, 108, 108, 111, 44, 32, 228, 184, 150, 231, 149, 140])"#);
+        starlark_ok!(
+            r#"(list("Hello, 世界".elems()) == [
+                            72, 101, 108, 108, 111, 44, 32, 228, 184, 150, 231, 149, 140])"#
+        );
     }
 
     #[test]
@@ -1347,8 +1422,10 @@ mod tests {
 
     #[test]
     fn test_codepoints() {
-        starlark_ok!(r#"(list("Hello, 世界".codepoints()) == [
-                            72, 101, 108, 108, 111, 44, 32, 19990, 30028])"#);
+        starlark_ok!(
+            r#"(list("Hello, 世界".codepoints()) == [
+                            72, 101, 108, 108, 111, 44, 32, 19990, 30028])"#
+        );
     }
 
     #[test]
@@ -1385,7 +1462,10 @@ mod tests {
     fn test_index() {
         starlark_ok!(r#"("bonbon".index("on") == 1)"#);
         starlark_ok!(r#"("bonbon".index("on", 2) == 4)"#);
-        starlark_fail!(r#""bonbon".index("on", 2, 5)"#, SUBSTRING_INDEX_FAILED_ERROR_CODE);
+        starlark_fail!(
+            r#""bonbon".index("on", 2, 5)"#,
+            SUBSTRING_INDEX_FAILED_ERROR_CODE
+        );
     }
 
     #[test]
@@ -1474,10 +1554,11 @@ mod tests {
     #[test]
     fn test_rindex() {
         starlark_ok!(r#"("bonbon".rindex("on") == 4)"#);
-        starlark_ok!(
-            r#"("bonbon".rindex("on", None, 5) == 1)"#
+        starlark_ok!(r#"("bonbon".rindex("on", None, 5) == 1)"#);
+        starlark_fail!(
+            r#""bonbon".rindex("on", 2, 5)"#,
+            SUBSTRING_INDEX_FAILED_ERROR_CODE
         );
-        starlark_fail!(r#""bonbon".rindex("on", 2, 5)"#, SUBSTRING_INDEX_FAILED_ERROR_CODE);
     }
 
     #[test]

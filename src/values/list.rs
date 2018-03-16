@@ -47,10 +47,7 @@ impl List {
         })
     }
 
-    pub fn mutate(
-        v: &Value,
-        f: &Fn(&mut Vec<Value>) -> ValueResult
-    ) -> ValueResult {
+    pub fn mutate(v: &Value, f: &Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
         if v.get_type() != "list" {
             Err(ValueError::IncorrectParameterType)
         } else {
@@ -157,9 +154,9 @@ impl TypedValue for List {
     }
 
     fn is_in(&self, other: &Value) -> ValueResult {
-        Ok(Value::new(self.content.iter().any(|x| {
-            x.compare(other) == Ordering::Equal
-        })))
+        Ok(Value::new(self.content.iter().any(
+            |x| x.compare(other) == Ordering::Equal,
+        )))
     }
 
     fn slice(
@@ -170,7 +167,9 @@ impl TypedValue for List {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        Ok(Value::from(tuple::slice_vector(start, stop, stride, &self.content)))
+        Ok(Value::from(
+            tuple::slice_vector(start, stop, stride, &self.content),
+        ))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {

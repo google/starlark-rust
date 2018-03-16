@@ -314,9 +314,9 @@ impl TypedValue for Tuple {
     }
 
     fn is_in(&self, other: &Value) -> ValueResult {
-        Ok(Value::new(self.content.iter().any(|x| {
-            x.compare(other) == Ordering::Equal
-        })))
+        Ok(Value::new(self.content.iter().any(
+            |x| x.compare(other) == Ordering::Equal,
+        )))
     }
 
     fn slice(
@@ -327,7 +327,9 @@ impl TypedValue for Tuple {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        Ok(Tuple::new(&slice_vector(start, stop, stride, &self.content)))
+        Ok(Tuple::new(
+            &slice_vector(start, stop, stride, &self.content),
+        ))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
