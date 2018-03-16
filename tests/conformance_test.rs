@@ -18,8 +18,8 @@ extern crate codemap;
 extern crate codemap_diagnostic;
 
 use std::fs::File;
-use std::path::PathBuf;
-use std::fs;
+use std::path::Path;
+use std::io::{self, Write};
 use std::io::prelude::*;
 use starlark::stdlib::global_environment;
 use starlark::eval::simple::eval;
@@ -58,7 +58,7 @@ def assert_(cond, msg="assertion failed"):
         } else { "" };
         match eval(
             &map,
-            &format!("{}:{}", path, offset),
+            &format!("{}<{}>", path, offset),
             &content,
             false,
             &mut prelude.child(&path)
@@ -69,13 +69,13 @@ def assert_(cond, msg="assertion failed"):
                     return false;
                 } else {
                     if !p.message.contains(err) {
-                        eprintln!(
-                            "Expected error '{}' at {}:{}, got {}",
+                        io::stderr().write(&format!(
+                            "Expected error '{}' at {}:{}, got {}\n",
                             err,
                             path,
                             offset,
-                            p.message
-                        );
+                            p.message,
+                        ).into_bytes()).unwrap();
                         Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
                         return false;
                     }
@@ -83,7 +83,12 @@ def assert_(cond, msg="assertion failed"):
             },
             _ => {
                 if !err.is_empty() {
-                    eprintln!("Expected error '{}' at {}:{}, got success", err, path, offset);
+                    io::stderr().write(&format!(
+                        "Expected error '{}' at {}:{}, got success",
+                        err,
+                        path,
+                        offset,
+                    ).into_bytes()).unwrap();
                     return false;
                 }
             }
@@ -93,32 +98,9 @@ def assert_(cond, msg="assertion failed"):
     return true;
 }
 
-fn do_conformance_test(dir: &str) {
-    let mut errors = Vec::new();
-    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    d.push(dir);
-    let paths = fs::read_dir(d.as_path()).unwrap();
-    println!("Starting conformance test...\n");
-    for p in paths {
-        let path_entry = p.unwrap().path();
-        let path = path_entry.to_str().unwrap();
-        if !path.ends_with(".md") { // Exclude markdown files
-            print!("testing {}... ", path);
-            if !run_conformance_test(path) {
-                errors.push(path.to_owned());
-                println!("FAILED!");
-            } else {
-                println!("ok.");
-            }
-        }
-    }
-    if !errors.is_empty() {
-        panic!("Got {} failures.", errors.len());
-    }
+fn do_conformance_test(path: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    assert!(run_conformance_test(path.to_str().unwrap()));
 }
 
-#[test]
-#[ignore]
-fn conformance_test() {
-    do_conformance_test("tests/testcases");
-}
+include!(concat!(env!("OUT_DIR"), "/tests/testcases.rs"));
