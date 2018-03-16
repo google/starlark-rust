@@ -47,10 +47,6 @@ This project build with [Cargo](https://doc.rust-lang.org/stable/cargo/). Simply
 run `cargo test` to test it, `cargo build --release` to build a release version
 and `cargo run` to run the command-line interpreter.
 
-### List of feature needed to be implemented before releasing
-
-- Add conformance tests from other implementations.
-
 ### Possible improvements and optimizations
 
 * Errors:

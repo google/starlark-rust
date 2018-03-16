@@ -288,10 +288,10 @@ starlark_module!{global_functions =>
     /// ```
     /// # use starlark::stdlib::starlark_default;
     /// # assert!(starlark_default("(
-    /// # enumerate(['zero', 'one', 'two']) == [(0, 'zero'), (1, 'one'), (2, 'two')]
+    /// enumerate(['zero', 'one', 'two']) == [(0, 'zero'), (1, 'one'), (2, 'two')]
     /// # )").unwrap());
     /// # assert!(starlark_default("(
-    /// # enumerate(['one', 'two'], 1) == [(1, 'one'), (2, 'two')]
+    /// enumerate(['one', 'two'], 1) == [(1, 'one'), (2, 'two')]
     /// # )").unwrap());
     /// ```
     enumerate(#it, #offset = 0) {
@@ -308,7 +308,21 @@ starlark_module!{global_functions =>
         Ok(Value::from(v))
     }
 
-
+    /// [getattr](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#getattr
+    /// ): returns the value of an attribute
+    ///
+    /// `getattr(x, name)` returns the value of the attribute (field or method) of x named `name`.
+    /// It is a dynamic error if x has no such attribute.
+    ///
+    /// `getattr(x, "f")` is equivalent to `x.f`.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"
+    /// getattr("banana", "split")("a") == ["b", "n", "n", ""] # equivalent to "banana".split("a")
+    /// # "#).unwrap());
+    /// ```
     getattr(env env, #a, #attr) {
         if attr.get_type() != "string" {
             starlark_err!(
@@ -324,13 +338,23 @@ starlark_module!{global_functions =>
             match a.get_attr(&attr) {
                 Ok(v) => Ok(v),
                 x => match env.get_type_value(&a, &attr) {
-                    Some(v) => Ok(v),
+                    Some(v) => if v.get_type() == "function" {
+                        // Insert self so the method see the object it is acting on
+                        Ok(function::Function::new_self_call(a.clone(), v))
+                    } else {
+                        Ok(v)
+                    }
                     None => x
                 }
             }
         }
     }
 
+    /// [hasattr](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#hasattr
+    /// ): test if an object has an attribute
+    ///
+    /// `hasattr(x, name)` reports whether x has an attribute (field or method) named `name`.
     hasattr(env env, #a, #attr) {
         if attr.get_type() != "string" {
             starlark_err!(
@@ -355,10 +379,39 @@ starlark_module!{global_functions =>
         }
     }
 
+    /// [hash](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#hash
+    /// ): returns the hash number of a value.
+    ///
+    /// `hash(x)`` returns an integer hash value for x such that `x == y` implies
+    /// `hash(x) == hash(y)``.
+    ///
+    /// `hash` fails if x, or any value upon which its hash depends, is unhashable.
     hash(#a) {
         Ok(Value::new(a.get_hash()? as i64))
     }
 
+    /// [int](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#int
+    /// ): convert a value to integer.
+    ///
+    /// `int(x[, base])` interprets its argument as an integer.
+    ///
+    /// If x is an `int`, the result is x.
+    /// If x is a `float`, the result is the integer value nearest to x,
+    /// truncating towards zero; it is an error if x is not finite (`NaN`,
+    /// `+Inf`, `-Inf`).
+    /// If x is a `bool`, the result is 0 for `False` or 1 for `True`.
+    ///
+    /// If x is a string, it is interpreted like a string literal;
+    /// an optional base prefix (`0`, `0b`, `0B`, `0x`, `0X`) determines which base to use.
+    /// The string may specify an arbitrarily large integer,
+    /// whereas true integer literals are restricted to 64 bits.
+    /// If a non-zero `base` argument is provided, the string is interpreted
+    /// in that base and no base prefix is permitted; the base argument may
+    /// specified by name.
+    ///
+    /// `int()` with no arguments returns 0.
     int(#a, #radix = None) {
         if a.get_type() == "string" {
             let s = a.to_str();
@@ -425,10 +478,25 @@ starlark_module!{global_functions =>
         }
     }
 
+    /// [len](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#len
+    /// ): get the length of a sequence
+    ///
+    /// `len(x)` returns the number of elements in its argument.
+    ///
+    /// It is a dynamic error if its argument is not a sequence.
     len(#a) {
         Ok(Value::new(a.length()?))
     }
 
+    /// [list](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#list
+    /// ): construct a list.
+    ///
+    /// `list(x)` returns a new list containing the elements of the
+    /// iterable sequence x.
+    ///
+    /// With no argument, `list()` returns a new empty list.
     list(#a = None) {
         let mut l = Vec::new();
         if a.get_type() != "NoneType" {
@@ -439,6 +507,28 @@ starlark_module!{global_functions =>
         Ok(Value::from(l))
     }
 
+    /// [max](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#max
+    /// ): returns the maximum of a sequence.
+    ///
+    /// `max(x)` returns the greatest element in the iterable sequence x.
+    ///
+    /// It is an error if any element does not support ordered comparison,
+    /// or if the sequence is empty.
+    ///
+    /// The optional named parameter `key` specifies a function to be applied
+    /// to each element prior to comparison.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// max([3, 1, 4, 1, 5, 9])               == 9
+    /// # and
+    /// max("two", "three", "four")           == "two"    # the lexicographically greatest
+    /// # and
+    /// max("two", "three", "four", key=len)  == "three"  # the longest
+    /// # )"#).unwrap());
+    /// ```
     max(call_stack cs, env e, *args, key=None) {
         let args = if args.length()? == 1 {
             args.at(Value::new(0))?
@@ -473,6 +563,25 @@ starlark_module!{global_functions =>
         Ok(max)
     }
 
+    /// [min](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#min
+    /// ): returns the minimum of a sequence.
+    ///
+    /// `min(x)` returns the least element in the iterable sequence x.
+    ///
+    /// It is an error if any element does not support ordered comparison,
+    /// or if the sequence is empty.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// min([3, 1, 4, 1, 5, 9])                 == 1
+    /// # and
+    /// min("two", "three", "four")             == "four"  # the lexicographically least
+    /// # and
+    /// min("two", "three", "four", key=len)    == "two"   # the shortest
+    /// # )"#).unwrap());
+    /// ```
     min(call_stack cs, env e, *args, key=None) {
         let args = if args.length()? == 1 {
             args.at(Value::new(0))?
@@ -507,6 +616,30 @@ starlark_module!{global_functions =>
         Ok(min)
     }
 
+    /// [ord](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.mdord
+    /// ): returns the codepoint of a character
+    ///
+    /// `ord(s)` returns the integer value of the sole Unicode code point encoded by the string `s`.
+    ///
+    /// If `s` does not encode exactly one Unicode code point, `ord` fails.
+    /// Each invalid code within the string is treated as if it encodes the
+    /// Unicode replacement character, U+FFFD.
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// ord("A")                                == 65
+    /// # and
+    /// ord("Й")                                == 1049
+    /// # and
+    /// ord("😿")                               == 0x1F63F
+    /// # and
+    /// ord("Й")                                == 1049
+    /// # )"#).unwrap());
+    /// ```
     ord(#a) {
         if a.get_type() != "string" || a.length()? != 1 {
             starlark_err!(
@@ -522,6 +655,39 @@ starlark_module!{global_functions =>
         }
     }
 
+    /// [range](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#range
+    /// ): return a range of integers
+    ///
+    /// `range` returns a tuple of integers defined by the specified interval and stride.
+    ///
+    /// ```python
+    /// range(stop)                             # equivalent to range(0, stop)
+    /// range(start, stop)                      # equivalent to range(start, stop, 1)
+    /// range(start, stop, step)
+    /// ```
+    ///
+    /// `range` requires between one and three integer arguments.
+    /// With one argument, `range(stop)` returns the ascending sequence of non-negative integers
+    /// less than `stop`.
+    /// With two arguments, `range(start, stop)` returns only integers not less than `start`.
+    ///
+    /// With three arguments, `range(start, stop, step)` returns integers
+    /// formed by successively adding `step` to `start` until the value meets or passes `stop`.
+    /// A call to `range` fails if the value of `step` is zero.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// list(range(10))                         == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    /// # and
+    /// list(range(3, 10))                      == [3, 4, 5, 6, 7, 8, 9]
+    /// # and
+    /// list(range(3, 10, 2))                   == [3, 5, 7, 9]
+    /// # and
+    /// list(range(10, 3, -2))                  == [10, 8, 6, 4]
+    /// # )"#).unwrap());
+    /// ```
     range(#a1, #a2 = None, #a3 = None) {
         let start = if a2.get_type() == "NoneType" { 0 } else { a1.to_int()? };
         let stop = if a2.get_type() == "NoneType" { a1.to_int()? } else { a2.to_int()? };
@@ -549,16 +715,76 @@ starlark_module!{global_functions =>
         Ok(tuple::Tuple::new(r.as_slice()))
     }
 
+    /// [repr](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#repr
+    /// ): formats its argument as a string.
+    ///
+    /// All strings in the result are double-quoted.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// repr(1)                 == '1'
+    /// # and
+    /// repr("x")               == "'x'"
+    /// # and
+    /// repr([1, "x"])          == "[1, 'x']"
+    /// # )"#).unwrap());
+    /// ```
     repr(#a) {
         Ok(Value::new(a.to_repr()))
     }
 
+    /// [reversed](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#reversed
+    /// ): reverse a sequence
+    ///
+    /// `reversed(x)` returns a new list containing the elements of the iterable sequence x in
+    /// reverse order.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// reversed(range(5))                              == [4, 3, 2, 1, 0]
+    /// # and
+    /// reversed("stressed".split_codepoints())         == ["d", "e", "s", "s", "e", "r", "t", "s"]
+    /// # and
+    /// reversed({"one": 1, "two": 2}.keys())           == ["two", "one"]
+    /// # )"#).unwrap());
+    /// ```
     reversed(#a) {
         let v : Vec<Value> = a.into_iter()?.collect();
         let v : Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
     }
 
+    /// [sorted](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#sorted
+    /// ): sort a sequence
+    ///
+    /// `sorted(x)` returns a new list containing the elements of the iterable sequence x,
+    /// in sorted order.  The sort algorithm is stable.
+    ///
+    /// The optional named parameter `reverse`, if true, causes `sorted` to
+    /// return results in reverse sorted order.
+    ///
+    /// The optional named parameter `key` specifies a function of one
+    /// argument to apply to obtain the value's sort key.
+    /// The default behavior is the identity function.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// sorted([3, 1, 4, 1, 5, 9])                               == [1, 1, 3, 4, 5, 9]
+    /// # and
+    /// sorted([3, 1, 4, 1, 5, 9], reverse=True)                 == [9, 5, 4, 3, 1, 1]
+    /// # and
+    ///
+    /// sorted(["two", "three", "four"], key=len)                == ["two", "four", "three"] # shortest to longest
+    /// # and
+    /// sorted(["two", "three", "four"], key=len, reverse=True)  == ["three", "four", "two"] # longest to shortest
+    /// # )"#).unwrap());
+    /// ```
     sorted(call_stack cs, env e, #x, key = None, reverse = false) {
         let x = x.into_iter()?;
         let mut it : Vec<(Value, Value)> = if key.get_type() == "NoneType" {
@@ -587,10 +813,32 @@ starlark_module!{global_functions =>
         Ok(Value::from(result))
     }
 
+    /// [str](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#str
+    /// ): formats its argument as a string.
+    ///
+    /// If x is a string, the result is x (without quotation).
+    /// All other strings, such as elements of a list of strings, are double-quoted.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// str(1)                          == '1'
+    /// # and
+    /// str("x")                        == 'x'
+    /// # and
+    /// str([1, "x"])                   == "[1, 'x']"
+    /// # )"#).unwrap());
+    /// ```
     _str(#a) {
         Ok(Value::new(a.to_str()))
     }
 
+    /// [tuple](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#tuple
+    /// ): returns a tuple containing the elements of the iterable x.
+    ///
+    /// With no arguments, `tuple()` returns the empty tuple.
     tuple(#a = None) {
         let mut l = Vec::new();
         if a.get_type() != "NoneType" {
@@ -601,10 +849,43 @@ starlark_module!{global_functions =>
         Ok(Value::new(tuple::Tuple::new(l.as_slice())))
     }
 
+    /// [type](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#type
+    /// ): returns a string describing the type of its operand.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// type(None)              == "NoneType"
+    /// # and
+    /// type(0)                 == "int"
+    /// # )"#).unwrap());
+    /// ```
     _type(#a) {
         Ok(Value::new(a.get_type().to_owned()))
     }
 
+    /// [zip](
+    /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#zip
+    /// ): zip several iterables together
+    ///
+    /// `zip()` returns a new list of n-tuples formed from corresponding
+    /// elements of each of the n iterable sequences provided as arguments to
+    /// `zip`.  That is, the first tuple contains the first element of each of
+    /// the sequences, the second element contains the second element of each
+    /// of the sequences, and so on.  The result list is only as long as the
+    /// shortest of the input sequences.
+    ///
+    /// ```
+    /// # use starlark::stdlib::starlark_default;
+    /// # assert!(starlark_default(r#"(
+    /// zip()                                   == []
+    /// # and
+    /// zip(range(5))                           == [(0,), (1,), (2,), (3,), (4,)]
+    /// # and
+    /// zip(range(5), "abc")                    == [(0, "a"), (1, "b"), (2, "c")]
+    /// # )"#).unwrap());
+    /// ```
     zip(*args) {
         let mut v = Vec::new();
 
