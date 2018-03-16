@@ -1170,7 +1170,7 @@ starlark_module!{global =>
             if let Some(x) = s.find(|x| x == '\n' || x == '\r') {
                 let y = x;
                 let x = match s.get(y..y+2) {
-                    Some("\n\r") | Some("\r\n") => y + 2,
+                    Some("\r\n") => y + 2,
                     _ => y + 1
                 };
                 if keepends {
@@ -1178,7 +1178,7 @@ starlark_module!{global =>
                 } else {
                     lines.push(s.get(..y).unwrap())
                 }
-                if x == s.len() - 1 {
+                if x == s.len() {
                     ok!(lines);
                 }
                 s = s.get(x..).unwrap();
@@ -1515,6 +1515,7 @@ mod tests {
     fn test_splitlines() {
         starlark_ok!(r#"("one\n\ntwo".splitlines() == ["one", "", "two"])"#);
         starlark_ok!(r#"("one\n\ntwo".splitlines(True) == ["one\n", "\n", "two"])"#);
+        starlark_ok!(r#"("a\nb".splitlines() == ["a", "b"])"#);
     }
 
     #[test]
