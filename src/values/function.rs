@@ -55,7 +55,7 @@ const NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CF00";
 const WRONG_ARGS_IDENT_ERROR_CODE: &'static str = "CF01";
 const ARGS_NOT_ITERABLE_ERROR_CODE: &'static str = "CF02";
 const KWARGS_NOT_MAPPABLE_ERROR_CODE: &'static str = "CF03";
-const KWARGS_KEY_IDENT_ERROR_CODE: &'static str = "CF04";
+// Not an error: const KWARGS_KEY_IDENT_ERROR_CODE: &'static str = "CF04";
 const EXTRA_PARAMETER_ERROR_CODE: &'static str = "CF05";
 
 #[derive(Debug, Clone)]
@@ -68,7 +68,6 @@ pub enum FunctionError {
     ArgsValueIsNotString,
     ArgsArrayIsNotIterable,
     KWArgsDictIsNotMappable,
-    KWArgsKeyIsNotAValidIdentifier(String),
     ExtraParameter,
 }
 
@@ -80,7 +79,6 @@ impl Into<RuntimeError> for FunctionError {
                 FunctionError::ArgsValueIsNotString => WRONG_ARGS_IDENT_ERROR_CODE,
                 FunctionError::ArgsArrayIsNotIterable => ARGS_NOT_ITERABLE_ERROR_CODE,
                 FunctionError::KWArgsDictIsNotMappable => KWARGS_NOT_MAPPABLE_ERROR_CODE,
-                FunctionError::KWArgsKeyIsNotAValidIdentifier(..) => KWARGS_KEY_IDENT_ERROR_CODE,
                 FunctionError::ExtraParameter => EXTRA_PARAMETER_ERROR_CODE,
             },
             label: match self {
@@ -90,9 +88,6 @@ impl Into<RuntimeError> for FunctionError {
                 FunctionError::ArgsValueIsNotString => "not an identifier for *args".to_owned(),
                 FunctionError::ArgsArrayIsNotIterable => "*args is not iterable".to_owned(),
                 FunctionError::KWArgsDictIsNotMappable => "**kwargs is not mappable".to_owned(),
-                FunctionError::KWArgsKeyIsNotAValidIdentifier(..) => {
-                    "Incorrect key in **kwargs".to_owned()
-                }
                 FunctionError::ExtraParameter => "Extraneous parameter in function call".to_owned(),
             },
             message: match self {
@@ -116,15 +111,6 @@ impl Into<RuntimeError> for FunctionError {
                 FunctionError::KWArgsDictIsNotMappable => {
                     "The argument provided for **kwargs is not mappable".to_owned()
                 }
-                FunctionError::KWArgsKeyIsNotAValidIdentifier(k) => {
-                    format!(
-                        concat!(
-                            "The **kwargs dictionary contains a key '{}'",
-                            " that is not a correct identifier"
-                        ),
-                        k
-                    )
-                }
                 FunctionError::ExtraParameter => {
                     "Extraneous parameter passed to function call".to_owned()
                 }
@@ -136,15 +122,6 @@ impl Into<RuntimeError> for FunctionError {
 impl Into<ValueError> for FunctionError {
     fn into(self) -> ValueError {
         ValueError::Runtime(self.into())
-    }
-}
-
-macro_rules! check_identifier {
-    ($arg: expr) => {
-        {
-            $arg.char_indices().all(|x| (x.0 != 0 || !x.1.is_digit(10)) && (
-                x.1 == '_' || x.1.is_digit(10) || x.1.is_alphabetic()))
-        }
     }
 }
 
@@ -314,14 +291,10 @@ impl TypedValue for Function {
                     for n in y {
                         if n.get_type() == "string" {
                             let k = n.to_str();
-                            if !check_identifier!(k) {
-                                return Err(FunctionError::KWArgsKeyIsNotAValidIdentifier(k).into());
+                            if let Ok(v) = x.at(n) {
+                                kwargs_dict.insert(k, v);
                             } else {
-                                if let Ok(v) = x.at(n) {
-                                    kwargs_dict.insert(k, v);
-                                } else {
-                                    return Err(FunctionError::KWArgsDictIsNotMappable.into());
-                                }
+                                return Err(FunctionError::KWArgsDictIsNotMappable.into());
                             }
                         } else {
                             return Err(FunctionError::ArgsValueIsNotString.into());

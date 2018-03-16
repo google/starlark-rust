@@ -23,6 +23,7 @@ pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &'static str = "UF00";
 pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE:  &'static str = "UF01";
 pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE:  &'static str = "UF02";
 pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE:  &'static str = "UF03";
+pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE:  &'static str = "UF04";
 
 macro_rules! ok {
     ($e:expr) => { return Ok(Value::from($e)); }
@@ -59,7 +60,7 @@ fn format_capture<T: Iterator<Item=Value>>(
             format!(
                 concat!(
                     "'{}' is not a valid format string specifier, only ",
-                    "'s' and 'r' are valid speicifiers",
+                    "'s' and 'r' are valid specifiers",
                 ),
                 c
             ),
@@ -104,6 +105,16 @@ fn format_capture<T: Iterator<Item=Value>>(
                 return Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?));
             }
         } else {
+            if let Some(x) = n.chars().find(|c| match c {
+                &'.' | &',' | &'[' | &']' => true,
+                _ => false
+            }) {
+                starlark_err!(
+                    FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
+                    format!("Invalid character '{}' inside replacement field", x),
+                    format!("Invalid character '{}'", x)
+                )
+            }
             return Ok(conv(kwargs.at(Value::from(n))?));
         }
     }

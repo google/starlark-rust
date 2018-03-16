@@ -5,7 +5,7 @@ assert_eq('x{key}x'.format(key = 2), "x2x")
 assert_eq('x{key}x'.format(key = 'abc'), "xabcx")
 assert_eq('{a}{b}{a}{b}'.format(a = 3, b = True), "3True3True")
 assert_eq('{a}{b}{a}{b}'.format(a = 3, b = True), "3True3True")
-assert_eq('{s1}{s2}'.format(s1 = ['a'], s2 = 'a'), "[\"a\"]a")
+assert_eq('{s1}{s2}'.format(s1 = ['a'], s2 = 'a'), "['a']a")
 assert_eq('{a}'.format(a = '$'), "$")
 assert_eq('{a}'.format(a = '$a'), "$a")
 assert_eq('{a}$'.format(a = '$a'), "$a$")
@@ -54,40 +54,40 @@ assert_eq('{test} and {}'.format(2, test = 1), "1 and 2")
 assert_eq('{test} and {0}'.format(2, test = 1), "1 and 2")
 
 ---
-'{{}'.format(1) ### Found '}' without matching '{'
+'{{}'.format(1) ### Unmatched '}'
 ---
-'{}}'.format(1) ### Found '}' without matching '{'
+'{}}'.format(1) ### Unmatched '}'
 ---
-'{0}'.format() ### No replacement found for index 0
+'{0}'.format() ### Index 0 is out of bound
 ---
-'{0} and {1}'.format('this') ### No replacement found for index 1
+'{0} and {1}'.format('this') ### Index 1 is out of bound
 ---
-'{0} and {2}'.format('this', 'that') ### No replacement found for index 2
+'{0} and {2}'.format('this', 'that') ### Index 2 is out of bound
 ---
-'{-0} and {-1}'.format('this', 'that') ### No replacement found for index -1
+'{-0} and {-1}'.format('this', 'that') ### Key '-0' was not found
 ---
 '{0,1} and {1}'.format('this', 'that') ### Invalid character ',' inside replacement field
 ---
 '{0.1} and {1}'.format('this', 'that') ### Invalid character '.' inside replacement field
 ---
-'{}'.format() ### No replacement found for index 0
+'{}'.format() ### Not enough parameters in format string
 ---
-'{} and {}'.format('this') ### No replacement found for index 1
+'{} and {}'.format('this') ### Not enough parameters in format string
 ---
-'{test} and {}'.format(test = 1, 2) ### non-keyword arg after keyword arg
+'{test} and {}'.format(test = 1, 2) ### Parse error
 ---
-'{test} and {0}'.format(test = 1, 2) ### non-keyword arg after keyword arg
+'{test} and {0}'.format(test = 1, 2) ### Parse error
 ---
-'{} and {1}'.format(1, 2) ### Cannot mix manual and automatic numbering of positional fields
+'{} and {1}'.format(1, 2) ### Cannot mix manual field specification and automatic field numbering in format string
 ---
-'{1} and {}'.format(1, 2) ### Cannot mix manual and automatic numbering of positional fields
+'{1} and {}'.format(1, 2) ### Cannot mix manual field specification and automatic field numbering in format string
 ---
 '{test.}'.format(test = 1) ### Invalid character '.' inside replacement field
 ---
-'{test[}'.format(test = 1) ### Invalid character '\[' inside replacement field
+'{test[}'.format(test = 1) ### Invalid character '[' inside replacement field
 ---
 '{test,}'.format(test = 1) ### Invalid character ',' inside replacement field
 ---
-'{ {} }'.format(42) ### Nested replacement fields are not supported
+'{ {} }'.format(42) ### Unmatched '{'
 ---
-'{a}{b}'.format(a = 5) ### Missing argument 'b'
+'{a}{b}'.format(a = 5) ### Key 'b' was not found
