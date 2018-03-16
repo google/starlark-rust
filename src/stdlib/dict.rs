@@ -303,7 +303,7 @@ starlark_module!{global =>
     /// x.update({"d": 4})
     /// x.update(e=5)
     /// # (
-    /// x == {"a": 1, "b": "2", "c": 3, "d": 4, "e": 5}
+    /// x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
     /// # )"#).unwrap());
     /// ```
     dict.update(this, #pairs=None, **kwargs) {
@@ -439,7 +439,7 @@ x = {}
 x.update([("a", 1), ("b", 2)], c=3)
 x.update({"d": 4})
 x.update(e=5)
-(x == {"a": 1, "b": "2", "c": 3, "d": 4, "e": 5})"#);
+(x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5})"#);
     }
 
     #[test]

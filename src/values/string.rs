@@ -49,7 +49,7 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: Value) -> Ordering {
+    fn compare(&self, other: &Value) -> Ordering {
         if other.get_type() == "string" {
             return self.cmp(&other.to_str());
         } else {
@@ -66,7 +66,7 @@ impl TypedValue for String {
         Ok(self.chars().count() as i64)
     }
 
-    fn is_in(&self, other: Value) -> ValueResult {
+    fn is_in(&self, other: &Value) -> ValueResult {
         if other.get_type() == "string" {
             Ok(Value::new(self.contains(&other.to_str())))
         } else {
@@ -341,20 +341,20 @@ mod tests {
         // "a" in "abc" == True
         assert!(
             Value::from("abc")
-                .is_in(Value::from("a"))
+                .is_in(&Value::from("a"))
                 .unwrap()
                 .to_bool()
         );
         // "b" in "abc" == True
         assert!(
             Value::from("abc")
-                .is_in(Value::from("b"))
+                .is_in(&Value::from("b"))
                 .unwrap()
                 .to_bool()
         );
         // "z" in "abc" == False
         assert!(!Value::from("abc")
-            .is_in(Value::from("z"))
+            .is_in(&Value::from("z"))
             .unwrap()
             .to_bool());
     }

@@ -277,7 +277,7 @@ impl TypedValue for Function {
     }
     not_supported!(get_hash);
 
-    fn compare(&self, other: Value) -> Ordering {
+    fn compare(&self, other: &Value) -> Ordering {
         if other.get_type() == "function" {
             self.to_repr().cmp(&other.to_repr())
         } else {
@@ -405,7 +405,7 @@ impl TypedValue for WrappedMethod {
     fn to_bool(&self) -> bool {
         true
     }
-    fn compare(&self, other: Value) -> Ordering {
+    fn compare(&self, other: &Value) -> Ordering {
         self.method.compare(other)
     }
 

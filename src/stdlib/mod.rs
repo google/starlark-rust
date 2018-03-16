@@ -221,7 +221,7 @@ starlark_module!{global_functions =>
     /// dict([(1, 2), ['a', 'b']]) == {1: 2, 'a': 'b'}
     /// # )").unwrap());
     /// # assert!(starlark_default("(
-    /// # dict(one=1, two=2) == {'one': 1, 'two': 1}
+    /// # dict(one=1, two=2) == {'one': 1, 'two': 2}
     /// # )").unwrap());
     /// # assert!(starlark_default("(
     /// dict([(1, 2)], x=3) == {1: 2, 'x': 3}
@@ -577,9 +577,9 @@ starlark_module!{global_functions =>
         it.sort_by(
             |x : &(Value, Value), y : &(Value, Value)| {
                 if reverse {
-                    x.1.compare(y.1.clone()).reverse()
+                    x.1.compare(&y.1).reverse()
                 } else {
-                    x.1.compare(y.1.clone())
+                    x.1.compare(&y.1)
                 }
             }
         );
@@ -755,7 +755,7 @@ pub mod tests {
         starlark_ok!("(dict() == {})");
         starlark_ok!("(dict([(1, 2), (3, 4)]) == {1: 2, 3: 4})");
         starlark_ok!("(dict([(1, 2), ['a', 'b']]) == {1: 2, 'a': 'b'})");
-        starlark_ok!("(dict(one=1, two=2) == {'one': 1, 'two': 1})");
+        starlark_ok!("(dict(one=1, two=2) == {'one': 1, 'two': 2})");
         starlark_ok!("(dict([(1, 2)], x=3) == {1: 2, 'x': 3})");
     }
 

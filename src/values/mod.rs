@@ -56,7 +56,7 @@
 //!     fn get_hash(&self) -> Result<u64, ValueError> {
 //!         Ok(9223380832852120682)
 //!     }
-//!     fn compare(&self, other: Value) -> Ordering { default_compare(self, other) }
+//!     fn compare(&self, other: &Value) -> Ordering { default_compare(self, other) }
 //!     not_supported!(binop);
 //!     not_supported!(container);
 //!     not_supported!(function);
@@ -343,7 +343,7 @@ pub trait TypedValue {
     /// __Note__: This does not use the
     ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
     ///       the trait needs to know the actual type of the value we compare.
-    fn compare(&self, other: Value) -> Ordering;
+    fn compare(&self, other: &Value) -> Ordering;
 
     /// Perform a call on the object, only meaningfull for function object.
     ///
@@ -470,13 +470,13 @@ pub trait TypedValue {
     /// # use starlark::values::*;
     /// # use starlark::values::string;
     /// // "a" in "abc" == True
-    /// assert!(Value::from("abc").is_in(Value::from("a")).unwrap().to_bool());
+    /// assert!(Value::from("abc").is_in(&Value::from("a")).unwrap().to_bool());
     /// // "b" in "abc" == True
-    /// assert!(Value::from("abc").is_in(Value::from("b")).unwrap().to_bool());
+    /// assert!(Value::from("abc").is_in(&Value::from("b")).unwrap().to_bool());
     /// // "z" in "abc" == False
-    /// assert!(!Value::from("abc").is_in(Value::from("z")).unwrap().to_bool());
+    /// assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap().to_bool());
     /// ```
-    fn is_in(&self, other: Value) -> ValueResult;
+    fn is_in(&self, other: &Value) -> ValueResult;
 
     /// Apply the `+` unary operator to the current value.
     ///
@@ -728,7 +728,7 @@ macro_rules! not_supported {
     (binop) => { not_supported!(arithmetic, percent, pipe); };
     // Generic
     (is_in) => {
-        fn is_in(&self, other: Value) -> ValueResult {
+        fn is_in(&self, other: &Value) -> ValueResult {
             Err(ValueError::OperationNotSupported {
                 op: "in".to_owned(),
                 left: other.get_type().to_owned(),
@@ -801,7 +801,7 @@ macro_rules! not_supported {
 /// A default implementation of the compare function, this can be used if the two types of
 /// value are differents or numeric. Custom types should implement their own comparison for the
 /// last case.
-pub fn default_compare(v1: &TypedValue, v2: Value) -> Ordering {
+pub fn default_compare(v1: &TypedValue, v2: &Value) -> Ordering {
     match (v1.get_type(), v2.get_type()) {
         ("bool", "bool") | ("bool", "int") | ("int", "bool") | ("int", "int") => {
             v1.to_int().unwrap().cmp(&(v2.to_int().unwrap()))
@@ -814,7 +814,7 @@ pub fn default_compare(v1: &TypedValue, v2: Value) -> Ordering {
 
 macro_rules! default_compare {
     () => {
-        fn compare(&self, other: Value) -> Ordering { default_compare(self, other) }
+        fn compare(&self, other: &Value) -> Ordering { default_compare(self, other) }
     }
 }
 
@@ -874,7 +874,7 @@ impl TypedValue for Value {
     fn get_hash(&self) -> Result<u64, ValueError> {
         self.value.borrow().get_hash()
     }
-    fn compare(&self, other: Value) -> Ordering {
+    fn compare(&self, other: &Value) -> Ordering {
         self.value.borrow().compare(other)
     }
     fn call(
@@ -929,7 +929,7 @@ impl TypedValue for Value {
     fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
         self.value.borrow().dir_attr()
     }
-    fn is_in(&self, other: Value) -> ValueResult {
+    fn is_in(&self, other: &Value) -> ValueResult {
         self.value.borrow().is_in(other)
     }
     fn plus(&self) -> ValueResult {
@@ -975,20 +975,20 @@ impl fmt::Display for Value {
 
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
-        self.compare(other.clone()) == Ordering::Equal
+        self.compare(other) == Ordering::Equal
     }
 }
 impl Eq for Value {}
 
 impl Ord for Value {
     fn cmp(&self, other: &Value) -> Ordering {
-        self.compare(other.clone())
+        self.compare(other)
     }
 }
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
-        Some(self.compare(other.clone()))
+        Some(self.compare(other))
     }
 }
 

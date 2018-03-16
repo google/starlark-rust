@@ -135,17 +135,27 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: Value) -> Ordering {
-        if other.get_type() == "tuple" {
-            let mut iter1 = self.into_iter().unwrap();
-            let mut iter2 = other.into_iter().unwrap();
+    fn compare(&self, other: &Value) -> Ordering {
+        if other.get_type() == "dict" {
+            let mut v1 : Vec<Value> = self.into_iter().unwrap().collect();
+            let mut v2 : Vec<Value> = other.into_iter().unwrap().collect();
+            // We sort the keys because the dictionary preserve insertion order but ordering does
+            // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
+            v1.sort();
+            v2.sort();
+            let mut iter1 = v1.into_iter();
+            let mut iter2 = v2.into_iter();
             loop {
                 match (iter1.next(), iter2.next()) {
                     (None, None) => return Ordering::Equal,
                     (None, Some(..)) => return Ordering::Less,
                     (Some(..), None) => return Ordering::Greater,
-                    (Some(v1), Some(v2)) => {
-                        let r = v1.compare(v2);
+                    (Some(k1), Some(k2)) => {
+                        let r = k1.compare(&k2);
+                        if r != Ordering::Equal {
+                            return r;
+                        }
+                        let r = self.at(k1).unwrap().compare(&other.at(k2).unwrap());
                         if r != Ordering::Equal {
                             return r;
                         }
@@ -170,10 +180,10 @@ impl TypedValue for Dictionary {
         Ok(self.content.len() as i64)
     }
 
-    fn is_in(&self, other: Value) -> ValueResult {
+    fn is_in(&self, other: &Value) -> ValueResult {
         // Fail the function if the index is non hashable
         other.get_hash()?;
-        Ok(Value::new(self.content.contains_key(&other)))
+        Ok(Value::new(self.content.contains_key(other)))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {

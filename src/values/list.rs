@@ -125,7 +125,7 @@ impl TypedValue for List {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: Value) -> Ordering {
+    fn compare(&self, other: &Value) -> Ordering {
         if other.get_type() == "list" {
             let mut iter1 = self.into_iter().unwrap();
             let mut iter2 = other.into_iter().unwrap();
@@ -135,7 +135,7 @@ impl TypedValue for List {
                     (None, Some(..)) => return Ordering::Less,
                     (Some(..), None) => return Ordering::Greater,
                     (Some(v1), Some(v2)) => {
-                        let r = v1.compare(v2);
+                        let r = v1.compare(&v2);
                         if r != Ordering::Equal {
                             return r;
                         }
@@ -156,9 +156,9 @@ impl TypedValue for List {
         Ok(self.content.len() as i64)
     }
 
-    fn is_in(&self, other: Value) -> ValueResult {
+    fn is_in(&self, other: &Value) -> ValueResult {
         Ok(Value::new(self.content.iter().any(|x| {
-            x.compare(other.clone()) == Ordering::Equal
+            x.compare(other) == Ordering::Equal
         })))
     }
 

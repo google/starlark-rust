@@ -406,10 +406,12 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
             Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => Ok(Value::new(
                 l.eval(context)? >= r.eval(context)?,
             )),
-            Expr::Op(BinOp::In, ref l, ref r) => t!(r.eval(context)?.is_in(l.eval(context)?), self),
+            Expr::Op(BinOp::In, ref l, ref r) => {
+                t!(r.eval(context)?.is_in(&l.eval(context)?), self)
+            },
             Expr::Op(BinOp::NotIn, ref l, ref r) => Ok(Value::new(
                 t!(
-                    r.eval(context)?.is_in(l.eval(context)?),
+                    r.eval(context)?.is_in(&l.eval(context)?),
                     self
                 )?
                     .to_bool(),
