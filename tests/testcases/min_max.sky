@@ -31,17 +31,17 @@ assert_eq(max([1, 1, 1, 1, 1, 1]), 1)
 ---
 min(1)  ### type 'int' is not iterable
 ---
-min([])  ### expected at least one item
+min([])  ### Argument is an empty iterable, min() expect a non empty iterable
 ---
-min(1, "2", True) ### Cannot compare int with string
+assert_eq(min(1, "2", True), 1) # Ignoring: this is is correct in python -- Cannot compare int with string
 ---
-min([1, "2", True]) ### Cannot compare int with string
+assert_eq(min([1, "2", True]), 1) # Ignoring: this is is correct in python -- Cannot compare int with string
 ---
 max(1) ### type 'int' is not iterable
 ---
-max([]) ### expected at least one item
+max([]) ### Argument is an empty iterable, max() expect a non empty iterable
 ---
-max(1, '2', True) ### Cannot compare int with string
+assert_eq(max(1, '2', True), '2') # Ignoring: this is is correct in python -- Cannot compare int with string
 ---
-max([1, '2', True]) ### Cannot compare int with string
+assert_eq(max([1, '2', True]), '2') # Ignoring: this is is correct in python -- Cannot compare int with string
 ---
