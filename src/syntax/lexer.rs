@@ -684,12 +684,13 @@ impl Lexer {
     fn consume_escape_sequence(&mut self, triple: bool) -> Result<Option<char>, LexerError> {
         if let Some((pos, c)) = self.pop() {
             assert_eq!(c, '\\');
-            if let Some((pos2, c2)) = self.pop() {
+            if let Some((pos2, c2)) = self.peek() {
                 match c2 {
-                    'n' => Ok(Some('\n')),
-                    'r' => Ok(Some('\r')),
-                    't' => Ok(Some('\t')),
+                    'n' => { self.pop(); Ok(Some('\n')) },
+                    'r' => { self.pop(); Ok(Some('\r')) },
+                    't' => { self.pop(); Ok(Some('\t')) },
                     '0' => {
+                        self.pop();
                         if self.peek_char().is_digit(8) {
                             if let Ok(r) = self.consume_int_r(8) {
                                 Ok(Some(char::from_u32(r as u32).unwrap()))
@@ -702,6 +703,7 @@ impl Lexer {
                         }
                     }
                     'x' => {
+                        self.pop();
                         if let Ok(r) = self.consume_int_r(16) {
                             Ok(Some(char::from_u32(r as u32).unwrap()))
                         } else {
@@ -709,8 +711,12 @@ impl Lexer {
                             Err(LexerError::InvalidEscapeSequence(pos, p.1))
                         }
                     }
-                    '1'...'9' => Err(LexerError::InvalidEscapeSequence(pos, pos2 + 1)),
+                    '1'...'9' => {
+                        self.pop();
+                        Err(LexerError::InvalidEscapeSequence(pos, pos2 + 1))
+                    },
                     '\n' => {
+                        self.pop();
                         if triple {
                             Ok(None)
                         } else {
@@ -718,6 +724,7 @@ impl Lexer {
                         }
                     }
                     'u' => {
+                        self.pop();
                         let c = self.next_char();
                         if c != '{' {
                             let p = self.end_pos();
@@ -735,7 +742,11 @@ impl Lexer {
                             Err(LexerError::InvalidEscapeSequence(pos, p.1))
                         }
                     }
-                    x => Ok(Some(x)),
+                    '"' | '\'' | '\\' => {
+                        self.pop();
+                        Ok(Some(c2))
+                    },
+                    _ => Ok(Some('\\')),
                 }
             } else {
                 Err(LexerError::InvalidEscapeSequence(pos, pos + 1))
@@ -1238,7 +1249,7 @@ mod tests {
 
     #[test]
     fn test_string_lit() {
-        let r = collect_result("'123' \"123\" '' \"\" '\\'' \"\\\"\" '\"' \"'\" '\\n'");
+        let r = collect_result("'123' \"123\" '' \"\" '\\'' \"\\\"\" '\"' \"'\" '\\n' '\\w'");
         assert_eq!(
             &[
                 Token::StringLitteral("123".to_owned()),
@@ -1250,6 +1261,7 @@ mod tests {
                 Token::StringLitteral("\"".to_owned()),
                 Token::StringLitteral("'".to_owned()),
                 Token::StringLitteral("\n".to_owned()),
+                Token::StringLitteral("\\w".to_owned()),
                 Token::Newline,
             ],
             &r[..]
