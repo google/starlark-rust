@@ -811,6 +811,13 @@ starlark_module!{global =>
     string.partition(this, #needle = " ") {
         check_string!(needle, partition);
         let needle = needle.to_str();
+        if needle.is_empty() {
+            starlark_err!(
+                INCORRECT_PARAMETER_TYPE_ERROR_CODE,
+                "Empty separator cannot be used for partitioning".to_owned(),
+                "Empty separtor".to_owned()
+            )
+        }
         let this = this.to_str();
         if let Some(offset) = this.find(needle.as_str()) {
             let offset2 = offset + needle.len();
@@ -946,6 +953,13 @@ starlark_module!{global =>
     string.rpartition(this, #needle = " ") {
         check_string!(needle, partition);
         let needle = needle.to_str();
+        if needle.is_empty() {
+            starlark_err!(
+                INCORRECT_PARAMETER_TYPE_ERROR_CODE,
+                "Empty separator cannot be used for partitioning".to_owned(),
+                "Empty separtor".to_owned()
+            )
+        }
         let this = this.to_str();
         if let Some(offset) = this.rfind(needle.as_str()) {
             let offset2 = offset + needle.len();
@@ -955,7 +969,7 @@ starlark_module!{global =>
                 this.as_str().get(offset2..).unwrap()
             ))
         } else {
-            ok!((this, "", ""))
+            ok!(("", "", this))
         }
     }
 
