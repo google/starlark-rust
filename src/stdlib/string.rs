@@ -661,7 +661,7 @@ starlark_module!{global =>
         let mut result = false;
 
         for c in this.to_str().chars() {
-            if !c.is_alphanumeric() {
+            if !c.is_alphabetic() {
                 last_space = true;
             } else {
                 if last_space {
@@ -1234,7 +1234,7 @@ starlark_module!{global =>
         let mut last_space = true;
         let mut result = String::new();
         for c in this.to_str().chars() {
-            if  !c.is_alphanumeric() {
+            if  !c.is_alphabetic() {
                 last_space = true;
                 for c1 in c.to_lowercase() {
                     result.push(c1);
