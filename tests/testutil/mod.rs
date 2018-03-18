@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Test the conformance tests from other implementation of Starlark
+//! Utility to test the conformance tests from other implementation of Starlark
 extern crate starlark;
 extern crate codemap;
 extern crate codemap_diagnostic;
@@ -21,23 +21,58 @@ use std::fs::File;
 use std::path::Path;
 use std::io::{self, Write};
 use std::io::prelude::*;
-use starlark::stdlib::global_environment;
-use starlark::eval::simple::eval;
+use testutil::starlark::stdlib::global_environment;
+use testutil::starlark::eval::simple::eval;
 use std::sync::{Arc, Mutex};
-use codemap::CodeMap;
-use codemap_diagnostic::{Emitter, ColorConfig};
+use testutil::codemap::CodeMap;
+use testutil::codemap_diagnostic::{Diagnostic, Emitter, ColorConfig};
 
 /// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
-fn read_input(path: &str) -> Vec<String> {
+fn read_input(path: &str) -> Vec<(usize, String)> {
     let mut content = String::new();
     let mut file = File::open(path).unwrap();
     file.read_to_string(&mut content).unwrap();
-    content.split("\n---\n").map(|x| x.to_owned()).collect()
+    let mut v : Vec<(usize, String)>
+        = content.split("\n---\n").map(|x| (0, x.to_owned())).collect();
+    let mut idx = 1;
+    for mut el in &mut v {
+        el.0 = idx;
+        idx += el.1.chars().filter(|x| *x == '\n').count() + 2 // 2 = separator new lines
+    }
+    v
+}
+
+fn assert_diagnostic(
+    d: Diagnostic,
+    expected: &str,
+    path: &str,
+    offset: usize,
+    map: &Arc<Mutex<CodeMap>>
+) -> bool {
+    let expected = expected.to_lowercase();
+    let msg = if d.spans.is_empty() || d.spans[0].label.is_none() {
+        d.message.clone()
+    } else {
+        let label = d.spans[0].label.clone();
+        format!("{} ({})", d.message, label.unwrap())
+    };
+    if !msg.to_lowercase().contains(&expected) {
+        io::stderr().write(&format!(
+            "Expected error '{}' at {}:{}, got {}\n",
+            expected,
+            path,
+            offset,
+            msg,
+        ).into_bytes()).unwrap();
+        Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d]);
+        false
+    } else {
+        true
+    }
 }
 
 fn run_conformance_test(path: &str) -> bool {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    let mut offset = 0;
     let global = global_environment();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
@@ -51,7 +86,7 @@ def assert_(cond, msg="assertion failed"):
     fail(msg)
 "#, false, &mut prelude).unwrap();
     prelude.freeze();
-    for content in read_input(path) {
+    for (offset, content) in read_input(path) {
         let err = if let Some(x) = content.find("###") {
             let err = content.get(x+3..).unwrap().trim();
             err.get(..err.find("\n").unwrap_or(err.len())).unwrap()
@@ -68,15 +103,7 @@ def assert_(cond, msg="assertion failed"):
                     Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
                     return false;
                 } else {
-                    if !p.message.contains(err) {
-                        io::stderr().write(&format!(
-                            "Expected error '{}' at {}:{}, got {}\n",
-                            err,
-                            path,
-                            offset,
-                            p.message,
-                        ).into_bytes()).unwrap();
-                        Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
+                    if !assert_diagnostic(p, err, path, offset, &map) {
                         return false;
                     }
                 }
@@ -93,14 +120,12 @@ def assert_(cond, msg="assertion failed"):
                 }
             }
         }
-        offset += content.len() + 5; // + 5 for "\n---\n"
     }
     return true;
 }
 
-fn do_conformance_test(path: &str) {
+pub fn do_conformance_test(path: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
-    assert!(run_conformance_test(path.to_str().unwrap()));
+    let path = path.to_str().unwrap();
+    assert!(run_conformance_test(path));
 }
-
-include!(concat!(env!("OUT_DIR"), "/tests/testcases.rs"));
