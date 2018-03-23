@@ -87,25 +87,32 @@ impl TypedValue for String {
         } else {
             (start, stop - start, stride)
         };
-        let it = self.chars()
+        if take <= 0 {
+            return Ok(Value::from(""))
+        };
+
+        let v: String = self.chars()
             .skip(low as usize)
             .take(take as usize)
-            .enumerate()
-            .filter_map(|x| if 0 == (x.0 as i64 % astride) {
-                Some(x.1.clone())
-            } else {
-                None
-            });
-        let s: String = it.collect();
-        Ok(Value::new(if stride < 0 {
-            s.chars().rev().collect()
+            .collect();
+        let v: String = if stride > 0 {
+            v.chars().enumerate()
+                .filter_map(|x| if 0 == (x.0 as i64 % astride) {
+                    Some(x.1)
+                } else {
+                    None
+                })
+                .collect()
         } else {
-            s
-        }))
-    }
-
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.chars().map(|x| Value::new(x.to_string()))))
+            v.chars().rev().enumerate()
+                .filter_map(|x| if 0 == (x.0 as i64 % astride) {
+                    Some(x.1)
+                } else {
+                    None
+                })
+                .collect()
+        };
+        Ok(Value::new(v))
     }
 
     /// Concatenate `other` to the current value.
@@ -193,13 +200,15 @@ impl TypedValue for String {
         let mut split_it = self.split("%");
         let mut res = String::new();
         let mut idx = 0;
+        let mut len = 0;
         res += split_it.next().unwrap_or("");
+        let mut last_percent = false;
         for s in split_it {
-            let mut chars = s.chars().peekable();
-            if let Some(&'%') = chars.peek() {
-                chars.next();
+            if s.is_empty() {
+                last_percent = !last_percent;
                 res.push('%');
-            } else {
+            } else if !last_percent {
+                let mut chars = s.chars().peekable();
                 let var = if let Some(&'(') = chars.peek() {
                     let mut varname = String::new();
                     chars.next();
@@ -212,15 +221,28 @@ impl TypedValue for String {
                     }
                     other.at(Value::new(varname))?.clone()
                 } else {
-                    let val = other.at(Value::new(idx));
-                    idx += 1;
-                    match val {
-                        Ok(v) => v.clone(),
-                        Err(e) => {
-                            if idx == 1 {
+                    match other.into_iter() {
+                        Ok(..) => {
+                            let val = other.at(Value::new(idx));
+                            idx += 1;
+                            match val {
+                                Ok(v) => {
+                                    len = other.length()?;
+                                    v.clone()
+                                }
+                                Err(..) => {
+                                    return Err(ValueError::NotEnoughParametersForInterpolation);
+                                }
+                            }
+                        },
+                        Err(..) => {
+                            if idx == 0 {
+                                idx += 1;
+                                len = 1;
                                 other.clone()
                             } else {
-                                return Err(e); // TODO: maybe we should refine the error here
+                                // We need more than one argument.
+                                return Err(ValueError::NotEnoughParametersForInterpolation);
                             }
                         }
                     }
@@ -238,7 +260,13 @@ impl TypedValue for String {
                     // x for string, chr(x) for int
                     Some('c') => {
                         match var.get_type() {
-                            "string" => res += &var.to_str(),
+                            "string" => {
+                                if var.length()? != 1 {
+                                    return Err(ValueError::InterpolationValueNotChar);
+                                } else {
+                                    res += &var.to_str();
+                                }
+                            }
                             _ => {
                                 let codepoint = var.to_int()? as u32;
                                 match std::char::from_u32(codepoint) {
@@ -256,11 +284,19 @@ impl TypedValue for String {
                 }
                 let s: String = chars.collect();
                 res += &s;
+            } else {
+                last_percent = false;
+                res += s;
             }
         }
-        Ok(Value::new(res))
+        if idx < len {
+            Err(ValueError::TooManyParametersForInterpolation)
+        } else {
+            Ok(Value::new(res))
+        }
     }
 
+    not_supported!(iterable);
     not_supported!(set_indexable);
     not_supported!(attr, function);
     not_supported!(plus, minus, sub, div, pipe, floor_div);

@@ -98,6 +98,9 @@ pub const KEY_NOT_FOUND_ERROR_CODE: &'static str = "CV05";
 pub const INTERPOLATION_FORMAT_ERROR_CODE: &'static str = "CV06";
 pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &'static str = "CV07";
 pub const DIVISION_BY_ZERO_ERROR_CODE: &'static str = "CV08";
+pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &'static str = "CV09";
+pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CV10";
+pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &'static str = "CV12";
 
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Debug)]
@@ -130,6 +133,11 @@ pub enum ValueError {
     InterpolationFormat,
     /// Trying to interpolate with %c an integer that is not in the UTF-8 range.
     InterpolationValueNotInUTFRange(u32),
+    /// Interpolation parameter is too big for the format string.
+    TooManyParametersForInterpolation,
+    /// Interpolation parameter is too small for the format string.
+    NotEnoughParametersForInterpolation,
+    InterpolationValueNotChar,
 }
 
 /// A simpler error format to return as a ValueError
@@ -190,6 +198,15 @@ impl SyntaxError for ValueError {
                         ValueError::InterpolationValueNotInUTFRange(ref c) => {
                             format!("Invalid codepoint 0x{:x}", c)
                         }
+                        ValueError::TooManyParametersForInterpolation => {
+                            "Too many arguments for format string".to_owned()
+                        }
+                        ValueError::NotEnoughParametersForInterpolation => {
+                            "Not enough arguments for format string".to_owned()
+                        }
+                        ValueError::InterpolationValueNotChar => {
+                            "'%c' formatter requires a single-character string".to_owned()
+                        }
                         _ => unreachable!(),
                     }),
                 };
@@ -237,6 +254,15 @@ impl SyntaxError for ValueError {
                                 c
                             )
                         }
+                        ValueError::TooManyParametersForInterpolation => {
+                            "Too many arguments for format string".to_owned()
+                        }
+                        ValueError::NotEnoughParametersForInterpolation => {
+                            "Not enough arguments for format string".to_owned()
+                        }
+                        ValueError::InterpolationValueNotChar => {
+                            "'%c' formatter requires a single-character string".to_owned()
+                        }
                         _ => unreachable!(),
                     },
                     code: Some(
@@ -255,6 +281,15 @@ impl SyntaxError for ValueError {
                             ValueError::InterpolationFormat => INTERPOLATION_FORMAT_ERROR_CODE,
                             ValueError::InterpolationValueNotInUTFRange(..) => {
                                 INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE
+                            }
+                            ValueError::TooManyParametersForInterpolation => {
+                                INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE
+                            }
+                            ValueError::NotEnoughParametersForInterpolation => {
+                                INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE
+                            }
+                            ValueError::InterpolationValueNotChar => {
+                                INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE
                             }
                             ValueError::DiagnosedError(..) => "U999", // Unknown error
                         }.to_owned(),
@@ -1063,7 +1098,11 @@ impl TypedValue for i64 {
         arithm_op!(self - other)
     }
     fn mul(&self, other: Value) -> ValueResult {
-        arithm_op!(self * other)
+        if other.get_type() == "string" {
+            other.mul(Value::new(*self))
+        } else {
+            arithm_op!(self * other)
+        }
     }
     fn percent(&self, other: Value) -> ValueResult {
         let other = other.to_int()?;
@@ -1140,7 +1179,11 @@ impl TypedValue for bool {
         arithm_op!(self - other)
     }
     fn mul(&self, other: Value) -> ValueResult {
-        arithm_op!(self * other)
+        if other.get_type() == "string" {
+            other.mul(Value::new(*self))
+        } else {
+            arithm_op!(self * other)
+        }
     }
     fn percent(&self, other: Value) -> ValueResult {
         let other = other.to_int()?;

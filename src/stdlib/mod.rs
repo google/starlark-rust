@@ -156,7 +156,7 @@ starlark_module!{global_functions =>
     /// bool(0) == False
     /// # )").unwrap());
     /// ```
-    bool(#x) {
+    bool(#x = false) {
         Ok(Value::new(x.to_bool()))
     }
 
@@ -229,19 +229,42 @@ starlark_module!{global_functions =>
     /// ```
     dict(#a = None, **kwargs) {
         let mut map = LinkedHashMap::new();
-        if a.get_type() != "NoneType" {
-           for el in a.into_iter()? {
-               if el.length()? != 2 {
-                   starlark_err!(
-                       DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
-                       format!(
-                           "Found a non-pair element in the positional argument of dict(): {}",
-                           el.to_repr(),
-                       ),
-                       "Non-pair element in first argument".to_owned()
-                   );
-               } else {
-                   map.insert(el.at(Value::new(0))?, el.at(Value::new(1))?);
+        match a.get_type() {
+            "NoneType" => (),
+            "dict" => {
+                for k in a.into_iter()? {
+                    let v = a.at(k.clone())?;
+                    map.insert(k, v);
+                }
+            },
+            _ => {
+               for el in a.into_iter()? {
+                   match el.into_iter() {
+                       Ok(mut it) => {
+                            let first = it.next();
+                            let second = it.next();
+                            if first.is_none() || second.is_none() || it.next().is_some() {
+                                starlark_err!(
+                                    DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
+                                    format!(
+                                        "Found a non-pair element in the positional argument of dict(): {}",
+                                        el.to_repr(),
+                                    ),
+                                    "Non-pair element in first argument".to_owned()
+                                );
+                            }
+                            map.insert(first.unwrap(), second.unwrap());
+                       }
+                       Err(..) =>
+                           starlark_err!(
+                               DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
+                               format!(
+                                   "Found a non-pair element in the positional argument of dict(): {}",
+                                   el.to_repr(),
+                               ),
+                               "Non-pair element in first argument".to_owned()
+                           ),
+                   }
                }
            }
        }
@@ -302,9 +325,6 @@ starlark_module!{global_functions =>
             .enumerate()
             .map(|(k, v)| Value::from((Value::new(k as i64 + v2), v)))
             .collect();
-        for x in v.iter() {
-            println!("Got {}", x.to_repr());
-        }
         Ok(Value::from(v))
     }
 
@@ -323,7 +343,7 @@ starlark_module!{global_functions =>
     /// getattr("banana", "split")("a") == ["b", "n", "n", ""] # equivalent to "banana".split("a")
     /// # "#).unwrap());
     /// ```
-    getattr(env env, #a, #attr) {
+    getattr(env env, #a, #attr, #default=None) {
         if attr.get_type() != "string" {
             starlark_err!(
                 ATTR_NAME_NOT_STRING_ERROR_CODE,
@@ -344,7 +364,7 @@ starlark_module!{global_functions =>
                     } else {
                         Ok(v)
                     }
-                    None => x
+                    None => if default.get_type() == "NoneType" { x } else { Ok(default) }
                 }
             }
         }
@@ -883,7 +903,7 @@ starlark_module!{global_functions =>
     /// # and
     /// zip(range(5))                           == [(0,), (1,), (2,), (3,), (4,)]
     /// # and
-    /// zip(range(5), "abc")                    == [(0, "a"), (1, "b"), (2, "c")]
+    /// zip(range(5), "abc".split_codepoints()) == [(0, "a"), (1, "b"), (2, "c")]
     /// # )"#).unwrap());
     /// ```
     zip(*args) {
@@ -1154,6 +1174,7 @@ pub mod tests {
     fn test_zip() {
         starlark_ok!("(zip() == [])");
         starlark_ok!("(zip(range(5)) == [(0,), (1,), (2,), (3,), (4,)])");
-        starlark_ok!("(zip(range(5), 'abc') == [(0, 'a'), (1, 'b'), (2, 'c')])");
+        starlark_ok!(
+            "(zip(range(5), 'abc'.split_codepoints()) == [(0, 'a'), (1, 'b'), (2, 'c')])");
     }
 }

@@ -410,7 +410,7 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)
             }
             Expr::Op(BinOp::NotIn, ref l, ref r) => Ok(Value::new(
-                t!(
+                !t!(
                     r.eval(context)?.is_in(&l.eval(context)?),
                     self
                 )?

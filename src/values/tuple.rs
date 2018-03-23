@@ -31,6 +31,9 @@ pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &Vec<Value>) ->
     } else {
         (start, stop - start, stride)
     };
+    if take <= 0 {
+        return Vec::new();
+    }
     let mut v: Vec<Value> = content
         .iter()
         .skip(low as usize)

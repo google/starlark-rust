@@ -1,0 +1,392 @@
+# Tests of Skylark 'string'
+
+# raw string literals:
+assert_eq(r'a\bc', "a\\bc")
+
+# truth
+assert_("abc")
+assert_("\0")
+assert_(not "")
+
+# str + str
+assert_eq("a"+"b"+"c", "abc")
+
+# str * int,  int * str
+assert_eq("abc" * 0, "")
+assert_eq("abc" * -1, "")
+assert_eq("abc" * 1, "abc")
+assert_eq("abc" * 5, "abcabcabcabcabc")
+assert_eq(0 * "abc", "")
+assert_eq(-1 * "abc", "")
+assert_eq(1 * "abc", "abc")
+assert_eq(5 * "abc", "abcabcabcabcabc")
+
+# len
+# Note that the go implen return a number of bytes and python3 a number o char...
+assert_eq(len("Hello, 世界!"), 10)  # The go implem return 14 (bytes) which is not consistent with python 3.
+assert_eq(len("𐐷"), 1) # U+10437 has a 4-byte UTF-8 encoding (and a 2-code UTF-16 encoding)
+
+# chr & ord
+assert_eq(chr(65), "A")       # 1-byte UTF-8 encoding
+assert_eq(chr(1049), "Й")     # 2-byte UTF-8 encoding
+assert_eq(chr(0x1F63F), "😿") # 4-byte UTF-8 encoding
+---
+chr(-1)  ### not a valid UTF-8 codepoint
+---
+chr(0x110000)  ### not a valid UTF-8 codepoint
+---
+assert_eq(ord("A"), 65)
+assert_eq(ord("Й"), 1049)
+assert_eq(ord("😿"), 0x1F63F)
+assert_eq(ord("Й"), 1049)
+---
+ord("abc")  ### not a one character string
+---
+ord("")  ### not a one character string
+---
+ord("😿"[1:])  ### not a one character string
+---
+
+# string.codepoints
+assert_eq(type("abcЙ😿".codepoints()), "list")
+assert_eq(str("abcЙ😿".codepoints()), '[97, 98, 99, 1049, 128575]')
+assert_eq(list("abcЙ😿".codepoints()), [97, 98, 99, 1049, 128575])
+assert_eq(list("".codepoints()), [])
+
+# string.split_codepoints
+assert_eq(type("abcЙ😿".split_codepoints()), "list")
+assert_eq(str("abcЙ😿".split_codepoints()), "['a', 'b', 'c', '\\u{419}', '\\u{1f63f}']")
+assert_eq(list("abcЙ😿".split_codepoints()), ["a", "b", "c", "Й", "😿"])
+assert_eq(list("".split_codepoints()), [])
+
+# string.elems
+assert_eq(type("abcЙ😿".elems()), "list")
+assert_eq(str("abcЙ😿".elems()), '[97, 98, 99, 208, 153, 240, 159, 152, 191]')
+assert_eq(list("abcЙ😿".elems()), [97, 98, 99, 208, 153, 240, 159, 152, 191])
+assert_eq(list("".elems()), [])
+
+# indexing, x[i]
+assert_eq("Hello, 世界!"[0], "H")
+assert_eq("Hello, 世界!"[7], "世")
+assert_eq("Hello, 世界!"[9], "!")
+---
+"abc"[-4]  ### out of bound
+---
+assert_eq("abc"[-3], "a")
+assert_eq("abc"[-2], "b")
+assert_eq("abc"[-1], "c")
+assert_eq("abc"[0], "a")
+assert_eq("abc"[1], "b")
+assert_eq("abc"[2], "c")
+---
+"abc"[4]  ### out of bound
+---
+
+# x[i] = ...
+x2 = "abc"
+def f(): x2[1] = 'B'
+f() ### Cannot [] = types string and int
+---
+
+# slicing, x[i:j]
+assert_eq("abc"[:], "abc")
+assert_eq("abc"[-4:], "abc")
+assert_eq("abc"[-3:], "abc")
+assert_eq("abc"[-2:], "bc")
+assert_eq("abc"[-1:], "c")
+assert_eq("abc"[0:], "abc")
+assert_eq("abc"[1:], "bc")
+assert_eq("abc"[2:], "c")
+assert_eq("abc"[3:], "")
+assert_eq("abc"[4:], "")
+assert_eq("abc"[:-4], "")
+assert_eq("abc"[:-3], "")
+assert_eq("abc"[:-2], "a")
+assert_eq("abc"[:-1], "ab")
+assert_eq("abc"[:0], "")
+assert_eq("abc"[:1], "a")
+assert_eq("abc"[:2], "ab")
+assert_eq("abc"[:3], "abc")
+assert_eq("abc"[:4], "abc")
+assert_eq("abc"[1:2], "b")
+assert_eq("abc"[2:1], "")
+# non-unit strides
+assert_eq("abcd"[0:4:1], "abcd")
+assert_eq("abcd"[::2], "ac")
+assert_eq("abcd"[1::2], "bd")
+assert_eq("abcd"[4:0:-1], "dcb")
+assert_eq("banana"[7::-2], "aaa")
+assert_eq("banana"[6::-2], "aaa")
+assert_eq("banana"[5::-2], "aaa")
+assert_eq("banana"[4::-2], "nnb")
+assert_eq("banana"[::-1], "ananab")
+assert_eq("banana"[None:None:-2], "aaa")
+---
+"banana"[:"":]  ### Type of parameters mismatch
+---
+"banana"[:"":True]  ### Type of parameters mismatch
+---
+
+# in, not in
+assert_("oo" in "food")
+assert_("ox" not in "food")
+assert_("" in "food")
+assert_("" in "")
+---
+1 in ""  ### Type of parameters mismatch
+---
+"" in 1  ### in not supported for types string and int
+---
+
+# ==, !=
+assert_eq("hello", "he"+"llo")
+assert_("hello" != "Hello")
+
+# TODO(adonovan): ordered comparisons
+
+# string % tuple formatting
+assert_eq("A %d %x Z" % (123, 456), "A 123 1c8 Z")
+assert_eq("A %(foo)d %(bar)s Z" % {"foo": 123, "bar":"hi"}, "A 123 hi Z")
+assert_eq("%s %r" % ("hi", "hi"), "hi 'hi'")
+assert_eq("%%d %d" % 1, "%d 1")
+---
+"%d %d" % 1  ### Not enough arguments for format string
+---
+"%d %d" % (1, 2, 3) ### too many arguments for format string
+---
+# %c
+assert_eq("%c" % 65, "A")
+assert_eq("%c" % 0x3b1, "α")
+assert_eq("%c" % "A", "A")
+assert_eq("%c" % "α", "α")
+---
+"%c" % "abc"  ### requires a single-character string
+---
+"%c" % 10000000  ### Invalid codepoint
+---
+"%c" % -1  ### Invalid codepoint
+---
+# TODO(adonovan): more tests
+
+# str.format
+assert_eq("a{}b".format(123), "a123b")
+assert_eq("a{}b{}c{}d{}".format(1, 2, 3, 4), "a1b2c3d4")
+assert_eq("a{{b".format(), "a{b")
+assert_eq("a}}b".format(), "a}b")
+assert_eq("a{{b}}c".format(), "a{b}c")
+assert_eq("a{x}b{y}c{}".format(1, x=2, y=3), "a2b3c1")
+---
+"a{z}b".format(x=1)  ### key not found
+---
+"{-1}".format(1)  ### key not found
+---
+"{-0}".format(1)  ### key not found
+---
+'{0,1} and {1}'.format(1, 2) ### invalid character ','
+---
+"a{123}b".format()  ### index out of bound
+---
+"a{}b{}c".format(1)  ### Not enough parameters
+---
+assert_eq("a{010}b".format(0,1,2,3,4,5,6,7,8,9,10), "a10b") # index is decimal
+---
+"a{}b{1}c".format(1, 2) ### Mixed manual and automatic field numbering
+---
+assert_eq("a{!s}c".format("b"), "abc")
+assert_eq("a{!r}c".format("b"), r"a'b'c")
+assert_eq("a{x!r}c".format(x='b'), r"a'b'c")
+---
+"{x!}".format(x=1)  ### Invalid format string specifier
+---
+"{x!:}".format(x=1)  ### Invalid format string specifier
+---
+'{a.b}'.format(1)  ### Invalid character
+---
+'{a[0]}'.format(1)  ### Invalid character
+---
+'{ {} }'.format(1)  ### unmatched '{'
+---
+'{{}'.format(1)  ### standalone '}'
+---
+'{}}'.format(1)  ### standalone '}'
+---
+'}}{'.format(1)  ### unmatched '{'
+---
+'}{{'.format(1)  ### standalone '}'
+---
+
+# str.split, str.rsplit
+assert_eq("a.b.c.d".split("."), ["a", "b", "c", "d"])
+assert_eq("a.b.c.d".rsplit("."), ["a", "b", "c", "d"])
+assert_eq("a.b.c.d".split(".", -1), ["a", "b", "c", "d"])
+assert_eq("a.b.c.d".rsplit(".", -1), ["a", "b", "c", "d"])
+assert_eq("a.b.c.d".split(".", 0), ["a.b.c.d"])
+assert_eq("a.b.c.d".rsplit(".", 0), ["a.b.c.d"])
+assert_eq("a.b.c.d".split(".", 1), ["a", "b.c.d"])
+assert_eq("a.b.c.d".rsplit(".", 1), ["a.b.c", "d"])
+assert_eq("a.b.c.d".split(".", 2), ["a", "b", "c.d"])
+assert_eq("a.b.c.d".rsplit(".", 2), ["a.b", "c", "d"])
+
+# {,r}split on white space:
+assert_eq(" a bc\n  def \t  ghi".split(), ["a", "bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".split(None), ["a", "bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".split(None, 0), ["a bc\n  def \t  ghi"])
+assert_eq(" a bc\n  def \t  ghi".rsplit(None, 0), [" a bc\n  def \t  ghi"])
+assert_eq(" a bc\n  def \t  ghi".split(None, 1), ["a", "bc\n  def \t  ghi"])
+assert_eq(" a bc\n  def \t  ghi".rsplit(None, 1), [" a bc\n  def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".split(None, 2), ["a", "bc", "def \t  ghi"])
+assert_eq(" a bc\n  def \t  ghi".rsplit(None, 2), [" a bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".split(None, 3), ["a", "bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".rsplit(None, 3), [" a", "bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".split(None, 4), ["a", "bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".rsplit(None, 4), ["a", "bc", "def", "ghi"])
+assert_eq(" a bc\n  def \t  ghi".rsplit(None, 5), ["a", "bc", "def", "ghi"])
+
+assert_eq(" a bc\n  def \t  ghi ".split(None, 0), ["a bc\n  def \t  ghi "])
+assert_eq(" a bc\n  def \t  ghi ".rsplit(None, 0), [" a bc\n  def \t  ghi"])
+assert_eq(" a bc\n  def \t  ghi ".split(None, 1), ["a", "bc\n  def \t  ghi "])
+assert_eq(" a bc\n  def \t  ghi ".rsplit(None, 1), [" a bc\n  def", "ghi"])
+
+# Observe the algorithmic difference when splitting on spaces versus other delimiters.
+assert_eq('--aa--bb--cc--'.split('-', 0), ['--aa--bb--cc--'])  # contrast this
+assert_eq('  aa  bb  cc  '.split(None, 0), ['aa  bb  cc  '])   #  with this
+assert_eq('--aa--bb--cc--'.rsplit('-', 0), ['--aa--bb--cc--']) # ditto this
+assert_eq('  aa  bb  cc  '.rsplit(None, 0), ['  aa  bb  cc'])  #  and this
+#
+assert_eq('--aa--bb--cc--'.split('-', 1), ['', '-aa--bb--cc--'])
+assert_eq('--aa--bb--cc--'.rsplit('-', 1), ['--aa--bb--cc-', ''])
+assert_eq('  aa  bb  cc  '.split(None, 1), ['aa', 'bb  cc  '])
+assert_eq('  aa  bb  cc  '.rsplit(None, 1), ['  aa  bb',  'cc'])
+#
+assert_eq('--aa--bb--cc--'.split('-', -1), ['', '', 'aa', '', 'bb', '', 'cc', '', ''])
+assert_eq('--aa--bb--cc--'.rsplit('-', -1), ['', '', 'aa', '', 'bb', '', 'cc', '', ''])
+assert_eq('  aa  bb  cc  '.split(None, -1), ['aa', 'bb', 'cc'])
+assert_eq('  aa  bb  cc  '.rsplit(None, -1), ['aa', 'bb', 'cc'])
+
+assert_eq("localhost:80".rsplit(":", 1)[-1], "80")
+
+# str.splitlines
+assert_eq("\nabc\ndef".splitlines(), ["", "abc", "def"])
+assert_eq("\nabc\ndef\n".splitlines(), ["", "abc", "def"])
+assert_eq("\nabc\ndef".splitlines(True), ["\n", "abc\n", "def"])
+assert_eq("\nabc\ndef\n".splitlines(True), ["\n", "abc\n", "def\n"])
+
+# str.{,l,r}strip
+assert_eq(" \tfoo\n ".strip(), "foo")
+assert_eq(" \tfoo\n ".lstrip(), "foo\n ")
+assert_eq(" \tfoo\n ".rstrip(), " \tfoo")
+# This syntax is undocumented...
+# assert_eq(" \tfoo\n ".strip(""), "foo")
+# assert_eq(" \tfoo\n ".lstrip(""), "foo\n ")
+# assert_eq(" \tfoo\n ".rstrip(""), " \tfoo")
+# assert_eq("blah.h".strip("b.h"), "la")
+# assert_eq("blah.h".lstrip("b.h"), "lah.h")
+# assert_eq("blah.h".rstrip("b.h"), "bla")
+
+# str.count
+assert_eq("banana".count("a"), 3)
+assert_eq("banana".count("a", 2), 2)
+assert_eq("banana".count("a", -4, -2), 1)
+assert_eq("banana".count("a", 1, 4), 2)
+assert_eq("banana".count("a", 0, -100), 0)
+
+# str.{starts,ends}with
+assert_("foo".endswith("oo"))
+assert_(not "foo".endswith("x"))
+assert_("foo".startswith("fo"))
+assert_(not "foo".startswith("x"))
+---
+"foo".startswith(1)  ### type int while expected string
+---
+
+# str.replace
+assert_eq("banana".replace("a", "o", 1), "bonana")
+assert_eq("banana".replace("a", "o"), "bonono")
+# TODO(adonovan): more tests
+
+# str.{,r}find
+assert_eq("foofoo".find("oo"), 1)
+assert_eq("foofoo".find("ox"), -1)
+assert_eq("foofoo".find("oo", 2), 4)
+assert_eq("foofoo".rfind("oo"), 4)
+assert_eq("foofoo".rfind("ox"), -1)
+assert_eq("foofoo".rfind("oo", 1, 4), 1)
+assert_eq("foofoo".find(""), 0)
+assert_eq("foofoo".rfind(""), 6)
+
+# str.{,r}partition
+assert_eq("foo/bar/wiz".partition("/"), ("foo", "/", "bar/wiz"))
+assert_eq("foo/bar/wiz".rpartition("/"), ("foo/bar", "/", "wiz"))
+assert_eq("foo/bar/wiz".partition("."), ("foo/bar/wiz", "", ""))
+assert_eq("foo/bar/wiz".rpartition("."), ("", "", "foo/bar/wiz"))
+---
+"foo/bar/wiz".partition("")  ### empty separator
+---
+"foo/bar/wiz".rpartition("")  ### empty separator
+---
+
+assert_eq('?'.join(["foo", "a/b/c.go".rpartition("/")[0]]), 'foo?a/b')
+
+# str.is{alpha,...}
+def test_predicates():
+  predicates = ["alnum", "alpha", "digit", "lower", "space", "title", "upper"]
+  table = {
+      "Hello, World!": "title",
+      "hello, world!": "lower",
+      "base64": "alnum lower",
+      "HAL-9000": "upper",
+      "Catch-22": "title",
+      "": "",
+      "\n\t\r": "space",
+      "abc": "alnum alpha lower",
+      "ABC": "alnum alpha upper",
+      "123": "alnum digit",
+  }
+  for str, want in table.items():
+    got = ' '.join([name for name in predicates if getattr(str, "is"+name)()])
+    if got != want:
+      fail("%r matched [%s], want [%s]" % (str, want, got))
+test_predicates()
+
+# Strings are not iterable.
+# ok
+assert_eq(len("abc"), 3)                       # len
+assert_("a" in "abc")                      # str in str
+assert_eq("abc"[1], "b")                       # indexing
+---
+def args(*args): return args
+args(*"abc")  ### *args is not iterable
+---
+list("abc")  ### Not iterable
+---
+tuple("abc")  ### Not iterable
+---
+enumerate("ab")  ### Not iterable
+---
+sorted("abc")  ### Not iterable
+---
+[].extend("bc")  ### type
+---
+",".join("abc")  ### Not iterable
+---
+dict(["ab"])  ### Non-pair element
+---
+# The Java implementation does not correctly reject the following cases:
+# (See Google Issue b/34385336)
+# not ok
+def for_string():
+  for x in "abc":
+    pass
+for_string() ### Not iterable
+---
+[x for x in "abc"]  ### Not iterable
+---
+all("abc")  ### Not iterable
+---
+any("abc")  ### Not iterable
+---
+reversed("abc")  ### Not iterable
+---
+zip("ab", "cd")  ### Not iterable
+
+# TODO(adonovan): tests for: {,r}index join {capitalize,lower,title,upper}

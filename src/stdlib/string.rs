@@ -123,6 +123,65 @@ fn format_capture<T: Iterator<Item = Value>>(
     }
 }
 
+// This does not exists in rust, split would cut the string incorrectly and split_whitespace
+// cannot take a n parameter.
+fn splitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
+    let mut v = Vec::new();
+    let mut cur = String::new();
+    let mut split = 1;
+    let mut eat_ws = true;
+    for c in s.chars() {
+        if split >= maxsplit && !eat_ws {
+            cur.push(c)
+        } else {
+            if c.is_whitespace() {
+                if !cur.is_empty() {
+                    v.push(cur);
+                    cur = String::new();
+                    split += 1;
+                    eat_ws = true;
+                }
+            } else {
+                eat_ws = false;
+                cur.push(c)
+            }
+        }
+    }
+    if !cur.is_empty() {
+        v.push(cur)
+    }
+    v
+}
+
+fn rsplitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
+    let mut v = Vec::new();
+    let mut cur = String::new();
+    let mut split = 1;
+    let mut eat_ws = true;
+    for c in s.chars().rev() {
+        if split >= maxsplit && !eat_ws {
+            cur.push(c)
+        } else {
+            if c.is_whitespace() {
+                if !cur.is_empty() {
+                    v.push(cur.chars().rev().collect());
+                    cur = String::new();
+                    split += 1;
+                    eat_ws = true;
+                }
+            } else {
+                eat_ws = false;
+                cur.push(c)
+            }
+        }
+    }
+    if !cur.is_empty() {
+        v.push(cur.chars().rev().collect());
+    }
+    v.reverse();
+    v
+}
+
 starlark_module!{global =>
     /// [string.elems](
     /// https://github.com/google/skylark/blob/3705afa472e466b8b061cce44b47c9ddc6db696d/doc/spec.md#string·elems
@@ -277,7 +336,7 @@ starlark_module!{global =>
     /// ```
     string.endswith(this, #suffix) {
         check_string!(suffix, endswith);
-        ok!(this.to_str().ends_with(this.to_str().as_str()))
+        ok!(this.to_str().ends_with(suffix.to_str().as_str()))
     }
 
     /// [string.find](
@@ -391,6 +450,11 @@ starlark_module!{global =>
                     result.push('{');
                     capture.clear();
                 },
+                ('{', "}") => starlark_err!(
+                    FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE,
+                    "Standalone '}' in format string".to_owned(),
+                    "standalone '}'".to_owned()
+                ),
                 ('{', ..) => starlark_err!(
                     FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE,
                     "Unmatched '{' in format string".to_owned(),
@@ -412,8 +476,8 @@ starlark_module!{global =>
                 },
                 (.., "}") => starlark_err!(
                     FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE,
-                    "Unmatched '}' in format string".to_owned(),
-                    "unmatched '}'".to_owned()
+                    "Standalone '}' in format string".to_owned(),
+                    "standalone '}'".to_owned()
                 ),
                 _ => capture.push(c)
             }
@@ -421,8 +485,8 @@ starlark_module!{global =>
         match capture.as_str() {
             "}" => starlark_err!(
                 FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE,
-                "Unmatched '}' in format string".to_owned(),
-                "unmatched '}'".to_owned()
+                "Standalone '}' in format string".to_owned(),
+                "standalone '}'".to_owned()
             ),
             "" => ok!(result),
             _ => starlark_err!(
@@ -735,7 +799,7 @@ starlark_module!{global =>
     /// ", ".join(["one", "two", "three"]) == "one, two, three"
     /// # )"#).unwrap());
     /// # assert!(starlark_default(r#"(
-    /// "a".join("ctmrn") == "catamaran"
+    /// "a".join("ctmrn".split_codepoints()) == "catamaran"
     /// # )"#).unwrap());
     /// ```
     string.join(this, #to_join) {
@@ -1000,31 +1064,34 @@ starlark_module!{global =>
     /// ```
     string.rsplit(this, #sep = None, #maxsplit = None) {
         let this = this.to_str();
-        let mut v : Vec<&str> =
-            if sep.get_type() == "NoneType" {
-                if maxsplit.get_type() == "NoneType" {
-                    this.trim()
-                        .rsplit(char::is_whitespace)
-                        .filter(|x| !x.is_empty())
-                        .collect()
-                } else {
-                    this.trim()
-                        .rsplitn(maxsplit.to_int()? as usize + 1, char::is_whitespace)
-                        .map(|x| x.trim())
-                        .filter(|x| !x.is_empty())
-                        .collect()
-                }
+        let maxsplit = if maxsplit.get_type() == "NoneType" {
+            None
+        } else {
+            let v = maxsplit.to_int()?;
+            if v < 0 {
+                None
             } else {
-                check_string!(sep, split);
-                let sep = sep.to_str();
-                if maxsplit.get_type() == "NoneType" {
-                    this.rsplit(sep.as_str()).collect()
-                } else {
-                    this.rsplitn(maxsplit.to_int()? as usize + 1, sep.as_str()).collect()
-                }
+                Some((v + 1) as usize)
+            }
+        };
+        if sep.get_type() == "NoneType" {
+            if maxsplit.is_none() {
+                let v : Vec<&str> = this.split_whitespace().collect();
+                ok!(v)
+            } else {
+                ok!(rsplitn_whitespace(&this, maxsplit.unwrap()))
+            }
+        } else {
+            check_string!(sep, split);
+            let sep = sep.to_str();
+            let mut v : Vec<&str> = if maxsplit.is_none() {
+                this.rsplit(sep.as_str()).collect()
+            } else {
+                this.rsplitn(maxsplit.unwrap(), sep.as_str()).collect()
             };
-        v.reverse();
-        ok!(v)
+            v.reverse();
+            ok!(v)
+        };
     }
 
     /// [string.rstrip](
@@ -1089,24 +1156,30 @@ starlark_module!{global =>
     /// ```
     string.split(this, #sep = None, #maxsplit = None) {
         let this = this.to_str();
+        let maxsplit = if maxsplit.get_type() == "NoneType" {
+            None
+        } else {
+            let v = maxsplit.to_int()?;
+            if v < 0 {
+                None
+            } else {
+                Some((v + 1) as usize)
+            }
+        };
         let v : Vec<&str> =
             if sep.get_type() == "NoneType" {
-                if maxsplit.get_type() == "NoneType" {
-                    this.trim().split(char::is_whitespace).filter(|x| !x.is_empty()).collect()
+                if maxsplit.is_none() {
+                    this.split_whitespace().collect()
                 } else {
-                    this.trim()
-                        .splitn(maxsplit.to_int()? as usize + 1, char::is_whitespace)
-                        .map(|x| x.trim())
-                        .filter(|x| !x.is_empty())
-                        .collect()
+                    ok!(splitn_whitespace(&this, maxsplit.unwrap()))
                 }
             } else {
                 check_string!(sep, split);
                 let sep = sep.to_str();
-                if maxsplit.get_type() == "NoneType" {
+                if maxsplit.is_none() {
                     this.split(sep.as_str()).collect()
                 } else {
-                    this.splitn(maxsplit.to_int()? as usize + 1, sep.as_str()).collect()
+                    this.splitn(maxsplit.unwrap(), sep.as_str()).collect()
                 }
             };
         ok!(v)
@@ -1210,7 +1283,7 @@ starlark_module!{global =>
     /// ```
     string.startswith(this, #prefix) {
         check_string!(prefix, startswith);
-        ok!(this.to_str().starts_with(this.to_str().as_str()))
+        ok!(this.to_str().starts_with(prefix.to_str().as_str()))
     }
 
     /// [string.strip](
@@ -1520,7 +1593,7 @@ mod tests {
     #[test]
     fn test_join() {
         starlark_ok!(r#"(", ".join(["one", "two", "three"]) == "one, two, three")"#);
-        starlark_ok!(r#"("a".join("ctmrn") == "catamaran")"#);
+        starlark_ok!(r#"("a".join("ctmrn".split_codepoints()) == "catamaran")"#);
     }
 
     #[test]
