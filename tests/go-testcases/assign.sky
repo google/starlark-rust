@@ -1,0 +1,207 @@
+# Tests of Skylark assignment.
+
+# This is a "chunked" file: each "---" effectively starts a new file.
+
+a, b, c = 1, 2, 3
+assert_eq(a, 1)
+assert_eq(b, 2)
+assert_eq(c, 3)
+
+---
+(x,) = 1         ### len() not supported for type int
+---
+a, b, c = 1, 2   ### Unpacked
+---
+a, b = 1, 2, 3   ### Unpacked
+---
+a, b = (1,)      ### Unpacked
+---
+(a,) = [1, 2, 3] ### Unpacked
+---
+[a, b, c] = [1, 2, 3]
+assert_eq(a, 1)
+assert_eq(b, 2)
+assert_eq(c, 3)
+---
+[a, b, c,] = 1  ### len() not supported for type int
+---
+[a, b, c] = 1, 2  ### Unpacked
+---
+[a, b] = 1, 2, 3  ### Unpacked
+---
+[a, b] = (1,)  ### Unpacked
+---
+[a, b, c] = (1, 2, 3)
+assert_eq(a, 1)
+assert_eq(b, 2)
+assert_eq(c, 3)
+
+(d, e, f) = [1, 2, 3]
+assert_eq(d, 1)
+assert_eq(e, 2)
+assert_eq(f, 3)
+
+[g, h, (i, j)] = (1, 2, [3, 4])
+assert_eq(g, 1)
+assert_eq(h, 2)
+assert_eq(i, 3)
+assert_eq(j, 4)
+
+(k, l, [m, n]) = [1, 2, (3, 4)]
+assert_eq(k, 1)
+assert_eq(l, 2)
+assert_eq(m, 3)
+assert_eq(n, 4)
+
+---
+def assignment():
+  a = [1, 2, 3]
+  a[1] = 5
+  assert_eq(a, [1, 5, 3])
+  a[-2] = 2
+  assert_eq(a, [1, 2, 3])
+  assert_eq("%d %d" % (5, 7), "5 7")
+  x={}
+  x[1] = 2
+  x[1] += 3
+  assert_eq(x[1], 5)
+
+assignment()
+---
+x = {}
+x[(1, "abc", {})] = 1  ### not hashable
+---
+# augmented assignment
+
+def f():
+  x = 1
+  x += 1
+  assert_eq(x, 2)
+  x *= 3
+  assert_eq(x, 6)
+f()
+
+---
+# effects of evaluating LHS occur only once
+
+count = [0] # count[0] is the number of calls to f
+
+def f():
+  count[0] += 1
+  return count[0]
+
+x = [1, 2, 3]
+x[f()] += 1
+
+assert_eq(x, [1, 3, 3]) # sole call to f returned 1
+assert_eq(count[0], 1) # f was called only once
+
+---
+# Order of evaluation.
+
+calls = []
+
+def f(name, result):
+  calls.append(name)
+  return result
+
+# The right side is evaluated before the left in an ordinary assignment.
+calls.clear()
+f("array", [0])[f("index", 0)] = f("rhs", 0)
+assert_eq(calls, ["rhs", "array", "index"])
+
+calls.clear()
+f("lhs1", [0])[0], f("lhs2", [0])[0] = f("rhs1", 0), f("rhs2", 0)
+assert_eq(calls, ["rhs1", "rhs2", "lhs1", "lhs2"])
+
+# Left side is evaluated first (and only once) in an augmented assignment.
+calls.clear()
+f("array", [0])[f("index", 0)] += f("addend", 1)
+assert_eq(calls, ["array", "index", "addend"])
+
+---
+# global referenced before assignment
+
+def f():
+   return g ### Variable was not found
+
+f()
+
+g = 1
+
+---
+printok = [False]
+
+def use_before_def():
+  print(x)
+
+use_before_def() ### Variable was not found
+
+---
+# What is that test? Why should it fails?
+
+x = [1]
+x.extend([2]) # ok
+
+def f():
+   x += [4] # # # Variable was not found?
+
+f()
+
+---
+
+z += 3 ### Variable was not found
+
+---
+# It's ok to define a global that shadows a built-in.
+
+
+assert_eq(type(list), "function")
+list = []
+assert_eq(type(list), "list")
+
+---
+# Is that something specific to Go? Is it actually in the java implem too?
+
+# All 'in x' expressions in a comprehension are evaluated
+# in the comprehension's lexical block.
+#
+# By contrast, Python yields [[1, 2], [1, 2]] because it evaluates
+# the first 'in x' in the environment enclosing the comprehension.
+x = [[1, 2]]
+_ = [x for x in x for y in x] # # # "local variable x referenced before assignment"
+
+---
+# A comprehension establishes a single new lexical block,
+# not one per 'for' clause.
+x = [1, 2]
+_ = [x for _ in [3] for x in x] # # # "local variable x referenced before assignment"
+
+---
+# assign singleton sequence to 1-tuple
+(x,) = (1,)
+assert_eq(x, 1)
+(y,) = [1]
+assert_eq(y, 1)
+
+# assign 1-tuple to variable
+z = (1,)
+assert_eq(type(z), "tuple")
+assert_eq(len(z), 1)
+assert_eq(z[0], 1)
+
+---
+# destucturing assigmnent in a for loop.
+def f():
+  res = []
+  for (x, y), z in [(["a", "b"], 3), (["c", "d"], 4)]:
+    res.append((x, y, z))
+  return res
+assert_eq(f(), [("a", "b", 3), ("c", "d", 4)])
+
+def g():
+  a = {}
+  for i, a[i] in [("one", 1), ("two", 2)]:
+    pass
+  return a
+assert_eq(g(), {"one": 1, "two": 2})

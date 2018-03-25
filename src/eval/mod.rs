@@ -225,14 +225,31 @@ impl FileLoader for () {
 
 // A trait to add an eval function to the AST elements
 trait Evaluate<T: FileLoader> {
+    // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
     fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult;
 
+    // An intermediate transformation that tries to evaluate parameters of function / indices.
+    // It is used to cache result of LHS in augmented assignment.
+    // This transformation by default should be a deep copy (clone).
+    fn transform(
+        &self,
+        context: &mut EvaluationContext<T>
+    ) -> Result<Box<Evaluate<T>>, EvalException>;
+
+    // Perform an assignment on the LHS represented by this AST element
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult;
 }
 
 impl<T: FileLoader> Evaluate<T> for AstString {
     fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
         Ok(Value::new(self.node.clone()))
+    }
+
+    fn transform(
+        &self,
+        _context: &mut EvaluationContext<T>
+    ) -> Result<Box<Evaluate<T>>, EvalException> {
+        Ok(Box::new(self.clone()))
     }
 
     fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
@@ -245,12 +262,19 @@ impl<T: FileLoader> Evaluate<T> for AstInt {
         Ok(Value::new(self.node.clone()))
     }
 
+    fn transform(
+        &self,
+        _context: &mut EvaluationContext<T>
+    ) -> Result<Box<Evaluate<T>>, EvalException> {
+        Ok(Box::new(self.clone()))
+    }
+
     fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
         Err(EvalException::IncorrectLeftValue(self.span))
     }
 }
 
-fn eval_comprehension_clause<'a, T: FileLoader>(
+fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
     context: &mut EvaluationContext<T>,
     e: &AstExpr,
     clauses: &[AstClause],
@@ -285,7 +309,118 @@ fn eval_comprehension_clause<'a, T: FileLoader>(
     Ok(result)
 }
 
-impl<T: FileLoader> Evaluate<T> for AstExpr {
+enum TransformedExpr<T: FileLoader> {
+    Dot(Value, String, Span),
+    ArrayIndirection(Value, Value, Span),
+    List(Vec<Box<Evaluate<T>>>, Span),
+    Tuple(Vec<Box<Evaluate<T>>>, Span),
+}
+
+impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
+    fn transform(
+        &self,
+        _context: &mut EvaluationContext<T>
+    ) -> Result<Box<Evaluate<T>>, EvalException> {
+        panic!("Transform should not be called on an already transformed object");
+    }
+
+    fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
+        let ok = Ok(Value::new(None));
+        match self {
+            &TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
+                let span = span.clone();
+                let l = v.len() as i64;
+                let nvl = t!(new_value.length(), span span)?;
+                if nvl != l {
+                    Err(EvalException::IncorrectNumberOfValueToUnpack(
+                        span,
+                        l,
+                        nvl,
+                    ))
+                } else {
+                    let mut r = Vec::new();
+                    let mut it1 = v.iter();
+                    // TODO: the span here should probably include the rvalue
+                    let mut it2 = t!(new_value.into_iter(), span span)?;
+                    for _ in 0..l {
+                        r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
+                    }
+                    ok
+                }
+            }
+            &TransformedExpr::Dot(ref e, ref s, ref span) => {
+                let span = span.clone();
+                t!(e.clone().set_attr(&s, new_value), span span)?;
+                ok
+            }
+            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+                let span = span.clone();
+                t!(e.clone().set_at(idx.clone(), new_value), span span)?;
+                ok
+            }
+        }
+    }
+
+    fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
+        match self {
+            &TransformedExpr::Tuple(ref v, ..) => {
+                let r = eval_vector!(v, context);
+                Ok(tuple::Tuple::new(r.as_slice()))
+            },
+            &TransformedExpr::List(ref v, ..) => {
+                let r = eval_vector!(v, context);
+                Ok(Value::from(r))
+            },
+            &TransformedExpr::Dot(ref left, ref s, ref span) => {
+                if let Some(v) = context.env.get_type_value(left, &s) {
+                    if v.get_type() == "function" {
+                        // Insert self so the method see the object it is acting on
+                        Ok(function::Function::new_self_call(left.clone(), v))
+                    } else {
+                        Ok(v)
+                    }
+                } else {
+                    t!(left.get_attr(&s), span span.clone())
+                }
+            },
+            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) =>
+                t!(e.at(idx.clone()), span span.clone()),
+        }
+    }
+}
+
+impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
+    fn transform(
+        &self,
+        context: &mut EvaluationContext<T>
+    ) -> Result<Box<Evaluate<T>>, EvalException> {
+        match self.node {
+            Expr::Dot(ref e, ref s)
+                => Ok(Box::new(TransformedExpr::Dot(e.eval(context)?, s.node.clone(), self.span))),
+            Expr::ArrayIndirection(ref e, ref idx)
+                => Ok(Box::new(TransformedExpr::ArrayIndirection(
+                    e.eval(context)?,
+                    idx.eval(context)?,
+                    self.span
+                ))),
+            Expr::List(ref v) => {
+                let mut r = Vec::new();
+                for val in v.iter() {
+                    r.push(val.transform(context)?)
+                }
+                Ok(Box::new(TransformedExpr::List(r, self.span)))
+            }
+            Expr::Tuple(ref v) => {
+                let mut r = Vec::new();
+                for val in v.iter() {
+                    r.push(val.transform(context)?)
+                }
+                Ok(Box::new(TransformedExpr::Tuple(r, self.span)))
+            }
+            _ => Ok(Box::new(self.clone())),
+        }
+    }
+
     #[allow(unconditional_recursion)]
     fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
         match self.node {
@@ -512,8 +647,7 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
                 ok
             }
             Expr::ArrayIndirection(ref e, ref idx) => {
-                let idx = idx.eval(context)?;
-                t!(e.eval(context)?.set_at(idx, new_value), self)?;
+                t!(e.eval(context)?.set_at(idx.eval(context)?, new_value), self)?;
                 ok
             }
             _ => Err(EvalException::IncorrectLeftValue(self.span)),
@@ -521,7 +655,7 @@ impl<T: FileLoader> Evaluate<T> for AstExpr {
     }
 }
 
-impl<T: FileLoader> Evaluate<T> for AstStatement {
+impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
     fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
         match self.node {
             Statement::Break => Err(EvalException::Break(self.span)),
@@ -537,31 +671,37 @@ impl<T: FileLoader> Evaluate<T> for AstStatement {
                 lhs.set(context, rhs)
             }
             Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
+                let lhs = lhs.transform(context)?;
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.add(r), self)?)
             }
             Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
+                let lhs = lhs.transform(context)?;
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.sub(r), self)?)
             }
             Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
+                let lhs = lhs.transform(context)?;
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.mul(r), self)?)
             }
             Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
+                let lhs = lhs.transform(context)?;
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.div(r), self)?)
             }
             Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
+                let lhs = lhs.transform(context)?;
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.floor_div(r), self)?)
             }
             Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
+                let lhs = lhs.transform(context)?;
                 let l = lhs.eval(context)?;
                 let r = rhs.eval(context)?;
                 lhs.set(context, t!(l.percent(r), self)?)
@@ -642,6 +782,13 @@ impl<T: FileLoader> Evaluate<T> for AstStatement {
         }
     }
 
+    fn transform(
+        &self,
+        _context: &mut EvaluationContext<T>
+    ) -> Result<Box<Evaluate<T>>, EvalException> {
+        Ok(Box::new(self.clone()))
+    }
+
     fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
         Err(EvalException::IncorrectLeftValue(self.span))
     }
@@ -697,7 +844,7 @@ pub fn eval_def(
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
-fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoader>(
+fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
@@ -725,7 +872,7 @@ fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoa
 /// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
-pub fn eval<T: FileLoader>(
+pub fn eval<T: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     content: &str,
@@ -749,7 +896,7 @@ pub fn eval<T: FileLoader>(
 /// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
-pub fn eval_file<T: FileLoader>(
+pub fn eval_file<T: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     build: bool,

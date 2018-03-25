@@ -56,7 +56,5 @@ and `cargo run` to run the command-line interpreter.
   - Recoverable errors (don't stop at the first error, continue parsing).
 * Evaluation:
   - Static rewrite of the AST before evaluation (e.g. for constant values)
-  - Rewrite of `+=` so that we do not recompute `index()` in `a[index()] += 1`
-    (right now `+=` is equivalent to `a[index()] = a[index()] + 1`).
 * Awesome feature:
   - Implement a debugging protocol
