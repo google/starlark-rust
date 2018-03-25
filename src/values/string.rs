@@ -252,11 +252,21 @@ impl TypedValue for String {
                     Some('r') => res += &var.to_repr(), // repr(x)
                     // signed integer decimal
                     Some('d') | Some('i') => res += &var.to_int()?.to_string(),
-                    Some('o') => res += &format!("{:o}", var.to_int()?), // signed octal
+                    // signed octal
+                    Some('o') => {
+                        let x = var.to_int()?;
+                        res += &format!("{}{:o}", if x.is_negative() { "-" } else { "" }, x.abs());
+                    }
                     // signed hexadecimal, lowercase
-                    Some('x') => res += &format!("{:x}", var.to_int()?),
+                    Some('x') => {
+                        let x = var.to_int()?;
+                        res += &format!("{}{:x}", if x.is_negative() { "-" } else { "" }, x.abs());
+                    }
                     // signed hexadecimal, uppercase
-                    Some('X') => res += &format!("{:X}", var.to_int()?),
+                    Some('X') => {
+                        let x = var.to_int()?;
+                        res += &format!("{}{:X}", if x.is_negative() { "-" } else { "" }, x.abs());
+                    }
                     // x for string, chr(x) for int
                     Some('c') => {
                         match var.get_type() {

@@ -432,21 +432,28 @@ starlark_module!{global_functions =>
     /// specified by name.
     ///
     /// `int()` with no arguments returns 0.
-    int(#a, #radix = None) {
+    int(#a, base = None) {
         if a.get_type() == "string" {
             let s = a.to_str();
-            let radix = if radix.get_type() == "NoneType" { 0 } else { radix.to_int()? };
-            if radix == 1 || radix < 0 || radix > 36 {
+            let base = if base.get_type() == "NoneType" { 0 } else { base.to_int()? };
+            if base == 1 || base < 0 || base > 36 {
                 starlark_err!(
                     INT_CONVERSION_FAILED_ERROR_CODE,
                     format!(
                         "{} is not a valid base, int() base must be >= 2 and <= 36",
-                        radix,
+                        base,
                     ),
-                    format!("Invalid base {}", radix)
+                    format!("Invalid base {}", base)
                 )
             }
-            let radix = if radix == 0 {
+            let (sign, s) = {
+                match s.chars().next() {
+                    Some('+') => (1, s.get(1..).unwrap().to_string()),
+                    Some('-') => (-1, s.get(1..).unwrap().to_string()),
+                    _ => (1, s)
+                }
+            };
+            let base = if base == 0 {
                 match s.clone().get(0..2) {
                     Some("0b") | Some("0B") => 2,
                     Some("0o") | Some("0O") => 8,
@@ -454,8 +461,8 @@ starlark_module!{global_functions =>
                     Some(x) => if x.get(0..0).unwrap() == "0" { 8 } else { 10 },
                     None => 10
                 }
-            } else { radix as u32 };
-            let s = match radix {
+            } else { base as u32 };
+            let s = match base {
                 16 => if s.starts_with("0x") || s.starts_with("0X") {
                     s.get(2..).unwrap().to_string()
                 } else { s },
@@ -473,25 +480,25 @@ starlark_module!{global_functions =>
                 } else { s },
                 _ => s
             };
-            match i64::from_str_radix(&s, radix) {
-                Ok(i) => Ok(Value::new(i)),
+            match i64::from_str_radix(&s, base) {
+                Ok(i) => Ok(Value::new(sign * i)),
                 Err(x) => starlark_err!(
                     INT_CONVERSION_FAILED_ERROR_CODE,
                     format!(
                         "{} is not a valid number in base {}: {}",
                         a.to_repr(),
-                        radix,
+                        base,
                         x.description(),
                     ),
-                    format!("Not a base {} integer", radix)
+                    format!("Not a base {} integer", base)
                 ),
             }
         } else {
-            if radix.get_type() != "NoneType" {
+            if base.get_type() != "NoneType" {
                 starlark_err!(
                     INT_CONVERSION_FAILED_ERROR_CODE,
                     "int() cannot convert non-string with explicit base".to_owned(),
-                    format!("Explict radix '{}' provided with non-string", radix.to_repr())
+                    format!("Explict base '{}' provided with non-string", base.to_repr())
                 )
             }
             Ok(Value::new(a.to_int()?))

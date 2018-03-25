@@ -1,0 +1,166 @@
+# Tests of Skylark 'int'
+
+# basic arithmetic
+assert_eq(0 - 1, -1)
+assert_eq(0 + 1, +1)
+assert_eq(1 + 1, 2)
+assert_eq(5 + 7, 12)
+assert_eq(5 * 7, 35)
+assert_eq(5 - 7, -2)
+
+# truth
+assert_(123)
+assert_(-1)
+assert_(not 0)
+
+# floored division
+# (For real division, see float.sky.)
+assert_eq(100 // 7, 14)
+assert_eq(100 // -7, -15)
+assert_eq(-100 // 7, -15) # NB: different from Go/Java
+assert_eq(-100 // -7, 14) # NB: different from Go/Java
+assert_eq(98 // 7, 14)
+assert_eq(98 // -7, -14)
+assert_eq(-98 // 7, -14)
+assert_eq(-98 // -7, 14)
+
+# remainder
+assert_eq(100 % 7, 2)
+assert_eq(100 % -7, -5) # NB: different from Go/Java
+assert_eq(-100 % 7, 5) # NB: different from Go/Java
+assert_eq(-100 % -7, -2)
+assert_eq(98 % 7, 0)
+assert_eq(98 % -7, 0)
+assert_eq(-98 % 7, 0)
+assert_eq(-98 % -7, 0)
+
+# compound assignment
+def compound():
+  x = 1
+  x += 1
+  assert_eq(x, 2)
+  x -= 3
+  assert_eq(x, -1)
+  x *= 39
+  assert_eq(x, -39)
+  x //= 4
+  assert_eq(x, -10)
+  x /= -2
+  assert_eq(x, 5)
+  x %= 3
+  assert_eq(x, 2)
+
+compound()
+
+# int conversion
+# See float.sky for float-to-int conversions.
+# We follow Python 3 here, but I can't see the method in its madness.
+# int from bool/int/float
+assert_eq(int(False), 0)
+assert_eq(int(True), 1)
+assert_eq(int(3), 3)
+---
+int(3, base=10) ### non-string with explicit base
+---
+int(True, 10) ### non-string with explicit base
+---
+# int from string, base implicitly 10
+# The original number here was taking 72bits, Does go version has int that large?
+assert_eq(int("10000000000000000"), 100000000 * 100000000)
+assert_eq(int("-10000000000000000"), -100000000 * 100000000)
+assert_eq(int("123"), 123)
+assert_eq(int("-123"), -123)
+assert_eq(int("0123"), 123) # not octal
+assert_eq(int("-0123"), -123)
+# The followup conversions are considered errors in the go version
+# but are actually ok according to the java implementation. The go
+# version use base = 10 by default whereas the java implementation
+# use base = 0 by default.
+assert_eq(int("0x12"), 0x12)
+assert_eq(int("0o123"), 0o123)
+assert_eq(int("-0x12"), -0x12)
+assert_eq(int("-0o123"), -0o123)
+# int from string, explicit base
+assert_eq(int("11", base=9), 10)
+assert_eq(int("-11", base=9), -10)
+assert_eq(int("10011", base=2), 19)
+assert_eq(int("-10011", base=2), -19)
+assert_eq(int("123", 8), 83)
+assert_eq(int("-123", 8), -83)
+assert_eq(int("0123", 8), 83) # redundant zeros permitted
+assert_eq(int("-0123", 8), -83)
+assert_eq(int("00123", 8), 83)
+assert_eq(int("-00123", 8), -83)
+assert_eq(int("0o123", 8), 83)
+assert_eq(int("-0o123", 8), -83)
+assert_eq(int("123", 7), 66) # 1*7*7 + 2*7 + 3
+assert_eq(int("-123", 7), -66)
+assert_eq(int("12", 16), 18)
+assert_eq(int("-12", 16), -18)
+assert_eq(int("0x12", 16), 18)
+assert_eq(int("-0x12", 16), -18)
+assert_eq(0x10000001 * 0x10000001, 0x100000020000001)
+assert_eq(int("1010", 2), 10)
+assert_eq(int("111111101", 2), 509)
+assert_eq(int("0b0101", 0), 5)
+assert_eq(int("0b00000", 0), 0)
+assert_eq(11111111 * 11111111, 123456787654321)
+---
+int("0x123", 8)   ### Not a base 8 integer
+---
+int("-0x123", 8)  ### Not a base 8 integer
+---
+int("0o123", 16)  ### Not a base 16 integer
+---
+int("-0o123", 16) ### Not a base 16 integer
+---
+int("0x110", 2)   ### Not a base 2 integer
+---
+# int from string, auto detect base
+assert_eq(int("123", 0), 123)
+assert_eq(int("+123", 0), +123)
+assert_eq(int("-123", 0), -123)
+assert_eq(int("0x12", 0), 18)
+assert_eq(int("+0x12", 0), +18)
+assert_eq(int("-0x12", 0), -18)
+assert_eq(int("0o123", 0), 83)
+assert_eq(int("+0o123", 0), +83)
+assert_eq(int("-0o123", 0), -83)
+# The go implementation doesn't support the following, why?
+assert_eq(int("0123", 0), 123)
+assert_eq(int("-0123", 0), -123)
+
+# comparisons
+# TODO(adonovan): test: < > == != etc
+assert_(-2 < -1)
+assert_(-1 < 0)
+assert_(0 < 1)
+assert_(1 < 2)
+assert_(2 >= 2)
+assert_(2 > 1)
+assert_(1 >= 1)
+assert_(1 > 0)
+assert_(0 >= 0)
+assert_(0 > -1)
+assert_(-1 >= -1)
+assert_(-1 > -2)
+
+# precision
+maxint64 = 9223372036854775807 # = 2^63
+minint64 = -maxint64 - 1       # = -2^64
+assert_eq(str(maxint64), "9223372036854775807")
+assert_eq(str(maxint64+1), "-9223372036854775808")
+assert_eq(str(minint64), "-9223372036854775808")
+assert_eq(str(minint64-1), "9223372036854775807")
+assert_eq(str(minint64 * minint64), "0")
+
+# string formatting
+assert_eq("%o %x %d" % (0o755, 0xDEADBEEF, 42), "755 deadbeef 42")
+nums = [-95, -1, 0, +1, +95]
+assert_eq(' '.join(["%o" % x for x in nums]), "-137 -1 0 1 137")
+assert_eq(' '.join(["%d" % x for x in nums]), "-95 -1 0 1 95")
+assert_eq(' '.join(["%i" % x for x in nums]), "-95 -1 0 1 95")
+assert_eq(' '.join(["%x" % x for x in nums]), "-5f -1 0 1 5f")
+assert_eq(' '.join(["%X" % x for x in nums]), "-5F -1 0 1 5F")
+assert_eq("%o %x %d" % (123, 123, 123), "173 7b 123")
+assert_eq("%d" % True, "1")
