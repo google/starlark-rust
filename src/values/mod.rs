@@ -850,24 +850,6 @@ macro_rules! default_compare {
     }
 }
 
-/// Macro for numeric type, not for export.
-macro_rules! arithm_op {
-    ($v1: ident $op: ident $v2: ident) => {
-        match $v2.get_type() {
-            "int" | "bool" => {
-                let a = $v1.to_int().unwrap();
-                let b = $v2.to_int().unwrap();
-                return Ok(Value::new(a . $op (b)))
-            },
-            _ => Err(ValueError::OperationNotSupported {
-                op: stringify!($op).to_owned(),
-                left: $v1.get_type().to_owned(),
-                right: Some($v2.get_type().to_owned()),
-            })
-        }
-    }
-}
-
 /// Declare the value as immutable.
 #[macro_export]
 macro_rules! immutable {
@@ -1092,16 +1074,25 @@ impl TypedValue for i64 {
         Ok(Value::new(-*self))
     }
     fn add(&self, other: Value) -> ValueResult {
-        arithm_op!(self wrapping_add other)
+        match other.get_type() {
+            "int" | "bool" => Ok(Value::new(self.wrapping_add(other.to_int().unwrap()))),
+            _ => other.add(Value::new(*self))
+        }
     }
     fn sub(&self, other: Value) -> ValueResult {
-        arithm_op!(self wrapping_sub other)
+        match other.get_type() {
+            "int" | "bool" => Ok(Value::new(self.wrapping_sub(other.to_int().unwrap()))),
+            _ => Err(ValueError::OperationNotSupported{
+                op: "-".to_owned(),
+                left: "int".to_owned(),
+                right: Some(other.get_type().to_owned())
+            })
+        }
     }
     fn mul(&self, other: Value) -> ValueResult {
-        if other.get_type() == "string" {
-            other.mul(Value::new(*self))
-        } else {
-            arithm_op!(self wrapping_mul other)
+        match other.get_type() {
+            "int" | "bool" => Ok(Value::new(self.wrapping_mul(other.to_int().unwrap()))),
+            _ => other.mul(Value::new(*self))
         }
     }
     fn percent(&self, other: Value) -> ValueResult {
@@ -1173,16 +1164,28 @@ impl TypedValue for bool {
         Ok(Value::new(-self.to_int().unwrap()))
     }
     fn add(&self, other: Value) -> ValueResult {
-        arithm_op!(self wrapping_add other)
+        match other.get_type() {
+            "int" | "bool"
+                => Ok(Value::new(self.to_int().unwrap().wrapping_add(other.to_int().unwrap()))),
+            _ => other.add(Value::new(*self))
+        }
     }
     fn sub(&self, other: Value) -> ValueResult {
-        arithm_op!(self wrapping_sub other)
+        match other.get_type() {
+            "int" | "bool"
+                => Ok(Value::new(self.to_int().unwrap().wrapping_sub(other.to_int().unwrap()))),
+            _ => Err(ValueError::OperationNotSupported{
+                op: "-".to_owned(),
+                left: "int".to_owned(),
+                right: Some(other.get_type().to_owned())
+            })
+        }
     }
     fn mul(&self, other: Value) -> ValueResult {
-        if other.get_type() == "string" {
-            other.mul(Value::new(*self))
-        } else {
-            arithm_op!(self wrapping_mul other)
+        match other.get_type() {
+            "int" | "bool"
+                => Ok(Value::new(self.to_int().unwrap().wrapping_mul(other.to_int().unwrap()))),
+            _ => other.mul(Value::new(*self))
         }
     }
     fn percent(&self, other: Value) -> ValueResult {

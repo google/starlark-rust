@@ -213,6 +213,15 @@ impl<T: FileLoader> EvaluationContext<T> {
             map,
         }
     }
+
+    fn child(&self, name: &str) -> EvaluationContext<()> {
+        EvaluationContext {
+            env: self.env.child(name),
+            call_stack: self.call_stack.clone(),
+            loader: (),
+            map: self.map.clone(),
+        }
+    }
 }
 
 // A dummy file loader for inside a function call
@@ -592,7 +601,8 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
             }
             Expr::ListComprehension(ref e, ref clauses) => {
                 let mut r = Vec::new();
-                for v in eval_comprehension_clause(context, e, clauses.as_slice())? {
+                let mut context = context.child("list_comprehension");
+                for v in eval_comprehension_clause(&mut context, e, clauses.as_slice())? {
                     r.push(v.clone());
                 }
                 Ok(Value::from(r))
@@ -603,7 +613,8 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                     span: k.span.merge(v.span),
                     node: Expr::Tuple(vec![k.clone(), v.clone()]),
                 });
-                for e in eval_comprehension_clause(context, &tuple, clauses.as_slice())? {
+                let mut context = context.child("dict_comprehension");
+                for e in eval_comprehension_clause(&mut context, &tuple, clauses.as_slice())? {
                     let k = t!(e.at(Value::from(0)), tuple)?;
                     let v = t!(e.at(Value::from(1)), tuple)?;
                     r.insert(k, v);

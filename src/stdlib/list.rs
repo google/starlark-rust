@@ -106,7 +106,6 @@ starlark_module!{global =>
     /// # )"#).unwrap());
     /// ```
     list.extend(this, #other) {
-        check_type!(other, "list.extend", list);
         list::List::mutate(&this, &|x| {
             x.extend(other.into_iter()?);
             ok!(None)

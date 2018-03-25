@@ -305,4 +305,13 @@ mod tests {
             Value::from(vec![1, 2, 3, 1, 2, 3, 1, 2, 3])
         );
     }
+
+    #[test]
+    fn test_value_alias() {
+        let v1 = Value::from(vec![1,2,3]);
+        let mut v2 = v1.clone();
+        v2.set_at(Value::from(2), Value::from(4)).unwrap();
+        assert_eq!(v2.to_str(), "[1, 2, 4]");
+        assert_eq!(v1.to_str(), "[1, 2, 4]");
+    }
 }
