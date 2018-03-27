@@ -14,8 +14,6 @@
 
 //! Define the list type of Starlark
 use values::*;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
 use std::cmp::Ordering;
 use std::borrow::BorrowMut;
 
@@ -113,13 +111,6 @@ impl TypedValue for List {
     }
     fn to_bool(&self) -> bool {
         !self.content.is_empty()
-    }
-    fn get_hash(&self) -> Result<u64, ValueError> {
-        let mut s = DefaultHasher::new();
-        for v in self.content.iter() {
-            s.write_u64(v.get_hash()?)
-        }
-        Ok(s.finish())
     }
 
     fn compare(&self, other: &Value) -> Ordering {
@@ -263,7 +254,7 @@ impl TypedValue for List {
         }
     }
 
-    not_supported!(attr, function);
+    not_supported!(attr, function, get_hash);
     not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
 }
 

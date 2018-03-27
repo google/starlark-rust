@@ -22,7 +22,7 @@ use codemap::CodeMap;
 use codemap_diagnostic::{Diagnostic, Emitter, ColorConfig};
 
 use values::*;
-use linked_hash_map::LinkedHashMap;
+use values::dict::Dictionary;
 use environment::Environment;
 
 // Errors -- CR = Critical Runtime
@@ -228,13 +228,13 @@ starlark_module!{global_functions =>
     /// # )").unwrap());
     /// ```
     dict(#a = None, **kwargs) {
-        let mut map = LinkedHashMap::new();
+        let mut map = Dictionary::new();
         match a.get_type() {
             "NoneType" => (),
             "dict" => {
                 for k in a.into_iter()? {
                     let v = a.at(k.clone())?;
-                    map.insert(k, v);
+                    map.set_at(k, v)?;
                 }
             },
             _ => {
@@ -253,7 +253,7 @@ starlark_module!{global_functions =>
                                     "Non-pair element in first argument".to_owned()
                                 );
                             }
-                            map.insert(first.unwrap(), second.unwrap());
+                            map.set_at(first.unwrap(), second.unwrap())?;
                        }
                        Err(..) =>
                            starlark_err!(
@@ -269,9 +269,9 @@ starlark_module!{global_functions =>
            }
        }
        for el in kwargs.into_iter()? {
-           map.insert(el.clone(), kwargs.at(el)?);
+           map.set_at(el.clone(), kwargs.at(el)?)?;
        }
-       Ok(Value::from(map))
+       Ok(map)
     }
 
     /// [dir](

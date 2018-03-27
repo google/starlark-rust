@@ -36,7 +36,7 @@ assert_(4 not in (1, 2, 3))
 assert_(123 in {123: ""})
 assert_(456 not in {123:""})
 ---
-assert_([] not in {123: ""})  # in go it returns unhashable, but that should not matter?
+assert_([] not in {123: ""})  ### Not hashable
 ---
 
 # sorted

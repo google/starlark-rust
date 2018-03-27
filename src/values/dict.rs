@@ -193,12 +193,37 @@ impl TypedValue for Dictionary {
         if self.frozen {
             Err(ValueError::CannotMutateImmutableValue)
         } else {
+            {
+                if let Some(x) = self.content.get_mut(&index) {
+                    *x = new_value;
+                    return Ok(())
+                }
+            }
             self.content.insert(index, new_value);
             Ok(())
         }
     }
 
-    not_supported!(to_int, get_hash, slice, attr, function, binop);
+    fn add(&self, other: Value) -> ValueResult {
+        if other.get_type() == "dict" {
+            let mut result = Dictionary {
+                frozen: false,
+                content: LinkedHashMap::new(),
+            };
+            for (k, v) in self.content.iter() {
+                result.content.insert(k.clone(), v.clone());
+            }
+            for k in other.into_iter()? {
+                result.content.insert(k.clone(), other.at(k)?.clone());
+            }
+            Ok(Value::new(result))
+        } else {
+            Err(ValueError::IncorrectParameterType)
+        }
+    }
+
+    not_supported!(plus, minus, sub, mul, div, pipe, percent, floor_div);
+    not_supported!(to_int, get_hash, slice, attr, function);
 }
 
 #[cfg(test)]
@@ -207,10 +232,11 @@ mod tests {
 
     #[test]
     fn test_mutate_dict() {
-        let mut map = HashMap::<Value, Value>::new();
+        let mut map = LinkedHashMap::<Value, Value>::new();
         map.insert(Value::from(1), Value::from(2));
         map.insert(Value::from(2), Value::from(4));
         let mut d = Value::from(map);
+        assert_eq!("{1: 2, 2: 4}", d.to_str());
         d.set_at(Value::from(2), Value::from(3)).unwrap();
         assert_eq!("{1: 2, 2: 3}", d.to_str());
         d.set_at(Value::from((3, 4)), Value::from(5)).unwrap();
