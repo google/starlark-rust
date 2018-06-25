@@ -113,19 +113,19 @@ impl TypedValue for List {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value) -> Ordering {
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "list" {
-            let mut iter1 = self.into_iter().unwrap();
-            let mut iter2 = other.into_iter().unwrap();
+            let mut iter1 = self.into_iter()?;
+            let mut iter2 = other.into_iter()?;
             loop {
                 match (iter1.next(), iter2.next()) {
-                    (None, None) => return Ordering::Equal,
-                    (None, Some(..)) => return Ordering::Less,
-                    (Some(..), None) => return Ordering::Greater,
+                    (None, None) => return Ok(Ordering::Equal),
+                    (None, Some(..)) => return Ok(Ordering::Less),
+                    (Some(..), None) => return Ok(Ordering::Greater),
                     (Some(v1), Some(v2)) => {
-                        let r = v1.compare(&v2);
+                        let r = v1.compare(&v2, recursion + 1)?;
                         if r != Ordering::Equal {
-                            return r;
+                            return Ok(r);
                         }
                     }
                 }
@@ -145,9 +145,12 @@ impl TypedValue for List {
     }
 
     fn is_in(&self, other: &Value) -> ValueResult {
-        Ok(Value::new(self.content.iter().any(
-            |x| x.compare(other) == Ordering::Equal,
-        )))
+        for x in self.content.iter() {
+            if x.compare(other, 0)? == Ordering::Equal {
+                return Ok(Value::new(true))
+            }
+        }
+        Ok(Value::new(false))
     }
 
     fn is_descendant(&self, other: &TypedValue) -> bool {

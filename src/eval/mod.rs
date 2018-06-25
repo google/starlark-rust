@@ -15,6 +15,7 @@
 //! Evaluation environment, provide converters from Ast* element to value
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::cmp::Ordering;
 use syntax::ast::*;
 use syntax::errors::SyntaxError;
 use syntax::parser::{parse_file, parse_lexer, parse};
@@ -532,24 +533,36 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 let l = l.eval(context)?;
                 Ok(if !l.to_bool() { l } else { r.eval(context)? })
             }
-            Expr::Op(BinOp::EqualsTo, ref l, ref r) => Ok(Value::new(
-                l.eval(context)? == r.eval(context)?,
-            )),
-            Expr::Op(BinOp::Different, ref l, ref r) => Ok(Value::new(
-                l.eval(context)? != r.eval(context)?,
-            )),
-            Expr::Op(BinOp::LowerThan, ref l, ref r) => Ok(Value::new(
-                l.eval(context)? < r.eval(context)?,
-            )),
-            Expr::Op(BinOp::GreaterThan, ref l, ref r) => Ok(Value::new(
-                l.eval(context)? > r.eval(context)?,
-            )),
-            Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => Ok(Value::new(
-                l.eval(context)? <= r.eval(context)?,
-            )),
-            Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => Ok(Value::new(
-                l.eval(context)? >= r.eval(context)?,
-            )),
+            Expr::Op(BinOp::EqualsTo, ref l, ref r) => {
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Equal))
+            }
+            Expr::Op(BinOp::Different, ref l, ref r) => {
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Equal))
+            }
+            Expr::Op(BinOp::LowerThan, ref l, ref r) => {
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Less))
+            }
+            Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Greater))
+            }
+            Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Greater))
+            }
+            Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Less))
+            }
             Expr::Op(BinOp::In, ref l, ref r) => {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)
             }

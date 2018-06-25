@@ -254,9 +254,9 @@ impl TypedValue for Function {
     }
     not_supported!(get_hash);
 
-    fn compare(&self, other: &Value) -> Ordering {
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "function" {
-            self.to_repr().cmp(&other.to_repr())
+            Ok(self.to_repr().cmp(&other.to_repr()))
         } else {
             default_compare(self, other)
         }
@@ -378,8 +378,8 @@ impl TypedValue for WrappedMethod {
     fn to_bool(&self) -> bool {
         true
     }
-    fn compare(&self, other: &Value) -> Ordering {
-        self.method.compare(other)
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+        self.method.compare(other, recursion)
     }
 
     fn call(

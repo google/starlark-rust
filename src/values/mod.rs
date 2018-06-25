@@ -102,6 +102,15 @@ pub const DIVISION_BY_ZERO_ERROR_CODE: &'static str = "CV08";
 pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &'static str = "CV09";
 pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CV10";
 pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &'static str = "CV12";
+pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &'static str = "CV13";
+
+// Maximum recursion level for comparison
+// TODO(dmarting): those are rather short, maybe make it configurable?
+#[cfg(debug_assertions)]
+const MAX_RECURSION: u32 = 200;
+
+#[cfg(not(debug_assertions))]
+const MAX_RECURSION: u32 = 3000;
 
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Debug)]
@@ -139,6 +148,8 @@ pub enum ValueError {
     /// Interpolation parameter is too small for the format string.
     NotEnoughParametersForInterpolation,
     InterpolationValueNotChar,
+    // Too many recursion in internal operation
+    TooManyRecursionLevel,
 }
 
 /// A simpler error format to return as a ValueError
@@ -208,6 +219,7 @@ impl SyntaxError for ValueError {
                         ValueError::InterpolationValueNotChar => {
                             "'%c' formatter requires a single-character string".to_owned()
                         }
+                        ValueError::TooManyRecursionLevel => "Too many recursion".to_owned(),
                         _ => unreachable!(),
                     }),
                 };
@@ -264,6 +276,9 @@ impl SyntaxError for ValueError {
                         ValueError::InterpolationValueNotChar => {
                             "'%c' formatter requires a single-character string".to_owned()
                         }
+                        ValueError::TooManyRecursionLevel => {
+                            "Too many recursion levels".to_owned()
+                        }
                         _ => unreachable!(),
                     },
                     code: Some(
@@ -291,6 +306,9 @@ impl SyntaxError for ValueError {
                             }
                             ValueError::InterpolationValueNotChar => {
                                 INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE
+                            }
+                            ValueError::TooManyRecursionLevel => {
+                                TOO_MANY_RECURSION_LEVEL_ERROR_CODE
                             }
                             ValueError::DiagnosedError(..) => "U999", // Unknown error
                         }.to_owned(),
@@ -447,7 +465,9 @@ pub trait TypedValue {
     /// __Note__: This does not use the
     ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
     ///       the trait needs to know the actual type of the value we compare.
-    fn compare(&self, other: &Value) -> Ordering;
+    ///
+    /// The extraneous recursion parameter is used to detect deep recursion.
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError>;
 
     /// Perform a call on the object, only meaningfull for function object.
     ///
@@ -907,20 +927,20 @@ macro_rules! not_supported {
 /// A default implementation of the compare function, this can be used if the two types of
 /// value are differents or numeric. Custom types should implement their own comparison for the
 /// last case.
-pub fn default_compare(v1: &TypedValue, v2: &Value) -> Ordering {
-    match (v1.get_type(), v2.get_type()) {
+pub fn default_compare(v1: &TypedValue, v2: &Value) -> Result<Ordering, ValueError> {
+    Ok(match (v1.get_type(), v2.get_type()) {
         ("bool", "bool") | ("bool", "int") | ("int", "bool") | ("int", "int") => {
-            v1.to_int().unwrap().cmp(&(v2.to_int().unwrap()))
+            v1.to_int()?.cmp(&(v2.to_int()?))
         }
         ("bool", ..) | ("int", ..) => Ordering::Less,
         (.., "bool") | (.., "int") => Ordering::Greater,
         (x, y) => x.cmp(y),
-    }
+    })
 }
 
 macro_rules! default_compare {
     () => {
-        fn compare(&self, other: &Value) -> Ordering { default_compare(self, other) }
+        fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
     }
 }
 
@@ -982,14 +1002,17 @@ impl TypedValue for Value {
         let borrowed = upgraded.borrow();
         borrowed.get_hash()
     }
-    fn compare(&self, other: &Value) -> Ordering {
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
         let upgraded = self.upgrade();
         let borrowed = upgraded.borrow();
+        if recursion > MAX_RECURSION {
+            return Err(ValueError::TooManyRecursionLevel)
+        }
         if other.same_as(borrowed.deref()) {
             // Special case for recursive structure, stop if we are pointing to the same object.
-            Ordering::Equal
+            Ok(Ordering::Equal)
         } else {
-            borrowed.compare(other)
+            borrowed.compare(other, recursion)
         }
     }
 
@@ -1144,20 +1167,24 @@ impl fmt::Display for Value {
 
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
-        self.compare(other) == Ordering::Equal
+        self.compare(other, 0) == Ok(Ordering::Equal)
     }
 }
 impl Eq for Value {}
 
 impl Ord for Value {
     fn cmp(&self, other: &Value) -> Ordering {
-        self.compare(other)
+        self.compare(other, 0).unwrap()
     }
 }
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
-        Some(self.compare(other))
+        if let Ok(r) = self.compare(other, 0) {
+            Some(r)
+        } else {
+            None
+        }
     }
 }
 

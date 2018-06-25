@@ -132,10 +132,10 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value) -> Ordering {
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "dict" {
-            let mut v1: Vec<Value> = self.into_iter().unwrap().collect();
-            let mut v2: Vec<Value> = other.into_iter().unwrap().collect();
+            let mut v1: Vec<Value> = self.into_iter()?.collect();
+            let mut v2: Vec<Value> = other.into_iter()?.collect();
             // We sort the keys because the dictionary preserve insertion order but ordering does
             // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
             v1.sort();
@@ -144,17 +144,17 @@ impl TypedValue for Dictionary {
             let mut iter2 = v2.into_iter();
             loop {
                 match (iter1.next(), iter2.next()) {
-                    (None, None) => return Ordering::Equal,
-                    (None, Some(..)) => return Ordering::Less,
-                    (Some(..), None) => return Ordering::Greater,
+                    (None, None) => return Ok(Ordering::Equal),
+                    (None, Some(..)) => return Ok(Ordering::Less),
+                    (Some(..), None) => return Ok(Ordering::Greater),
                     (Some(k1), Some(k2)) => {
-                        let r = k1.compare(&k2);
+                        let r = k1.compare(&k2, recursion+1)?;
                         if r != Ordering::Equal {
-                            return r;
+                            return Ok(r);
                         }
-                        let r = self.at(k1).unwrap().compare(&other.at(k2).unwrap());
+                        let r = self.at(k1)?.compare(&other.at(k2).unwrap(), recursion+1)?;
                         if r != Ordering::Equal {
-                            return r;
+                            return Ok(r);
                         }
                     }
                 }

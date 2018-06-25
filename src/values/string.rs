@@ -49,9 +49,9 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &Value) -> Ordering {
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "string" {
-            return self.cmp(&other.to_str());
+            Ok(self.cmp(&other.to_str()))
         } else {
             default_compare(self, other)
         }
