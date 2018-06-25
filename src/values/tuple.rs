@@ -322,6 +322,12 @@ impl TypedValue for Tuple {
         )))
     }
 
+    fn is_descendant(&self, other: &TypedValue) -> bool {
+        self.content.iter().any(
+            |x| x.same_as(other) || x.is_descendant(other)
+        )
+    }
+
     fn slice(
         &self,
         start: Option<Value>,
@@ -427,5 +433,23 @@ mod tests {
             Value::from((1, 2, 3)).mul(Value::from(3)).unwrap(),
             Value::from((1, 2, 3, 1, 2, 3, 1, 2, 3))
         );
+    }
+
+    #[test]
+    fn test_is_descendant() {
+        let v1 = Value::from((1,2,3));
+        let v2 = Value::from((1, 2, v1.clone()));
+        let v3 = Value::from((1, 2, v2.clone()));
+        assert!(v3.is_descendant_value(&v2));
+        assert!(v3.is_descendant_value(&v1));
+        assert!(v3.is_descendant_value(&v3));
+
+        assert!(v2.is_descendant_value(&v1));
+        assert!(v2.is_descendant_value(&v2));
+        assert!(!v2.is_descendant_value(&v3));
+
+        assert!(v1.is_descendant_value(&v1));
+        assert!(!v1.is_descendant_value(&v2));
+        assert!(!v1.is_descendant_value(&v3));
     }
 }

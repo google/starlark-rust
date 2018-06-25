@@ -262,13 +262,14 @@ starlark_module!{global =>
     /// ```
     dict.setdefault(this, #key, #default = None) {
         key.get_hash()?; // Ensure the key is hashable
+        let cloned_this = this.clone();
         dict::Dictionary::mutate(
             &mut this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 if let Some(r) = x.get(&key) {
                     return Ok(r.clone())
                 }
-                x.insert(key.clone(), default.clone());
+                x.insert(key.clone(), default.clone_for_container(&cloned_this));
                 Ok(default.clone())
             }
         )

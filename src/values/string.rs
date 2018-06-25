@@ -73,6 +73,8 @@ impl TypedValue for String {
             Err(ValueError::IncorrectParameterType)
         }
     }
+    
+    fn is_descendant(&self, _other: &TypedValue) -> bool { false }
 
     fn slice(
         &self,

@@ -183,6 +183,12 @@ impl TypedValue for Dictionary {
         Ok(Value::new(self.content.contains_key(other)))
     }
 
+    fn is_descendant(&self, other: &TypedValue) -> bool {
+        self.content.iter().any(
+            |(k, v)| k.same_as(other) || v.same_as(other) || k.is_descendant(other) || v.is_descendant(other)
+        )
+    }
+
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         Ok(Box::new(self.content.iter().map(|x| x.0.clone())))
     }
@@ -193,6 +199,7 @@ impl TypedValue for Dictionary {
         if self.frozen {
             Err(ValueError::CannotMutateImmutableValue)
         } else {
+            let new_value = new_value.clone_for_container(self);
             {
                 if let Some(x) = self.content.get_mut(&index) {
                     *x = new_value;
@@ -241,5 +248,28 @@ mod tests {
         assert_eq!("{1: 2, 2: 3}", d.to_str());
         d.set_at(Value::from((3, 4)), Value::from(5)).unwrap();
         assert_eq!("{1: 2, 2: 3, (3, 4): 5}", d.to_str());
+    }
+
+    #[test]
+    fn test_is_descendant() {
+        let mut map = LinkedHashMap::<Value, Value>::new();
+        map.insert(Value::from(1), Value::from(2));
+        map.insert(Value::from(2), Value::from(4));
+        let v1 = Value::from(map.clone());
+        map.insert(Value::from(3), v1.clone());
+        let v2 = Value::from(map.clone());
+        map.insert(Value::from(3), v2.clone());
+        let v3 = Value::from(map);
+        assert!(v3.is_descendant_value(&v2));
+        assert!(v3.is_descendant_value(&v1));
+        assert!(v3.is_descendant_value(&v3));
+
+        assert!(v2.is_descendant_value(&v1));
+        assert!(v2.is_descendant_value(&v2));
+        assert!(!v2.is_descendant_value(&v3));
+
+        assert!(v1.is_descendant_value(&v1));
+        assert!(!v1.is_descendant_value(&v2));
+        assert!(!v1.is_descendant_value(&v3));
     }
 }

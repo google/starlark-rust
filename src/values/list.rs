@@ -150,6 +150,12 @@ impl TypedValue for List {
         )))
     }
 
+    fn is_descendant(&self, other: &TypedValue) -> bool {
+        self.content.iter().any(
+            |x| x.same_as(other) || x.is_descendant(other)
+        )
+    }
+
     fn slice(
         &self,
         start: Option<Value>,
@@ -249,7 +255,7 @@ impl TypedValue for List {
             Err(ValueError::CannotMutateImmutableValue)
         } else {
             let i = index.convert_index(self.length()?)? as usize;
-            self.content[i] = new_value.clone();
+            self.content[i] = new_value.clone_for_container(self);
             Ok(())
         }
     }
@@ -304,5 +310,23 @@ mod tests {
         v2.set_at(Value::from(2), Value::from(4)).unwrap();
         assert_eq!(v2.to_str(), "[1, 2, 4]");
         assert_eq!(v1.to_str(), "[1, 2, 4]");
+    }
+
+    #[test]
+    fn test_is_descendant() {
+        let v1 = Value::from(vec![1,2,3]);
+        let v2 = Value::from(vec![Value::new(1), Value::new(2), v1.clone()]);
+        let v3 = Value::from(vec![Value::new(1), Value::new(2), v2.clone()]);
+        assert!(v3.is_descendant_value(&v2));
+        assert!(v3.is_descendant_value(&v1));
+        assert!(v3.is_descendant_value(&v3));
+
+        assert!(v2.is_descendant_value(&v1));
+        assert!(v2.is_descendant_value(&v2));
+        assert!(!v2.is_descendant_value(&v3));
+
+        assert!(v1.is_descendant_value(&v1));
+        assert!(!v1.is_descendant_value(&v2));
+        assert!(!v1.is_descendant_value(&v3));
     }
 }

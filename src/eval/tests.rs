@@ -35,6 +35,15 @@ a == [1, 2, 0] and b == [1, 2, 0]
 }
 
 #[test]
+fn recursive_list() {
+    starlark_ok!(r#"
+cyclic = [1, 2, 3]
+cyclic[1] = cyclic
+cyclic[1] == cyclic
+"#)
+}
+
+#[test]
 fn funcall_test() {
     const F: &'static str = "
 def f1():

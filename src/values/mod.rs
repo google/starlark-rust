@@ -75,8 +75,9 @@
 //! }
 //! ```
 use std::cmp::Ordering;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::fmt;
 use std::any::Any;
 use syntax::errors::SyntaxError;
@@ -318,15 +319,83 @@ impl PartialEq for ValueError {
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value {
-    value: Rc<RefCell<TypedValue>>,
+pub enum Value {
+    Value(Rc<RefCell<TypedValue>>),
+    WeakValue(Weak<RefCell<TypedValue>>),
 }
 pub type ValueResult = Result<Value, ValueError>;
 
 impl Value {
     /// Create a new `Value` from a static value.
     pub fn new<T: 'static + TypedValue>(t: T) -> Value {
-        Value { value: Rc::new(RefCell::new(t)) }
+        Value::Value(Rc::new(RefCell::new(t)))
+    }
+
+    /// A method to upgrade to a strong pointer for local operation
+    fn upgrade(&self) -> Option<Rc<RefCell<TypedValue>>> {
+        match self {
+            &Value::Value(ref v)     => Some(v.clone()),
+            &Value::WeakValue(ref v) => v.clone().upgrade(),
+        }
+    }
+
+    /// Return a weak pointer for cyclic reference
+    fn downgrade(&self) -> Value {
+        Value::WeakValue(match self {
+            &Value::Value(ref v)     => Rc::downgrade(v),
+            &Value::WeakValue(ref v) => v.clone(),
+        })
+    }
+
+    /// Clone for inserting into the other container, using weak reference if we do a
+    /// recursive insertion.
+    pub fn clone_for_container(&self, other: &TypedValue) -> Value {
+        if self.is_descendant(other) {
+            self.downgrade()
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Determine if the value pointed by other is a descendant of self
+    pub fn is_descendant_value(&self, other: &Value) -> bool {
+        let upgraded = other.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        self.is_descendant(borrowed.deref())
+    }
+
+    /// Clone for inserting into the other container, using weak reference if we do a
+    /// recursive insertion.
+    pub fn clone_for_container_value(&self, other: &Value) -> Value {
+        if self.is_descendant_value(other) {
+            self.downgrade()
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Return true if the current value is a weak pointer
+    pub fn is_weak(&self) -> bool {
+        match self {
+            &Value::Value(..)     => false,
+            &Value::WeakValue(..) => true,
+        }
+    }
+
+    /// Return true if other is pointing to the same value as self
+    pub fn same_as(&self, other: &TypedValue) -> bool {
+        // We use raw pointers..
+        let p : *const TypedValue = other;
+        match self {
+            &Value::Value(ref v)     => {
+                let p1 : *const TypedValue = v.as_ptr();
+                p1 == p
+            },
+            &Value::WeakValue(ref v) => {
+                let p1 : *const TypedValue = v.upgrade().unwrap().as_ptr();
+                p1  == p
+            },
+        }
     }
 }
 
@@ -363,6 +432,9 @@ pub trait TypedValue {
     /// Return a hash code for self, as returned by the hash() function, or
     /// OperationNotSupported if there is no hash for this value (e.g. list).
     fn get_hash(&self) -> Result<u64, ValueError>;
+
+    /// Returns true if `other` is a descendent of the current value, used for sanity checks.
+    fn is_descendant(&self, other: &TypedValue) -> bool;
 
     /// Compare `self` with `other`.
     ///
@@ -766,6 +838,8 @@ macro_rules! not_supported {
                 left: other.get_type().to_owned(),
                 right: Some(self.get_type().to_owned()) })
         }
+        // We cannot have descendant if the is_in operation is not defined
+        fn is_descendant(&self, _other: &TypedValue) -> bool { false }
     };
     (add) => {
         fn add(&self, other: Value) -> ValueResult {
@@ -861,36 +935,76 @@ macro_rules! immutable {
 
 impl TypedValue for Value {
     fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
-        self.value.borrow_mut().any_apply(f)
+        let upgraded = self.upgrade().unwrap();
+        let mut borrowed = upgraded.borrow_mut();
+        borrowed.any_apply(f)
     }
 
     fn immutable(&self) -> bool {
-        self.value.borrow().immutable()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.immutable()
     }
     fn freeze(&mut self) {
-        self.value.borrow_mut().freeze()
+        let upgraded = self.upgrade().unwrap();
+        let mut borrowed = upgraded.borrow_mut();
+        borrowed.freeze()
     }
     fn to_str(&self) -> String {
-        self.value.borrow().to_str()
+        match self {
+            &Value::Value(ref v)  => v.borrow().to_str(),
+            &Value::WeakValue(..) => "...".to_owned(),
+        }
     }
     fn to_repr(&self) -> String {
-        self.value.borrow().to_repr()
+        match self {
+            &Value::Value(ref v)  => v.borrow().to_repr(),
+            &Value::WeakValue(..) => "...".to_owned(),
+        }
     }
     fn get_type(&self) -> &'static str {
-        self.value.borrow().get_type()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.get_type()
     }
     fn to_bool(&self) -> bool {
-        self.value.borrow().to_bool()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.to_bool()
     }
     fn to_int(&self) -> Result<i64, ValueError> {
-        self.value.borrow().to_int()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.to_int()
     }
     fn get_hash(&self) -> Result<u64, ValueError> {
-        self.value.borrow().get_hash()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.get_hash()
     }
     fn compare(&self, other: &Value) -> Ordering {
-        self.value.borrow().compare(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        if other.same_as(borrowed.deref()) {
+            // Special case for recursive structure, stop if we are pointing to the same object.
+            Ordering::Equal
+        } else {
+            borrowed.compare(other)
+        }
     }
+
+    fn is_descendant(&self, other: &TypedValue) -> bool {
+        if self.same_as(other) { return true }
+        let upgraded = self.upgrade().unwrap();
+        let try_borrowed = upgraded.try_borrow();
+        if let Ok(borrowed) = try_borrowed {
+            borrowed.is_descendant(other)
+        } else {
+            // We have already borrowed mutably this value, which means we are trying to mutate it, assigning other to it.
+            true
+        }
+    }
+
     fn call(
         &self,
         call_stack: &Vec<(String, String)>,
@@ -900,7 +1014,9 @@ impl TypedValue for Value {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        self.value.borrow().call(
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.call(
             call_stack,
             env,
             positional,
@@ -910,10 +1026,14 @@ impl TypedValue for Value {
         )
     }
     fn at(&self, index: Value) -> ValueResult {
-        self.value.borrow().at(index)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.at(index)
     }
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.value.borrow_mut().set_at(index, new_value)
+        let upgraded = self.upgrade().unwrap();
+        let mut borrowed = upgraded.borrow_mut();
+        borrowed.set_at(index, new_value)
     }
     fn slice(
         &self,
@@ -921,63 +1041,98 @@ impl TypedValue for Value {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        self.value.borrow_mut().slice(start, stop, stride)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow_mut();
+        borrowed.slice(start, stop, stride)
     }
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        let borrowed = self.value.borrow();
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
         let v: Vec<Value> = borrowed.into_iter()?.map(|x| x.clone()).collect();
         Ok(Box::new(v.into_iter()))
     }
     fn length(&self) -> Result<i64, ValueError> {
-        self.value.borrow().length()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.length()
     }
     fn get_attr(&self, attribute: &str) -> ValueResult {
-        self.value.borrow().get_attr(attribute)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.get_attr(attribute)
     }
     fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        self.value.borrow().has_attr(attribute)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.has_attr(attribute)
     }
     fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        self.value.borrow_mut().set_attr(attribute, new_value)
+        let upgraded = self.upgrade().unwrap();
+        let mut borrowed = upgraded.borrow_mut();
+        borrowed.set_attr(attribute, new_value)
     }
     fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        self.value.borrow().dir_attr()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.dir_attr()
     }
     fn is_in(&self, other: &Value) -> ValueResult {
-        self.value.borrow().is_in(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.is_in(other)
     }
     fn plus(&self) -> ValueResult {
-        self.value.borrow().plus()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.plus()
     }
     fn minus(&self) -> ValueResult {
-        self.value.borrow().minus()
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.minus()
     }
     fn add(&self, other: Value) -> ValueResult {
-        self.value.borrow().add(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.add(other)
     }
     fn sub(&self, other: Value) -> ValueResult {
-        self.value.borrow().sub(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.sub(other)
     }
     fn mul(&self, other: Value) -> ValueResult {
-        self.value.borrow().mul(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.mul(other)
     }
     fn percent(&self, other: Value) -> ValueResult {
-        self.value.borrow().percent(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.percent(other)
     }
     fn div(&self, other: Value) -> ValueResult {
-        self.value.borrow().div(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.div(other)
     }
     fn floor_div(&self, other: Value) -> ValueResult {
-        self.value.borrow().floor_div(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.floor_div(other)
     }
     fn pipe(&self, other: Value) -> ValueResult {
-        self.value.borrow().pipe(other)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.pipe(other)
     }
 }
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{:?}", self.value.borrow())
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        write!(f, "{:?}", borrowed)
     }
 }
 
@@ -1367,7 +1522,9 @@ impl Value {
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
-        self.value.borrow().convert_index(len)
+        let upgraded = self.upgrade().unwrap();
+        let borrowed = upgraded.borrow();
+        borrowed.convert_index(len)
     }
 
     pub fn convert_slice_indices(
