@@ -513,21 +513,29 @@ impl Lexer {
         }
     }
 
-    fn skip_spaces(&mut self, newline: bool) {
+    fn skip_spaces(&mut self, newline: bool) -> Option<<Self as Iterator>::Item> {
         loop {
             match self.peek_char() {
                 '\n' | '\r' | '\u{2028}' | '\u{2029}' => {
                     if newline {
                         self.pop();
                     } else {
-                        return;
+                        return None;
+                    }
+                }
+                '\\' => {
+                    self.pop();
+                    if self.peek_char() != '\n' {
+                        return self.invalid();
+                    } else {
+                        self.pop();
                     }
                 }
                 '\t' | ' ' => {
                     self.pop();
                 }
                 '#' => self.skip_comment(),
-                _ => return,
+                _ => return None,
             };
         }
     }
@@ -829,13 +837,14 @@ impl Lexer {
 
     fn consume_token(&mut self) -> Option<<Self as Iterator>::Item> {
         if self.last_new_line && self.parentheses == 0 {
-            let r = self.consume_indentation();
-            if r.is_some() {
-                return r;
+            if let Some(r) = self.consume_indentation() {
+                return Some(r)
             }
         } else {
             let skip_newline = self.parentheses > 0;
-            self.skip_spaces(skip_newline);
+            if let Some(x) = self.skip_spaces(skip_newline) {
+                return Some(x)
+            }
         }
         self.begin();
         match self.peek_char() {
@@ -1339,6 +1348,19 @@ def _impl(ctx):
                 Token::ClosingParenthesis,
                 Token::Newline,
                 Token::Dedent,
+            ],
+            &r[..]
+        );
+    }
+
+    #[test]
+    fn test_escape_newline() {
+        let r = collect_result("a \\\nb");
+        assert_eq!(
+            &[
+                Token::Identifier("a".to_owned()),
+                Token::Identifier("b".to_owned()),
+                Token::Newline,
             ],
             &r[..]
         );
