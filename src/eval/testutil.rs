@@ -13,12 +13,12 @@
 // limitations under the License.
 
 //! Macro to test starlark code execution
-use environment;
-use std::sync;
 use codemap::CodeMap;
-use codemap_diagnostic::{Diagnostic, Emitter, ColorConfig};
-use values::TypedValue;
+use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use environment;
 use eval;
+use std::sync;
+use values::TypedValue;
 
 /// Execute a starlark snippet with an empty environment.
 pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
@@ -37,34 +37,33 @@ pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
 pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    Ok(
-        eval::simple::eval(&map, "<test>", snippet, false, &mut env)?
-            .to_bool(),
-    )
+    Ok(eval::simple::eval(&map, "<test>", snippet, false, &mut env)?.to_bool())
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.
 macro_rules! starlark_ok_fn {
-    ($fn: path, $t:expr) => (
+    ($fn: path, $t:expr) => {
         assert!($fn($t).unwrap());
-    );
-    ($fn: path, $t1:expr, $t2:expr) => (
+    };
+    ($fn: path, $t1:expr, $t2:expr) => {
         assert!($fn(&format!("{}{}", $t1, $t2)).unwrap());
-    );
+    };
 }
 
 /// Test that the execution of a starlark code raise an error
 macro_rules! starlark_fail_fn {
-    ($fn: path, $t:expr) => (
+    ($fn: path, $t:expr) => {
         assert!($fn($t).is_err());
-    );
-    ($fn: path, $t:expr, $c:expr) => (
+    };
+    ($fn: path, $t:expr, $c:expr) => {
         assert_eq!($c, $fn($t).err().unwrap().code.unwrap());
-    );
-    ($fn: path, $t1:expr, $t2: expr, $c:expr) => (
-        assert_eq!($c, $fn(&format!("{}{}", $t1, $t2))
-                .err().unwrap().code.unwrap());
-    );
+    };
+    ($fn: path, $t1:expr, $t2: expr, $c:expr) => {
+        assert_eq!(
+            $c,
+            $fn(&format!("{}{}", $t1, $t2)).err().unwrap().code.unwrap()
+        );
+    };
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.

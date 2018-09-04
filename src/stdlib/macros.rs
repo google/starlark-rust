@@ -253,7 +253,6 @@ macro_rules! starlark_signatures {
     }
 }
 
-
 /// Declare a starlark module that store one or several function
 ///
 /// To declare a module with name `name`, the macro would be called:
@@ -376,13 +375,13 @@ macro_rules! starlark_module {
 /// * $label is a a short description of the error to be put next to the code.
 #[macro_export]
 macro_rules! starlark_err {
-    ($code:expr, $message: expr, $label: expr) => (
+    ($code:expr, $message: expr, $label: expr) => {
         return Err(RuntimeError {
             code: $code,
             message: $message,
             label: $label,
-        }.into())
-    )
+        }.into());
+    };
 }
 
 /// A shortcut to assert the type of a value
@@ -408,10 +407,13 @@ macro_rules! check_type {
                     ),
                     $e.get_type()
                 ),
-                format!(concat!("type {} while expected ", stringify!($ty)), $e.get_type())
+                format!(
+                    concat!("type {} while expected ", stringify!($ty)),
+                    $e.get_type()
+                )
             )
         }
-    }
+    };
 }
 
 /// Convert 2 indices according to Starlark indices convertion for function like .index.
@@ -425,23 +427,53 @@ macro_rules! check_type {
 macro_rules! convert_indices {
     ($this: ident, $start: ident, $end: ident) => {
         let len = $this.length()?;
-        let $end = if $end.get_type() == "NoneType" { len } else { $end.to_int()? };
-        let $start = if $start.get_type() == "NoneType" { 0 } else { $start.to_int()? };
+        let $end = if $end.get_type() == "NoneType" {
+            len
+        } else {
+            $end.to_int()?
+        };
+        let $start = if $start.get_type() == "NoneType" {
+            0
+        } else {
+            $start.to_int()?
+        };
         let $end = if $end < 0 { $end + len } else { $end };
         let $start = if $start < 0 { $start + len } else { $start };
-        let $end = if $end < 0 { 0 } else {
-            if $end > len { len as usize } else { $end as usize }
+        let $end = if $end < 0 {
+            0
+        } else {
+            if $end > len {
+                len as usize
+            } else {
+                $end as usize
+            }
         };
-        let $start = if $start < 0 { 0 } else {
-            if $start > len { len as usize } else { $start as usize }
+        let $start = if $start < 0 {
+            0
+        } else {
+            if $start > len {
+                len as usize
+            } else {
+                $start as usize
+            }
         };
     };
     ($this: ident, $start: ident) => {
         let len = $this.length()?;
-        let $start = if $start.get_type() == "NoneType" { 0 } else { $start.to_int()? };
-        let $start = if $start < 0 { $start + len } else { $start };
-        let $start = if $start < 0 { 0 } else {
-            if $start > len { len as usize } else { $start as usize }
+        let $start = if $start.get_type() == "NoneType" {
+            0
+        } else {
+            $start.to_int()?
         };
-    }
+        let $start = if $start < 0 { $start + len } else { $start };
+        let $start = if $start < 0 {
+            0
+        } else {
+            if $start > len {
+                len as usize
+            } else {
+                $start as usize
+            }
+        };
+    };
 }

@@ -14,9 +14,9 @@
 
 //! Methods for the `string` type.
 
-use values::*;
 use environment::Environment;
 use std::str::FromStr;
+use values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &'static str = "UF00";
@@ -26,13 +26,15 @@ pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE: &'static str = "UF03";
 pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE: &'static str = "UF04";
 
 macro_rules! ok {
-    ($e:expr) => { return Ok(Value::from($e)); }
+    ($e:expr) => {
+        return Ok(Value::from($e));
+    };
 }
 
 macro_rules! check_string {
     ($e:ident, $fn:ident) => {
         check_type!($e, concat!("string.", stringify!($fn)), string)
-    }
+    };
 }
 
 fn format_capture<T: Iterator<Item = Value>>(
@@ -55,19 +57,17 @@ fn format_capture<T: Iterator<Item = Value>>(
     let conv: &Fn(Value) -> String = match conv {
         "s" => &conv_s,
         "r" => &conv_r,
-        c => {
-            starlark_err!(
-                FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE,
-                format!(
-                    concat!(
+        c => starlark_err!(
+            FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE,
+            format!(
+                concat!(
                     "'{}' is not a valid format string specifier, only ",
                     "'s' and 'r' are valid specifiers",
                 ),
-                    c
-                ),
-                "Invalid format string specifier".to_owned()
-            )
-        }
+                c
+            ),
+            "Invalid format string specifier".to_owned()
+        ),
     };
     if n.is_empty() {
         if *captured_by_index {
@@ -110,8 +110,7 @@ fn format_capture<T: Iterator<Item = Value>>(
             if let Some(x) = n.chars().find(|c| match c {
                 &'.' | &',' | &'[' | &']' => true,
                 _ => false,
-            })
-            {
+            }) {
                 starlark_err!(
                     FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
                     format!("Invalid character '{}' inside replacement field", x),
@@ -1366,10 +1365,10 @@ starlark_module!{global =>
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::starlark_default_fail;
     use super::super::starlark_default;
-    use values::dict;
+    use super::super::tests::starlark_default_fail;
     use super::*;
+    use values::dict;
 
     macro_rules! starlark_ok {
         ($($t:expr),+) => (starlark_ok_fn!(starlark_default, $($t),+))

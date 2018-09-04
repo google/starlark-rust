@@ -13,13 +13,13 @@
 // limitations under the License.
 
 //! Define simpler version of the evaluation function
+use super::{EvalException, FileLoader};
+use codemap::CodeMap;
+use codemap_diagnostic::Diagnostic;
+use environment::Environment;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use values::*;
-use environment::Environment;
-use codemap::CodeMap;
-use codemap_diagnostic::Diagnostic;
-use super::{FileLoader, EvalException};
 
 /// A simple FileLoader that load file from disk and cache the result in a hashmap.
 #[derive(Clone)]
@@ -64,10 +64,10 @@ impl FileLoader for SimpleFileLoader {
             return Err(EvalException::DiagnosedError(d));
         }
         env.freeze();
-        self.map.lock().unwrap().insert(
-            path.to_owned(),
-            env.clone(),
-        );
+        self.map
+            .lock()
+            .unwrap()
+            .insert(path.to_owned(), env.clone());
         Ok(env)
     }
 }

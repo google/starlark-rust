@@ -14,15 +14,17 @@
 
 //! Methods for the `dict` type.
 
-use values::*;
 use environment::Environment;
 use linked_hash_map::LinkedHashMap;
+use values::*;
 
 pub const DICT_KEY_NOT_FOUND_ERROR_CODE: &'static str = "UF20";
 pub const POP_ON_EMPTY_DICT_ERROR_CODE: &'static str = "UF21";
 
 macro_rules! ok {
-    ($e:expr) => { return Ok(Value::from($e)); }
+    ($e:expr) => {
+        return Ok(Value::from($e));
+    };
 }
 
 starlark_module!{global =>
@@ -376,8 +378,8 @@ starlark_module!{global =>
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::starlark_default_fail;
     use super::super::starlark_default;
+    use super::super::tests::starlark_default_fail;
     use super::*;
 
     macro_rules! starlark_ok {

@@ -71,15 +71,15 @@
 //! * [list](values::list),
 //! * [tuple](values::tuple), and
 //! * [function](values::function).
+pub mod environment;
 #[doc(hidden)]
 pub mod syntax;
 pub mod values;
-pub mod environment;
 #[macro_use]
 pub mod eval;
 #[macro_use]
 pub mod stdlib;
 extern crate codemap;
 extern crate codemap_diagnostic;
-extern crate linked_hash_map;
 extern crate linefeed;
+extern crate linked_hash_map;

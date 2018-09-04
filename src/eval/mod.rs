@@ -13,30 +13,28 @@
 // limitations under the License.
 
 //! Evaluation environment, provide converters from Ast* element to value
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::cmp::Ordering;
-use syntax::ast::*;
-use syntax::errors::SyntaxError;
-use syntax::parser::{parse_file, parse_lexer, parse};
-use syntax::lexer::{LexerIntoIter, LexerItem};
-use values::*;
-use environment::Environment;
-use values::function::FunctionParameter;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
+use environment::Environment;
 use linked_hash_map::LinkedHashMap;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use syntax::ast::*;
+use syntax::errors::SyntaxError;
+use syntax::lexer::{LexerIntoIter, LexerItem};
+use syntax::parser::{parse, parse_file, parse_lexer};
+use values::function::FunctionParameter;
+use values::*;
 
 macro_rules! eval_vector {
-    ($v: expr, $ctx: expr) => {
-        {
-            let mut r = Vec::new();
-            for s in $v.iter() {
-                r.push(s.eval($ctx)?)
-            }
-            r
+    ($v: expr, $ctx: expr) => {{
+        let mut r = Vec::new();
+        for s in $v.iter() {
+            r.push(s.eval($ctx)?)
         }
-    }
+        r
+    }};
 }
 
 // TODO: move that code in some common error code list?
@@ -74,118 +72,91 @@ pub enum EvalException {
 type EvalResult = Result<Value, EvalException>;
 
 macro_rules! t {
-    ($v: expr, span $el: expr) => {
-        {
-            match $v {
-                Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el))),
-                Ok(v) => Ok(v)
-            }
+    ($v: expr, span $el: expr) => {{
+        match $v {
+            Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el))),
+            Ok(v) => Ok(v),
         }
-    };
-    ($v: expr, $el: expr) => {
-        {
-            match $v {
-                Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el.span))),
-                Ok(v) => Ok(v)
-            }
+    }};
+    ($v: expr, $el: expr) => {{
+        match $v {
+            Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el.span))),
+            Ok(v) => Ok(v),
         }
-    };
+    }};
 }
 
 impl Into<Diagnostic> for EvalException {
     fn into(self) -> Diagnostic {
         match self {
             EvalException::DiagnosedError(e) => e,
-            EvalException::Break(s) => {
-                Diagnostic {
-                    level: Level::Error,
-                    message: "Break statement used outside of a loop".to_owned(),
-                    code: Some(BREAK_ERROR_CODE.to_owned()),
-                    spans: vec![
-                        SpanLabel {
-                            span: s,
-                            style: SpanStyle::Primary,
-                            label: None,
-                        },
-                    ],
-                }
-            }
-            EvalException::Continue(s) => {
-                Diagnostic {
-                    level: Level::Error,
-                    message: "Continue statement used outside of a loop".to_owned(),
-                    code: Some(CONTINUE_ERROR_CODE.to_owned()),
-                    spans: vec![
-                        SpanLabel {
-                            span: s,
-                            style: SpanStyle::Primary,
-                            label: None,
-                        },
-                    ],
-                }
-            }
-            EvalException::Return(s, ..) => {
-                Diagnostic {
-                    level: Level::Error,
-                    message: "Return statement used outside of a function call".to_owned(),
-                    code: Some(RETURN_ERROR_CODE.to_owned()),
-                    spans: vec![
-                        SpanLabel {
-                            span: s,
-                            style: SpanStyle::Primary,
-                            label: None,
-                        },
-                    ],
-                }
-            }
-            EvalException::IncorrectLeftValue(s) => {
-                Diagnostic {
-                    level: Level::Error,
-                    message: "Incorrect expression as left value".to_owned(),
-                    code: Some(INCORRECT_LEFT_VALUE_ERROR_CODE.to_owned()),
-                    spans: vec![
-                        SpanLabel {
-                            span: s,
-                            style: SpanStyle::Primary,
-                            label: None,
-                        },
-                    ],
-                }
-            }
-            EvalException::IncorrectNumberOfValueToUnpack(s, expected, got) => {
-                Diagnostic {
-                    level: Level::Error,
-                    message: format!("Unpacked {} values but expected {}", got, expected),
-                    code: Some(INCORRECT_UNPACK_ERROR_CODE.to_owned()),
-                    spans: vec![
-                        SpanLabel {
-                            span: s,
-                            style: SpanStyle::Primary,
-                            label: None,
-                        },
-                    ],
-                }
-            }
-            EvalException::Recursion(s, f, stack) => {
-                Diagnostic {
-                    level: Level::Error,
-                    message: format!(
-                        "Function {} recursed, call stack:{}",
-                        f,
-                        stack.iter().rev().fold(String::new(), |a, s| {
-                            format!("{}\n  {}", a, s.1)
-                        })
-                    ),
-                    code: Some(RECURSION_ERROR_CODE.to_owned()),
-                    spans: vec![
-                        SpanLabel {
-                            span: s,
-                            style: SpanStyle::Primary,
-                            label: Some("Recursive call".to_owned()),
-                        },
-                    ],
-                }
-            }
+            EvalException::Break(s) => Diagnostic {
+                level: Level::Error,
+                message: "Break statement used outside of a loop".to_owned(),
+                code: Some(BREAK_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: s,
+                    style: SpanStyle::Primary,
+                    label: None,
+                }],
+            },
+            EvalException::Continue(s) => Diagnostic {
+                level: Level::Error,
+                message: "Continue statement used outside of a loop".to_owned(),
+                code: Some(CONTINUE_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: s,
+                    style: SpanStyle::Primary,
+                    label: None,
+                }],
+            },
+            EvalException::Return(s, ..) => Diagnostic {
+                level: Level::Error,
+                message: "Return statement used outside of a function call".to_owned(),
+                code: Some(RETURN_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: s,
+                    style: SpanStyle::Primary,
+                    label: None,
+                }],
+            },
+            EvalException::IncorrectLeftValue(s) => Diagnostic {
+                level: Level::Error,
+                message: "Incorrect expression as left value".to_owned(),
+                code: Some(INCORRECT_LEFT_VALUE_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: s,
+                    style: SpanStyle::Primary,
+                    label: None,
+                }],
+            },
+            EvalException::IncorrectNumberOfValueToUnpack(s, expected, got) => Diagnostic {
+                level: Level::Error,
+                message: format!("Unpacked {} values but expected {}", got, expected),
+                code: Some(INCORRECT_UNPACK_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: s,
+                    style: SpanStyle::Primary,
+                    label: None,
+                }],
+            },
+            EvalException::Recursion(s, f, stack) => Diagnostic {
+                level: Level::Error,
+                message: format!(
+                    "Function {} recursed, call stack:{}",
+                    f,
+                    stack
+                        .iter()
+                        .rev()
+                        .fold(String::new(), |a, s| format!("{}\n  {}", a, s.1))
+                ),
+                code: Some(RECURSION_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: s,
+                    style: SpanStyle::Primary,
+                    label: Some("Recursive call".to_owned()),
+                }],
+            },
         }
     }
 }
@@ -243,7 +214,7 @@ trait Evaluate<T: FileLoader> {
     // This transformation by default should be a deep copy (clone).
     fn transform(
         &self,
-        context: &mut EvaluationContext<T>
+        context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException>;
 
     // Perform an assignment on the LHS represented by this AST element
@@ -257,7 +228,7 @@ impl<T: FileLoader> Evaluate<T> for AstString {
 
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>
+        _context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
         Ok(Box::new(self.clone()))
     }
@@ -274,7 +245,7 @@ impl<T: FileLoader> Evaluate<T> for AstInt {
 
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>
+        _context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
         Ok(Box::new(self.clone()))
     }
@@ -329,7 +300,7 @@ enum TransformedExpr<T: FileLoader> {
 impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>
+        _context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
         panic!("Transform should not be called on an already transformed object");
     }
@@ -342,11 +313,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                 let l = v.len() as i64;
                 let nvl = t!(new_value.length(), span span)?;
                 if nvl != l {
-                    Err(EvalException::IncorrectNumberOfValueToUnpack(
-                        span,
-                        l,
-                        nvl,
-                    ))
+                    Err(EvalException::IncorrectNumberOfValueToUnpack(span, l, nvl))
                 } else {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
@@ -376,11 +343,11 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
             &TransformedExpr::Tuple(ref v, ..) => {
                 let r = eval_vector!(v, context);
                 Ok(tuple::Tuple::new(r.as_slice()))
-            },
+            }
             &TransformedExpr::List(ref v, ..) => {
                 let r = eval_vector!(v, context);
                 Ok(Value::from(r))
-            },
+            }
             &TransformedExpr::Dot(ref left, ref s, ref span) => {
                 if let Some(v) = context.env.get_type_value(left, &s) {
                     if v.get_type() == "function" {
@@ -392,9 +359,10 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                 } else {
                     t!(left.get_attr(&s), span span.clone())
                 }
-            },
-            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) =>
-                t!(e.at(idx.clone()), span span.clone()),
+            }
+            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+                t!(e.at(idx.clone()), span span.clone())
+            }
         }
     }
 }
@@ -402,17 +370,17 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
 impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
     fn transform(
         &self,
-        context: &mut EvaluationContext<T>
+        context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
         match self.node {
-            Expr::Dot(ref e, ref s)
-                => Ok(Box::new(TransformedExpr::Dot(e.eval(context)?, s.node.clone(), self.span))),
-            Expr::ArrayIndirection(ref e, ref idx)
-                => Ok(Box::new(TransformedExpr::ArrayIndirection(
-                    e.eval(context)?,
-                    idx.eval(context)?,
-                    self.span
-                ))),
+            Expr::Dot(ref e, ref s) => Ok(Box::new(TransformedExpr::Dot(
+                e.eval(context)?,
+                s.node.clone(),
+                self.span,
+            ))),
+            Expr::ArrayIndirection(ref e, ref idx) => Ok(Box::new(
+                TransformedExpr::ArrayIndirection(e.eval(context)?, idx.eval(context)?, self.span),
+            )),
             Expr::List(ref v) => {
                 let mut r = Vec::new();
                 for val in v.iter() {
@@ -474,9 +442,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 if context.call_stack.iter().any(|x| x.0 == fname) {
                     Err(EvalException::Recursion(self.span, fname, new_stack))
                 } else {
-                    let loc = {
-                        context.map.lock().unwrap().look_up_pos(self.span.low())
-                    };
+                    let loc = { context.map.lock().unwrap().look_up_pos(self.span.low()) };
                     new_stack.push((
                         fname,
                         format!(
@@ -567,11 +533,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)
             }
             Expr::Op(BinOp::NotIn, ref l, ref r) => Ok(Value::new(
-                !t!(
-                    r.eval(context)?.is_in(&l.eval(context)?),
-                    self
-                )?
-                    .to_bool(),
+                !t!(r.eval(context)?.is_in(&l.eval(context)?), self)?.to_bool(),
             )),
             Expr::Op(BinOp::Substraction, ref l, ref r) => {
                 t!(l.eval(context)?.sub(r.eval(context)?), self)
@@ -637,19 +599,15 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
         }
     }
 
-
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
         let ok = Ok(Value::new(None));
         match self.node {
-            Expr::Tuple(ref v) |
-            Expr::List(ref v) => {
+            Expr::Tuple(ref v) | Expr::List(ref v) => {
                 let l = v.len() as i64;
                 let nvl = t!(new_value.length(), self)?;
                 if nvl != l {
                     Err(EvalException::IncorrectNumberOfValueToUnpack(
-                        self.span,
-                        l,
-                        nvl,
+                        self.span, l, nvl,
                     ))
                 } else {
                     let mut r = Vec::new();
@@ -685,9 +643,9 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
             Statement::Break => Err(EvalException::Break(self.span)),
             Statement::Continue => Err(EvalException::Continue(self.span)),
             Statement::Pass => Ok(Value::new(None)),
-            Statement::Return(Some(ref e)) => Err(
-                EvalException::Return(self.span, e.eval(context)?),
-            ),
+            Statement::Return(Some(ref e)) => {
+                Err(EvalException::Return(self.span, e.eval(context)?))
+            }
             Statement::Return(None) => Err(EvalException::Return(self.span, Value::new(None))),
             Statement::Expression(ref e) => e.eval(context),
             Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
@@ -744,11 +702,13 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                     st2.eval(context)
                 }
             }
-            Statement::For(AstClause {
-                               ref span,
-                               node: Clause::For(ref e1, ref e2),
-                           },
-                           ref st) => {
+            Statement::For(
+                AstClause {
+                    ref span,
+                    node: Clause::For(ref e1, ref e2),
+                },
+                ref st,
+            ) => {
                 let iterable = e2.eval(context)?;
                 for v in t!(iterable.into_iter(), span * span)? {
                     e1.set(context, v)?;
@@ -761,11 +721,13 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 }
                 Ok(Value::new(None))
             }
-            Statement::For(AstClause {
-                               span: ref _s,
-                               ref node,
-                           },
-                           ..) => panic!("The parser returned an invalid for clause: {:?}", node),
+            Statement::For(
+                AstClause {
+                    span: ref _s,
+                    ref node,
+                },
+                ..
+            ) => panic!("The parser returned an invalid for clause: {:?}", node),
             Statement::Def(ref name, ref params, ref stmts) => {
                 let mut p = Vec::new();
                 for ref x in params.iter() {
@@ -808,7 +770,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
 
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>
+        _context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
         Ok(Box::new(self.clone()))
     }
@@ -832,10 +794,10 @@ pub fn eval_def(
     let mut it2 = args.iter();
     for s in signature.iter() {
         match s {
-            &FunctionParameter::Normal(ref v) |
-            &FunctionParameter::WithDefaultValue(ref v, ..) |
-            &FunctionParameter::ArgsArray(ref v) |
-            &FunctionParameter::KWArgsDict(ref v) => {
+            &FunctionParameter::Normal(ref v)
+            | &FunctionParameter::WithDefaultValue(ref v, ..)
+            | &FunctionParameter::ArgsArray(ref v)
+            | &FunctionParameter::KWArgsDict(ref v) => {
                 match env.set(v, it2.next().unwrap().clone()) {
                     Err(x) => return Err(x.into()),
                     _ => (),
@@ -878,9 +840,7 @@ fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoa
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
-    match parse_lexer(map, filename, content, build, lexer)?.eval(
-        &mut context,
-    ) {
+    match parse_lexer(map, filename, content, build, lexer)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -934,9 +894,9 @@ pub fn eval_file<T: FileLoader + 'static>(
     }
 }
 
-pub mod simple;
 pub mod interactive;
 pub mod repl;
+pub mod simple;
 
 #[cfg(test)]
 #[macro_use]

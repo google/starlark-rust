@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::str::CharIndices;
-use std::collections::LinkedList;
+use super::errors::SyntaxError;
+use codemap::Span;
+use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
+use std::char;
 use std::collections::linked_list::IntoIter;
+use std::collections::LinkedList;
+use std::fmt;
 use std::iter::Peekable;
 use std::mem;
-use std::fmt;
-use std::char;
-use codemap::Span;
-use codemap_diagnostic::{Level, SpanLabel, SpanStyle, Diagnostic};
-use super::errors::SyntaxError;
+use std::str::CharIndices;
 
 // TODO: move that code in some common error code list?
 // CL prefix = Critical Lexing
@@ -53,9 +53,9 @@ impl SyntaxError for LexerError {
     fn to_diagnostic(self, file_span: Span) -> Diagnostic {
         let sl = SpanLabel {
             span: match self {
-                LexerError::Indentation(x, y) |
-                LexerError::UnfinishedStringLitteral(x, y) |
-                LexerError::InvalidEscapeSequence(x, y) => file_span.subspan(x, y),
+                LexerError::Indentation(x, y)
+                | LexerError::UnfinishedStringLitteral(x, y)
+                | LexerError::InvalidEscapeSequence(x, y) => file_span.subspan(x, y),
                 LexerError::InvalidCharacter(x) => file_span.subspan(x, x),
                 LexerError::WrappedError { span, .. } => span,
             },
@@ -92,62 +92,62 @@ impl SyntaxError for LexerError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // Indentation block & meaningfull spaces
-    Indent, // New indentation block
-    Dedent, // Leaving an indentation block
+    Indent,  // New indentation block
+    Dedent,  // Leaving an indentation block
     Newline, // Newline outside a string
     // Keywords
-    And, // "and" keyword
-    Else, // "else" keyword
-    Load, // "load" keyword
-    Break, // "break" keyword
-    For, // "for" keyword
-    Not, // "not" keyword
-    NotIn, // "not in" keyword (taken as keyword)
+    And,      // "and" keyword
+    Else,     // "else" keyword
+    Load,     // "load" keyword
+    Break,    // "break" keyword
+    For,      // "for" keyword
+    Not,      // "not" keyword
+    NotIn,    // "not in" keyword (taken as keyword)
     Continue, // "continue" keyword
-    If, // "if" keyword
-    Or, // "or" keyword
-    Def, // "def" keyword
-    In, // "in" keyword
-    Pass, // "pass" keyword
-    Elif, // "elif" keyword
-    Return, // "return" keyword
+    If,       // "if" keyword
+    Or,       // "or" keyword
+    Def,      // "def" keyword
+    In,       // "in" keyword
+    Pass,     // "pass" keyword
+    Elif,     // "elif" keyword
+    Return,   // "return" keyword
     // Symbols
-    Comma, // ','
-    Semicolon, // ';'
-    Colon, // ':'
-    PlusEqual, // '+='
-    MinusEqual, // '-='
-    StarEqual, // '*='
-    SlashEqual, // '/='
+    Comma,            // ','
+    Semicolon,        // ';'
+    Colon,            // ':'
+    PlusEqual,        // '+='
+    MinusEqual,       // '-='
+    StarEqual,        // '*='
+    SlashEqual,       // '/='
     DoubleSlashEqual, // '//='
-    PercentEqual, // '%='
-    DoubleEqual, // '=='
-    BangEqual, // '!='
-    LowerEqual, // '<='
-    GreaterEqual, // '>='
-    Doublestar, // '**'
-    Equal, // '='
-    LowerThan, // '<'
-    GreaterThan, // '>'
-    Minus, // '-'
-    Plus, // '+'
-    Star, // '*'
-    Percent, // '%'
-    Slash, // '/'
-    DoubleSlash, // '//'
-    Dot, // '.'
-    Pipe, // '|'
+    PercentEqual,     // '%='
+    DoubleEqual,      // '=='
+    BangEqual,        // '!='
+    LowerEqual,       // '<='
+    GreaterEqual,     // '>='
+    Doublestar,       // '**'
+    Equal,            // '='
+    LowerThan,        // '<'
+    GreaterThan,      // '>'
+    Minus,            // '-'
+    Plus,             // '+'
+    Star,             // '*'
+    Percent,          // '%'
+    Slash,            // '/'
+    DoubleSlash,      // '//'
+    Dot,              // '.'
+    Pipe,             // '|'
     // Brackets
-    OpeningBracket, // '['
+    OpeningBracket,      // '['
     OpeningCurlyBracket, // '{'
-    OpeningParenthesis, // '('
-    ClosingBracket, // ']'
+    OpeningParenthesis,  // '('
+    ClosingBracket,      // ']'
     ClosingCurlyBracket, // '}'
-    ClosingParenthesis, // ')'
+    ClosingParenthesis,  // ')'
 
-    Reserved(String), // One of the reserved keywords
-    Identifier(String), // An identifier
-    IntegerLitteral(i64), // An integer litteral (123, 0x1, 0b1011, 0755, ...)
+    Reserved(String),       // One of the reserved keywords
+    Identifier(String),     // An identifier
+    IntegerLitteral(i64),   // An integer litteral (123, 0x1, 0b1011, 0755, ...)
     StringLitteral(String), // A string litteral
 }
 
@@ -214,14 +214,13 @@ impl fmt::Display for Token {
 #[doc(hidden)]
 pub type LexerItem = Result<(u64, Token, u64), LexerError>;
 #[doc(hidden)]
-pub trait LexerIntoIter<T: Iterator<Item = LexerItem>>
-    : IntoIterator<Item = LexerItem, IntoIter = T> {
+pub trait LexerIntoIter<T: Iterator<Item = LexerItem>>:
+    IntoIterator<Item = LexerItem, IntoIter = T>
+{
 }
-impl<
-    T1: Iterator<Item = LexerItem>,
-    T2: IntoIterator<Item = LexerItem, IntoIter = T1>,
-> LexerIntoIter<T1> for T2 {
-}
+impl<T1: Iterator<Item = LexerItem>, T2: IntoIterator<Item = LexerItem, IntoIter = T1>>
+    LexerIntoIter<T1> for T2
+{}
 
 /// An iterator over a string slice that convert it to a list of token, i.e. the lexer.
 #[derive(Debug)]
@@ -493,8 +492,8 @@ impl Lexer {
             "pass" => Token::Pass,
             "elif" => Token::Elif,
             "return" => Token::Return,
-            "as" | "import" | "assert" | "is" | "class" | "nonlocal" | "del" | "raise" |
-            "except" | "try" | "finally" | "while" | "from" | "with" | "global" | "yield" => {
+            "as" | "import" | "assert" | "is" | "class" | "nonlocal" | "del" | "raise"
+            | "except" | "try" | "finally" | "while" | "from" | "with" | "global" | "yield" => {
                 Token::Reserved(identifier.to_owned())
             }
             _ => Token::Identifier(identifier.to_owned()),
@@ -601,8 +600,9 @@ impl Lexer {
 
     fn consume_identifier_queue(&mut self, head: &str) -> Option<<Self as Iterator>::Item> {
         let mut result = head.to_owned();
-        while self.peek_char().is_alphabetic() || self.peek_char().is_digit(10) ||
-            self.peek_char() == '_'
+        while self.peek_char().is_alphabetic()
+            || self.peek_char().is_digit(10)
+            || self.peek_char() == '_'
         {
             result.push(self.next_char());
         }
@@ -694,9 +694,18 @@ impl Lexer {
             assert_eq!(c, '\\');
             if let Some((pos2, c2)) = self.peek() {
                 match c2 {
-                    'n' => { self.pop(); Ok(Some('\n')) },
-                    'r' => { self.pop(); Ok(Some('\r')) },
-                    't' => { self.pop(); Ok(Some('\t')) },
+                    'n' => {
+                        self.pop();
+                        Ok(Some('\n'))
+                    }
+                    'r' => {
+                        self.pop();
+                        Ok(Some('\r'))
+                    }
+                    't' => {
+                        self.pop();
+                        Ok(Some('\t'))
+                    }
                     '0' => {
                         self.pop();
                         if self.peek_char().is_digit(8) {
@@ -722,7 +731,7 @@ impl Lexer {
                     '1'...'9' => {
                         self.pop();
                         Err(LexerError::InvalidEscapeSequence(pos, pos2 + 1))
-                    },
+                    }
                     '\n' => {
                         self.pop();
                         if triple {
@@ -753,7 +762,7 @@ impl Lexer {
                     '"' | '\'' | '\\' => {
                         self.pop();
                         Ok(Some(c2))
-                    },
+                    }
                     _ => Ok(Some('\\')),
                 }
             } else {
@@ -838,12 +847,12 @@ impl Lexer {
     fn consume_token(&mut self) -> Option<<Self as Iterator>::Item> {
         if self.last_new_line && self.parentheses == 0 {
             if let Some(r) = self.consume_indentation() {
-                return Some(r)
+                return Some(r);
             }
         } else {
             let skip_newline = self.parentheses > 0;
             if let Some(x) = self.skip_spaces(skip_newline) {
-                return Some(x)
+                return Some(x);
             }
         }
         self.begin();
@@ -978,18 +987,17 @@ impl Lexer {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::Token;
-    use syntax::errors::SyntaxError;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::fs::File;
-    use std::io::Read;
-    use std::sync::{Arc, Mutex};
     use codemap;
     use codemap_diagnostic;
+    use std::fs;
+    use std::fs::File;
+    use std::io::Read;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+    use syntax::errors::SyntaxError;
 
     fn collect_result_buffered(s: Vec<&'static str>) -> Vec<Token> {
         let codemap = Arc::new(Mutex::new(codemap::CodeMap::new()));
@@ -1005,11 +1013,7 @@ mod tests {
         };
         let mut lexer = super::BufferedLexer::new(s[0]);
         for v in s.iter().skip(1) {
-            assert!(
-                lexer.need_more(),
-                "Should need more before '{}'",
-                v,
-            );
+            assert!(lexer.need_more(), "Should need more before '{}'", v,);
 
             lexer.input(&v)
         }
@@ -1043,15 +1047,17 @@ mod tests {
                 .span
         };
         let mut pos = 0;
-        super::Lexer::new(s).for_each(|x| if x.is_err() {
-            diagnostics.push(x.err().unwrap().to_diagnostic(file_span));
-        } else {
-            let (i, t, j) = x.unwrap();
-            let span_incorrect = format!("Span of {:?} incorrect", t);
-            assert!(pos <= i, "{}: {} > {}", span_incorrect, pos, i);
-            result.push(t);
-            assert!(i <= j, "{}: {} > {}", span_incorrect, i, j);
-            pos = j;
+        super::Lexer::new(s).for_each(|x| {
+            if x.is_err() {
+                diagnostics.push(x.err().unwrap().to_diagnostic(file_span));
+            } else {
+                let (i, t, j) = x.unwrap();
+                let span_incorrect = format!("Span of {:?} incorrect", t);
+                assert!(pos <= i, "{}: {} > {}", span_incorrect, pos, i);
+                result.push(t);
+                assert!(i <= j, "{}: {} > {}", span_incorrect, i, j);
+                pos = j;
+            }
         });
         assert_diagnostics!(diagnostics, codemap);
         result
@@ -1066,8 +1072,7 @@ mod tests {
                     &Token::IntegerLitteral(r) => Some(r),
                     &Token::Newline => None,
                     _ => panic!("{:?} is not a integer litteral", v),
-                })
-                .collect()
+                }).collect()
         };
         assert_eq!(vec![0, 123], get_result("0 123"));
         assert_eq!(vec![0x7f, 0x7f], get_result("0x7F 0x7f"));
@@ -1197,7 +1202,7 @@ mod tests {
     fn test_reserved() {
         let r = collect_result(
             "as import assert is class nonlocal del raise except try finally \
-            while from with global yield",
+             while from with global yield",
         );
         assert_eq!(
             &[
@@ -1286,9 +1291,8 @@ mod tests {
             Err(super::LexerError::UnfinishedStringLitteral(0, 1))
         );
         // Multiline string
-        let r = collect_result(
-            "'''''' '''\\n''' '''\n''' \"\"\"\"\"\" \"\"\"\\n\"\"\" \"\"\"\n\"\"\"",
-        );
+        let r =
+            collect_result("'''''' '''\\n''' '''\n''' \"\"\"\"\"\" \"\"\"\\n\"\"\" \"\"\"\n\"\"\"");
         assert_eq!(
             &[
                 Token::StringLitteral("".to_owned()),
@@ -1316,7 +1320,6 @@ mod tests {
             ],
             &r[..]
         );
-
     }
 
     #[test]
@@ -1399,7 +1402,7 @@ def test(a):
 test("abc")
 "#,
         ).map(|x| x.unwrap())
-            .collect();
+        .collect();
         assert_eq!(expected, actual);
     }
 
@@ -1465,8 +1468,10 @@ test("abc")
                         .add_file(filename, content.clone())
                         .span
                 };
-                super::Lexer::new(&content).for_each(|x| if x.is_err() {
-                    diagnostics.push(x.err().unwrap().to_diagnostic(file_span));
+                super::Lexer::new(&content).for_each(|x| {
+                    if x.is_err() {
+                        diagnostics.push(x.err().unwrap().to_diagnostic(file_span));
+                    }
                 });
             }
         }

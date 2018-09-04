@@ -74,19 +74,19 @@
 //!     }
 //! }
 //! ```
-use std::cmp::Ordering;
-use std::rc::{Rc, Weak};
-use std::cell::RefCell;
-use std::ops::Deref;
-use std::fmt;
-use std::any::Any;
-use syntax::errors::SyntaxError;
-use std::collections::HashMap;
-use std::hash::{Hasher, Hash};
-use environment::Environment;
 use codemap::Span;
-use codemap_diagnostic::{Level, Diagnostic, SpanLabel, SpanStyle};
+use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
+use environment::Environment;
 use linked_hash_map::LinkedHashMap;
+use std::any::Any;
+use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
+use std::rc::{Rc, Weak};
+use syntax::errors::SyntaxError;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
@@ -122,7 +122,10 @@ pub enum ValueError {
         right: Option<String>,
     },
     /// The operation is not supported for this type because type is not of a certain category.
-    TypeNotX { object_type: String, op: String },
+    TypeNotX {
+        object_type: String,
+        op: String,
+    },
     /// Division by 0
     DivisionByZero,
     /// Trying to modify an immutable value.
@@ -251,22 +254,18 @@ impl SyntaxError for ValueError {
                         }
                         ValueError::NotHashableValue => "Value is not hashable".to_owned(),
                         ValueError::KeyNotFound(ref k) => format!("Key '{}' was not found", k),
-                        ValueError::InterpolationFormat => {
+                        ValueError::InterpolationFormat => concat!(
+                            "Interpolation string format is incorrect:",
+                            " '%' must be followed by an optional name and a specifier ",
+                            "('s', 'r', 'd', 'i', 'o', 'x', 'X', 'c')"
+                        ).to_owned(),
+                        ValueError::InterpolationValueNotInUTFRange(ref c) => format!(
                             concat!(
-                                "Interpolation string format is incorrect:",
-                                " '%' must be followed by an optional name and a specifier ",
-                                "('s', 'r', 'd', 'i', 'o', 'x', 'X', 'c')"
-                            ).to_owned()
-                        }
-                        ValueError::InterpolationValueNotInUTFRange(ref c) => {
-                            format!(
-                                concat!(
-                                    "Value 0x{:x} passed for %c formattter is not a valid",
-                                    " UTF-8 codepoint"
-                                ),
-                                c
-                            )
-                        }
+                                "Value 0x{:x} passed for %c formattter is not a valid",
+                                " UTF-8 codepoint"
+                            ),
+                            c
+                        ),
                         ValueError::TooManyParametersForInterpolation => {
                             "Too many arguments for format string".to_owned()
                         }
@@ -276,9 +275,7 @@ impl SyntaxError for ValueError {
                         ValueError::InterpolationValueNotChar => {
                             "'%c' formatter requires a single-character string".to_owned()
                         }
-                        ValueError::TooManyRecursionLevel => {
-                            "Too many recursion levels".to_owned()
-                        }
+                        ValueError::TooManyRecursionLevel => "Too many recursion levels".to_owned(),
                         _ => unreachable!(),
                     },
                     code: Some(
@@ -323,10 +320,16 @@ impl SyntaxError for ValueError {
 impl PartialEq for ValueError {
     fn eq(&self, other: &ValueError) -> bool {
         match (self, other) {
-            (&ValueError::CannotMutateImmutableValue, &ValueError::CannotMutateImmutableValue) |
-            (&ValueError::IncorrectParameterType, &ValueError::IncorrectParameterType) => true,
-            (&ValueError::OperationNotSupported { op: ref x, .. },
-             &ValueError::OperationNotSupported { op: ref y, .. }) if x == y => true,
+            (&ValueError::CannotMutateImmutableValue, &ValueError::CannotMutateImmutableValue)
+            | (&ValueError::IncorrectParameterType, &ValueError::IncorrectParameterType) => true,
+            (
+                &ValueError::OperationNotSupported { op: ref x, .. },
+                &ValueError::OperationNotSupported { op: ref y, .. },
+            )
+                if x == y =>
+            {
+                true
+            }
             (&ValueError::IndexOutOfBound(x), &ValueError::IndexOutOfBound(y)) if x == y => true,
             _ => false,
         }
@@ -352,7 +355,7 @@ impl Value {
     /// A method to upgrade to a strong pointer for local operation
     fn upgrade(&self) -> Rc<RefCell<TypedValue>> {
         match self {
-            &Value::Value(ref v)     => v.clone(),
+            &Value::Value(ref v) => v.clone(),
             &Value::WeakValue(ref v) => v.clone().upgrade().unwrap(),
         }
     }
@@ -360,7 +363,7 @@ impl Value {
     /// Return a weak pointer for cyclic reference
     fn downgrade(&self) -> Value {
         Value::WeakValue(match self {
-            &Value::Value(ref v)     => Rc::downgrade(v),
+            &Value::Value(ref v) => Rc::downgrade(v),
             &Value::WeakValue(ref v) => v.clone(),
         })
     }
@@ -395,7 +398,7 @@ impl Value {
     /// Return true if the current value is a weak pointer
     pub fn is_weak(&self) -> bool {
         match self {
-            &Value::Value(..)     => false,
+            &Value::Value(..) => false,
             &Value::WeakValue(..) => true,
         }
     }
@@ -403,20 +406,19 @@ impl Value {
     /// Return true if other is pointing to the same value as self
     pub fn same_as(&self, other: &TypedValue) -> bool {
         // We use raw pointers..
-        let p : *const TypedValue = other;
+        let p: *const TypedValue = other;
         match self {
-            &Value::Value(ref v)     => {
-                let p1 : *const TypedValue = v.as_ptr();
+            &Value::Value(ref v) => {
+                let p1: *const TypedValue = v.as_ptr();
                 p1 == p
-            },
+            }
             &Value::WeakValue(ref v) => {
-                let p1 : *const TypedValue = v.upgrade().unwrap().as_ptr();
-                p1  == p
-            },
+                let p1: *const TypedValue = v.upgrade().unwrap().as_ptr();
+                p1 == p
+            }
         }
     }
 }
-
 
 /// A trait for a value with a type that all variable container
 /// will implement.
@@ -697,7 +699,6 @@ pub trait TypedValue {
     /// ```
     fn div(&self, other: Value) -> ValueResult;
 
-
     /// Floor division between the current value and `other`.
     ///
     /// # Examples
@@ -972,13 +973,13 @@ impl TypedValue for Value {
     }
     fn to_str(&self) -> String {
         match self {
-            &Value::Value(ref v)  => v.borrow().to_str(),
+            &Value::Value(ref v) => v.borrow().to_str(),
             &Value::WeakValue(..) => "...".to_owned(),
         }
     }
     fn to_repr(&self) -> String {
         match self {
-            &Value::Value(ref v)  => v.borrow().to_repr(),
+            &Value::Value(ref v) => v.borrow().to_repr(),
             &Value::WeakValue(..) => "...".to_owned(),
         }
     }
@@ -1006,7 +1007,7 @@ impl TypedValue for Value {
         let upgraded = self.upgrade();
         let borrowed = upgraded.borrow();
         if recursion > MAX_RECURSION {
-            return Err(ValueError::TooManyRecursionLevel)
+            return Err(ValueError::TooManyRecursionLevel);
         }
         if other.same_as(borrowed.deref()) {
             // Special case for recursive structure, stop if we are pointing to the same object.
@@ -1017,7 +1018,9 @@ impl TypedValue for Value {
     }
 
     fn is_descendant(&self, other: &TypedValue) -> bool {
-        if self.same_as(other) { return true }
+        if self.same_as(other) {
+            return true;
+        }
         let upgraded = self.upgrade();
         let try_borrowed = upgraded.try_borrow();
         if let Ok(borrowed) = try_borrowed {
@@ -1039,14 +1042,7 @@ impl TypedValue for Value {
     ) -> ValueResult {
         let upgraded = self.upgrade();
         let borrowed = upgraded.borrow();
-        borrowed.call(
-            call_stack,
-            env,
-            positional,
-            named,
-            args,
-            kwargs,
-        )
+        borrowed.call(call_stack, env, positional, named, args, kwargs)
     }
     fn at(&self, index: Value) -> ValueResult {
         let upgraded = self.upgrade();
@@ -1258,23 +1254,23 @@ impl TypedValue for i64 {
     fn add(&self, other: Value) -> ValueResult {
         match other.get_type() {
             "int" | "bool" => Ok(Value::new(self.wrapping_add(other.to_int().unwrap()))),
-            _ => other.add(Value::new(*self))
+            _ => other.add(Value::new(*self)),
         }
     }
     fn sub(&self, other: Value) -> ValueResult {
         match other.get_type() {
             "int" | "bool" => Ok(Value::new(self.wrapping_sub(other.to_int().unwrap()))),
-            _ => Err(ValueError::OperationNotSupported{
+            _ => Err(ValueError::OperationNotSupported {
                 op: "-".to_owned(),
                 left: "int".to_owned(),
-                right: Some(other.get_type().to_owned())
-            })
+                right: Some(other.get_type().to_owned()),
+            }),
         }
     }
     fn mul(&self, other: Value) -> ValueResult {
         match other.get_type() {
             "int" | "bool" => Ok(Value::new(self.wrapping_mul(other.to_int().unwrap()))),
-            _ => other.mul(Value::new(*self))
+            _ => other.mul(Value::new(*self)),
         }
     }
     fn percent(&self, other: Value) -> ValueResult {
@@ -1347,27 +1343,30 @@ impl TypedValue for bool {
     }
     fn add(&self, other: Value) -> ValueResult {
         match other.get_type() {
-            "int" | "bool"
-                => Ok(Value::new(self.to_int().unwrap().wrapping_add(other.to_int().unwrap()))),
-            _ => other.add(Value::new(*self))
+            "int" | "bool" => Ok(Value::new(
+                self.to_int().unwrap().wrapping_add(other.to_int().unwrap()),
+            )),
+            _ => other.add(Value::new(*self)),
         }
     }
     fn sub(&self, other: Value) -> ValueResult {
         match other.get_type() {
-            "int" | "bool"
-                => Ok(Value::new(self.to_int().unwrap().wrapping_sub(other.to_int().unwrap()))),
-            _ => Err(ValueError::OperationNotSupported{
+            "int" | "bool" => Ok(Value::new(
+                self.to_int().unwrap().wrapping_sub(other.to_int().unwrap()),
+            )),
+            _ => Err(ValueError::OperationNotSupported {
                 op: "-".to_owned(),
                 left: "int".to_owned(),
-                right: Some(other.get_type().to_owned())
-            })
+                right: Some(other.get_type().to_owned()),
+            }),
         }
     }
     fn mul(&self, other: Value) -> ValueResult {
         match other.get_type() {
-            "int" | "bool"
-                => Ok(Value::new(self.to_int().unwrap().wrapping_mul(other.to_int().unwrap()))),
-            _ => other.mul(Value::new(*self))
+            "int" | "bool" => Ok(Value::new(
+                self.to_int().unwrap().wrapping_mul(other.to_int().unwrap()),
+            )),
+            _ => other.mul(Value::new(*self)),
         }
     }
     fn percent(&self, other: Value) -> ValueResult {
@@ -1564,17 +1563,16 @@ impl Value {
     }
 }
 
-
 // Submodules
-pub mod string;
-pub mod tuple;
-pub mod list;
 pub mod dict;
 pub mod function;
+pub mod list;
+pub mod string;
+pub mod tuple;
 
 // Converters
-use self::tuple::Tuple;
 use self::list::List;
+use self::tuple::Tuple;
 macro_rules! from_X {
     ($x: ty) => {
         impl From<$x> for Value {
@@ -1638,15 +1636,15 @@ from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8);
 from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Hash + Clone> From<HashMap<T1, T2>>
-    for Value {
+    for Value
+{
     fn from(a: HashMap<T1, T2>) -> Value {
         Value::new(dict::Dictionary::from(a))
     }
 }
-impl<
-    T1: Into<Value> + Eq + Hash + Clone,
-    T2: Into<Value> + Eq + Hash + Clone,
-> From<LinkedHashMap<T1, T2>> for Value {
+impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Hash + Clone>
+    From<LinkedHashMap<T1, T2>> for Value
+{
     fn from(a: LinkedHashMap<T1, T2>) -> Value {
         Value::new(dict::Dictionary::from(a))
     }
@@ -1667,7 +1665,7 @@ macro_rules! int_op {
     };
     ($v1:tt . $op:ident ( ) ) => {
         $v1.$op().unwrap().to_int().unwrap()
-    }
+    };
 }
 
 #[cfg(test)]
@@ -1691,8 +1689,10 @@ mod tests {
             TypedValue::convert_slice_indices(7, Some(Value::new(-1)), Some(Value::new(10)), None)
         );
         // Errors
-        assert_eq!(Err(ValueError::IncorrectParameterType),
-                Value::from("a").convert_index(7));
+        assert_eq!(
+            Err(ValueError::IncorrectParameterType),
+            Value::from("a").convert_index(7)
+        );
         assert_eq!(
             Err(ValueError::IndexOutOfBound(8)),
             Value::new(8).convert_index(7)
@@ -1701,7 +1701,6 @@ mod tests {
             Err(ValueError::IndexOutOfBound(-1)),
             Value::new(-8).convert_index(7)
         );
-
     }
 
     #[test]
@@ -1711,7 +1710,7 @@ mod tests {
         assert_eq!(3, int_op!(1.add(2))); // 1.add(2) = 1 + 2 = 3
         assert_eq!(-1, int_op!(1.sub(2))); // 1.sub(2) = 1 - 2 = -1
         assert_eq!(6, int_op!(2.mul(3))); // 2.mul(3) = 2 * 3 = 6
-        // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
+                                          // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
         assert_eq!(2, int_op!(5.percent(3)));
         assert_eq!(3, int_op!(7.div(2))); // 7.div(2) = 7 / 2 = 3
     }

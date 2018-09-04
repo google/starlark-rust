@@ -14,11 +14,11 @@
 
 //! Function as a TypedValue
 use super::*;
-use syntax::ast::AstStatement;
+use codemap::CodeMap;
 use environment::Environment;
 use eval::eval_def;
-use codemap::CodeMap;
 use std::sync::{Arc, Mutex};
+use syntax::ast::AstStatement;
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -95,13 +95,11 @@ impl Into<RuntimeError> for FunctionError {
                     missing,
                     function_type,
                     signature,
-                } => {
-                    format!(
-                        "Missing parameter {} for call to {}",
-                        missing.trim_left_matches("$"),
-                        repr(&function_type, &signature)
-                    )
-                }
+                } => format!(
+                    "Missing parameter {} for call to {}",
+                    missing.trim_left_matches("$"),
+                    repr(&function_type, &signature)
+                ),
                 FunctionError::ArgsValueIsNotString => {
                     "The argument provided for *args is not an identifier".to_owned()
                 }
@@ -211,8 +209,7 @@ fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> Str
                 &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
                 &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
-        })
-        .collect();
+        }).collect();
     format!("{}({})", function_type.to_repr(), v.join(", "))
 }
 
@@ -228,8 +225,7 @@ fn to_str(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> S
                 &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
                 &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
-        })
-        .collect();
+        }).collect();
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
@@ -314,13 +310,11 @@ impl TypedValue for Function {
                         if let Some(ref r) = kwargs_dict.remove(name) {
                             v.push(r.clone());
                         } else {
-                            return Err(
-                                FunctionError::NotEnoughParameter {
-                                    missing: name.to_string(),
-                                    function_type: self.function_type.clone(),
-                                    signature: self.signature.clone(),
-                                }.into(),
-                            );
+                            return Err(FunctionError::NotEnoughParameter {
+                                missing: name.to_string(),
+                                function_type: self.function_type.clone(),
+                                signature: self.signature.clone(),
+                            }.into());
                         }
                     }
                 }
@@ -397,14 +391,8 @@ impl TypedValue for WrappedMethod {
             .into_iter()
             .chain(positional.into_iter())
             .collect();
-        self.method.call(
-            call_stack,
-            env,
-            positional,
-            named,
-            args,
-            kwargs,
-        )
+        self.method
+            .call(call_stack, env, positional, named, args, kwargs)
     }
 
     not_supported!(to_int, get_hash);

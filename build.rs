@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use std::env;
-use std::fs::File;
-use std::path::Path;
 use std::fs;
+use std::fs::File;
 use std::io::prelude::*;
+use std::path::Path;
 extern crate lalrpop;
 
 fn main() {

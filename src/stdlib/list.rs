@@ -14,15 +14,17 @@
 
 //! Methods for the `list` type.
 
-use values::*;
 use environment::Environment;
+use values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const LIST_INDEX_FAILED_ERROR_CODE: &'static str = "UF10";
 pub const LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE: &'static str = "UF11";
 
 macro_rules! ok {
-    ($e:expr) => { return Ok(Value::from($e)); }
+    ($e:expr) => {
+        return Ok(Value::from($e));
+    };
 }
 
 starlark_module!{global =>
@@ -276,8 +278,8 @@ starlark_module!{global =>
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::starlark_default_fail;
     use super::super::starlark_default;
+    use super::super::tests::starlark_default_fail;
     use super::LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE;
 
     macro_rules! starlark_ok {

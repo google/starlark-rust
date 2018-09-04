@@ -22,9 +22,9 @@ pub mod errors;
 mod testutil;
 
 #[doc(hidden)]
-pub mod lexer;
-#[doc(hidden)]
 pub mod ast;
+#[doc(hidden)]
+pub mod lexer;
 mod grammar {
     include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
     #[cfg(test)]

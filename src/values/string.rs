@@ -13,11 +13,11 @@
 // limitations under the License.
 
 //! Define the string type for Starlark.
-use values::*;
+use std;
+use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
-use std::cmp::Ordering;
-use std;
+use values::*;
 
 impl TypedValue for String {
     immutable!();
@@ -73,8 +73,10 @@ impl TypedValue for String {
             Err(ValueError::IncorrectParameterType)
         }
     }
-    
-    fn is_descendant(&self, _other: &TypedValue) -> bool { false }
+
+    fn is_descendant(&self, _other: &TypedValue) -> bool {
+        false
+    }
 
     fn slice(
         &self,
@@ -90,29 +92,35 @@ impl TypedValue for String {
             (start, stop - start, stride)
         };
         if take <= 0 {
-            return Ok(Value::from(""))
+            return Ok(Value::from(""));
         };
 
-        let v: String = self.chars()
+        let v: String = self
+            .chars()
             .skip(low as usize)
             .take(take as usize)
             .collect();
         let v: String = if stride > 0 {
-            v.chars().enumerate()
-                .filter_map(|x| if 0 == (x.0 as i64 % astride) {
-                    Some(x.1)
-                } else {
-                    None
-                })
-                .collect()
+            v.chars()
+                .enumerate()
+                .filter_map(|x| {
+                    if 0 == (x.0 as i64 % astride) {
+                        Some(x.1)
+                    } else {
+                        None
+                    }
+                }).collect()
         } else {
-            v.chars().rev().enumerate()
-                .filter_map(|x| if 0 == (x.0 as i64 % astride) {
-                    Some(x.1)
-                } else {
-                    None
-                })
-                .collect()
+            v.chars()
+                .rev()
+                .enumerate()
+                .filter_map(|x| {
+                    if 0 == (x.0 as i64 % astride) {
+                        Some(x.1)
+                    } else {
+                        None
+                    }
+                }).collect()
         };
         Ok(Value::new(v))
     }
@@ -236,7 +244,7 @@ impl TypedValue for String {
                                     return Err(ValueError::NotEnoughParametersForInterpolation);
                                 }
                             }
-                        },
+                        }
                         Err(..) => {
                             if idx == 0 {
                                 idx += 1;
@@ -250,7 +258,7 @@ impl TypedValue for String {
                     }
                 };
                 match chars.next() {
-                    Some('s') => res += &var.to_str(), // str(x)
+                    Some('s') => res += &var.to_str(),  // str(x)
                     Some('r') => res += &var.to_repr(), // repr(x)
                     // signed integer decimal
                     Some('d') | Some('i') => res += &var.to_int()?.to_string(),
@@ -270,28 +278,26 @@ impl TypedValue for String {
                         res += &format!("{}{:X}", if x.is_negative() { "-" } else { "" }, x.abs());
                     }
                     // x for string, chr(x) for int
-                    Some('c') => {
-                        match var.get_type() {
-                            "string" => {
-                                if var.length()? != 1 {
-                                    return Err(ValueError::InterpolationValueNotChar);
-                                } else {
-                                    res += &var.to_str();
-                                }
+                    Some('c') => match var.get_type() {
+                        "string" => {
+                            if var.length()? != 1 {
+                                return Err(ValueError::InterpolationValueNotChar);
+                            } else {
+                                res += &var.to_str();
                             }
-                            _ => {
-                                let codepoint = var.to_int()? as u32;
-                                match std::char::from_u32(codepoint) {
-                                    Some(c) => res.push(c),
-                                    None => {
-                                        return Err(ValueError::InterpolationValueNotInUTFRange(
-                                            codepoint,
-                                        ))
-                                    }
+                        }
+                        _ => {
+                            let codepoint = var.to_int()? as u32;
+                            match std::char::from_u32(codepoint) {
+                                Some(c) => res.push(c),
+                                None => {
+                                    return Err(ValueError::InterpolationValueNotInUTFRange(
+                                        codepoint,
+                                    ))
                                 }
                             }
                         }
-                    }
+                    },
                     _ => return Err(ValueError::InterpolationFormat),
                 }
                 let s: String = chars.collect();
@@ -316,8 +322,8 @@ impl TypedValue for String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::Value;
+    use super::*;
     use std::collections::HashMap;
 
     #[test]
@@ -401,10 +407,12 @@ mod tests {
                 .to_bool()
         );
         // "z" in "abc" == False
-        assert!(!Value::from("abc")
-            .is_in(&Value::from("z"))
-            .unwrap()
-            .to_bool());
+        assert!(
+            !Value::from("abc")
+                .is_in(&Value::from("z"))
+                .unwrap()
+                .to_bool()
+        );
     }
 
     #[test]
@@ -436,6 +444,5 @@ mod tests {
                 .unwrap(),
             Value::from("Hello, world")
         );
-
     }
 }

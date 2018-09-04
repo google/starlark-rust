@@ -13,10 +13,9 @@
 // limitations under the License.
 
 //! Define the list type of Starlark
-use values::*;
-use std::cmp::Ordering;
 use std::borrow::BorrowMut;
-
+use std::cmp::Ordering;
+use values::*;
 
 pub struct List {
     frozen: bool,
@@ -95,7 +94,6 @@ impl TypedValue for List {
                     accum + &s.1
                 } else {
                     accum + ", " + &s.1
-
                 },
             )
         )
@@ -147,16 +145,16 @@ impl TypedValue for List {
     fn is_in(&self, other: &Value) -> ValueResult {
         for x in self.content.iter() {
             if x.compare(other, 0)? == Ordering::Equal {
-                return Ok(Value::new(true))
+                return Ok(Value::new(true));
             }
         }
         Ok(Value::new(false))
     }
 
     fn is_descendant(&self, other: &TypedValue) -> bool {
-        self.content.iter().any(
-            |x| x.same_as(other) || x.is_descendant(other)
-        )
+        self.content
+            .iter()
+            .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
     fn slice(
@@ -167,9 +165,12 @@ impl TypedValue for List {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        Ok(Value::from(
-            tuple::slice_vector(start, stop, stride, &self.content),
-        ))
+        Ok(Value::from(tuple::slice_vector(
+            start,
+            stop,
+            stride,
+            &self.content,
+        )))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
@@ -308,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_value_alias() {
-        let v1 = Value::from(vec![1,2,3]);
+        let v1 = Value::from(vec![1, 2, 3]);
         let mut v2 = v1.clone();
         v2.set_at(Value::from(2), Value::from(4)).unwrap();
         assert_eq!(v2.to_str(), "[1, 2, 4]");
@@ -317,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_is_descendant() {
-        let v1 = Value::from(vec![1,2,3]);
+        let v1 = Value::from(vec![1, 2, 3]);
         let v2 = Value::from(vec![Value::new(1), Value::new(2), v1.clone()]);
         let v3 = Value::from(vec![Value::new(1), Value::new(2), v2.clone()]);
         assert!(v3.is_descendant_value(&v2));

@@ -13,15 +13,15 @@
 // limitations under the License.
 
 //! Provide a Read-Eval-Print Loop (REPL)
-use std::sync::{Arc, Mutex};
-use syntax::lexer::{LexerIntoIter, BufferedLexer, LexerItem};
-use environment::Environment;
-use values::TypedValue;
-use eval::eval_lexer;
-use eval::simple::SimpleFileLoader;
 use codemap;
 use codemap_diagnostic::{ColorConfig, Emitter};
-use linefeed::{Reader, ReadResult};
+use environment::Environment;
+use eval::eval_lexer;
+use eval::simple::SimpleFileLoader;
+use linefeed::{ReadResult, Reader};
+use std::sync::{Arc, Mutex};
+use syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
+use values::TypedValue;
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: Arc<Mutex<codemap::CodeMap>>,

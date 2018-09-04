@@ -13,27 +13,29 @@
 // limitations under the License.
 
 //! Utility to test the conformance tests from other implementation of Starlark
-extern crate starlark;
 extern crate codemap;
 extern crate codemap_diagnostic;
+extern crate starlark;
 
 use std::fs::File;
-use std::path::Path;
-use std::io::{self, Write};
 use std::io::prelude::*;
-use testutil::starlark::stdlib::global_environment;
-use testutil::starlark::eval::simple::eval;
+use std::io::{self, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use testutil::codemap::CodeMap;
-use testutil::codemap_diagnostic::{Diagnostic, Emitter, ColorConfig};
+use testutil::codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use testutil::starlark::eval::simple::eval;
+use testutil::starlark::stdlib::global_environment;
 
 /// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
 fn read_input(path: &str) -> Vec<(usize, String)> {
     let mut content = String::new();
     let mut file = File::open(path).unwrap();
     file.read_to_string(&mut content).unwrap();
-    let mut v : Vec<(usize, String)>
-        = content.split("\n---\n").map(|x| (0, x.to_owned())).collect();
+    let mut v: Vec<(usize, String)> = content
+        .split("\n---\n")
+        .map(|x| (0, x.to_owned()))
+        .collect();
     let mut idx = 1;
     for mut el in &mut v {
         el.0 = idx;
@@ -47,7 +49,7 @@ fn assert_diagnostic(
     expected: &str,
     path: &str,
     offset: usize,
-    map: &Arc<Mutex<CodeMap>>
+    map: &Arc<Mutex<CodeMap>>,
 ) -> bool {
     let expected = expected.to_lowercase();
     let msg = if d.spans.is_empty() || d.spans[0].label.is_none() {
@@ -57,13 +59,13 @@ fn assert_diagnostic(
         format!("{} ({})", d.message, label.unwrap())
     };
     if !msg.to_lowercase().contains(&expected) {
-        io::stderr().write(&format!(
-            "Expected error '{}' at {}:{}, got {}\n",
-            expected,
-            path,
-            offset,
-            msg,
-        ).into_bytes()).unwrap();
+        io::stderr()
+            .write(
+                &format!(
+                    "Expected error '{}' at {}:{}, got {}\n",
+                    expected, path, offset, msg,
+                ).into_bytes(),
+            ).unwrap();
         Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d]);
         false
     } else {
@@ -76,7 +78,10 @@ fn run_conformance_test(path: &str) -> bool {
     let global = global_environment();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
-    eval(&map, "PRELUDE", r#"
+    eval(
+        &map,
+        "PRELUDE",
+        r#"
 def assert_eq(x, y):
   if x != y:
     fail("%r != %r" % (x, y))
@@ -84,19 +89,24 @@ def assert_eq(x, y):
 def assert_(cond, msg="assertion failed"):
   if not cond:
     fail(msg)
-"#, false, &mut prelude).unwrap();
+"#,
+        false,
+        &mut prelude,
+    ).unwrap();
     prelude.freeze();
     for (offset, content) in read_input(path) {
         let err = if let Some(x) = content.find("###") {
-            let err = content.get(x+3..).unwrap().trim();
+            let err = content.get(x + 3..).unwrap().trim();
             err.get(..err.find("\n").unwrap_or(err.len())).unwrap()
-        } else { "" };
+        } else {
+            ""
+        };
         match eval(
             &map,
             &format!("{}<{}>", path, offset),
             &content,
             false,
-            &mut prelude.child(&path)
+            &mut prelude.child(&path),
         ) {
             Err(p) => {
                 if err.is_empty() {
@@ -107,15 +117,16 @@ def assert_(cond, msg="assertion failed"):
                         return false;
                     }
                 }
-            },
+            }
             _ => {
                 if !err.is_empty() {
-                    io::stderr().write(&format!(
-                        "Expected error '{}' at {}:{}, got success",
-                        err,
-                        path,
-                        offset,
-                    ).into_bytes()).unwrap();
+                    io::stderr()
+                        .write(
+                            &format!(
+                                "Expected error '{}' at {}:{}, got success",
+                                err, path, offset,
+                            ).into_bytes(),
+                        ).unwrap();
                     return false;
                 }
             }

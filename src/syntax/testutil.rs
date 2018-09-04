@@ -13,15 +13,17 @@
 // limitations under the License.
 
 macro_rules! assert_diagnostics {
-    ($e: expr, $m: expr) => (
+    ($e: expr, $m: expr) => {
         if !$e.is_empty() {
             let nb_errors = $e.len();
             let locked = $m.lock();
             let codemap = locked.unwrap();
             let mut emitter = codemap_diagnostic::Emitter::stderr(
-                codemap_diagnostic::ColorConfig::Always, Some(&codemap));
+                codemap_diagnostic::ColorConfig::Always,
+                Some(&codemap),
+            );
             emitter.emit(&$e);
             panic!("There was {} parse errors", nb_errors);
         }
-    )
+    };
 }

@@ -18,10 +18,10 @@ extern crate getopts;
 extern crate starlark;
 
 use getopts::Options;
-use std::env;
 use starlark::eval::interactive::eval_file;
 use starlark::eval::repl::repl;
 use starlark::stdlib::global_environment;
+use std::env;
 
 macro_rules! print_usage {
     ($program: expr, $opts: expr) => (

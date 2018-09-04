@@ -26,21 +26,25 @@ fn arithmetic_test() {
 
 #[test]
 fn alias_test() {
-    starlark_ok!(r#"
+    starlark_ok!(
+        r#"
 a = [1, 2, 3]
 b = a
 a[2] = 0
 a == [1, 2, 0] and b == [1, 2, 0]
-"#)
+"#
+    )
 }
 
 #[test]
 fn recursive_list() {
-    starlark_ok!(r#"
+    starlark_ok!(
+        r#"
 cyclic = [1, 2, 3]
 cyclic[1] = cyclic
 cyclic[1] == cyclic
-"#)
+"#
+    )
 }
 
 #[test]

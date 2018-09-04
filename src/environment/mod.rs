@@ -17,9 +17,9 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::cell::RefCell;
 use values::*;
 
 // TODO: move that code in some common error code list?
@@ -232,23 +232,17 @@ impl EnvironmentContent {
     /// Get a type value if it exists (e.g. list.index).
     pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
         match self.type_objs.get(obj.get_type()) {
-            Some(ref d) => {
-                match d.get(id) {
-                    Some(&ref v) => Some(v.clone()),
-                    None => {
-                        match self.parent {
-                            Some(ref p) => p.get_type_value(obj, id),
-                            None => None,
-                        }
-                    }
-                }
-            }
-            None => {
-                match self.parent {
+            Some(ref d) => match d.get(id) {
+                Some(&ref v) => Some(v.clone()),
+                None => match self.parent {
                     Some(ref p) => p.get_type_value(obj, id),
                     None => None,
-                }
-            }
+                },
+            },
+            None => match self.parent {
+                Some(ref p) => p.get_type_value(obj, id),
+                None => None,
+            },
         }
     }
 

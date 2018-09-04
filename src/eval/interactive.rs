@@ -14,11 +14,11 @@
 
 //! Defines very basic versions of the evaluation functions that are suitable for interactive use:
 //! they output diagnostic to stderr and the result value to stdout.
+use codemap::CodeMap;
+use codemap_diagnostic::{ColorConfig, Emitter};
+use environment::Environment;
 use std::sync::{Arc, Mutex};
 use values::*;
-use environment::Environment;
-use codemap::CodeMap;
-use codemap_diagnostic::{Emitter, ColorConfig};
 
 /// Evaluate a string content, mutate the environment accordingly  and print
 /// the value of the last statement (if not `None`) or the error diagnostic.

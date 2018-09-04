@@ -13,11 +13,11 @@
 // limitations under the License.
 
 //! Module define the Starlark type Dictionary
-use values::*;
-use std::collections::HashMap;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
-use std::cmp::Ordering;
 use std::borrow::BorrowMut;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use values::*;
 
 /// The Dictionary type
 pub struct Dictionary {
@@ -62,7 +62,8 @@ impl Dictionary {
 }
 
 impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> From<HashMap<T1, T2>>
-    for Dictionary {
+    for Dictionary
+{
     fn from(a: HashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
             frozen: false,
@@ -75,10 +76,9 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> F
     }
 }
 
-impl<
-    T1: Into<Value> + Hash + Eq + Clone,
-    T2: Into<Value> + Hash + Eq + Clone,
-> From<LinkedHashMap<T1, T2>> for Dictionary {
+impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone>
+    From<LinkedHashMap<T1, T2>> for Dictionary
+{
     fn from(a: LinkedHashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
             frozen: false,
@@ -148,11 +148,13 @@ impl TypedValue for Dictionary {
                     (None, Some(..)) => return Ok(Ordering::Less),
                     (Some(..), None) => return Ok(Ordering::Greater),
                     (Some(k1), Some(k2)) => {
-                        let r = k1.compare(&k2, recursion+1)?;
+                        let r = k1.compare(&k2, recursion + 1)?;
                         if r != Ordering::Equal {
                             return Ok(r);
                         }
-                        let r = self.at(k1)?.compare(&other.at(k2).unwrap(), recursion+1)?;
+                        let r = self
+                            .at(k1)?
+                            .compare(&other.at(k2).unwrap(), recursion + 1)?;
                         if r != Ordering::Equal {
                             return Ok(r);
                         }
@@ -184,9 +186,9 @@ impl TypedValue for Dictionary {
     }
 
     fn is_descendant(&self, other: &TypedValue) -> bool {
-        self.content.iter().any(
-            |(k, v)| k.same_as(other) || v.same_as(other) || k.is_descendant(other) || v.is_descendant(other)
-        )
+        self.content.iter().any(|(k, v)| {
+            k.same_as(other) || v.same_as(other) || k.is_descendant(other) || v.is_descendant(other)
+        })
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
@@ -203,7 +205,7 @@ impl TypedValue for Dictionary {
             {
                 if let Some(x) = self.content.get_mut(&index) {
                     *x = new_value;
-                    return Ok(())
+                    return Ok(());
                 }
             }
             self.content.insert(index, new_value);

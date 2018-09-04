@@ -14,10 +14,10 @@
 
 //! AST for parsed starlark files.
 
-use codemap::{Span, Spanned};
-use std::fmt;
-use std::collections::HashSet;
 use super::lexer;
+use codemap::{Span, Spanned};
+use std::collections::HashSet;
+use std::fmt;
 extern crate lalrpop_util;
 
 // Boxed types used for storing information from the parsing will be used especially for the
@@ -43,16 +43,20 @@ pub trait ToAst<T> {
 }
 
 macro_rules! to_ast_trait {
-    ($t1: ty, $t2: ty, $t3: ident) => (
+    ($t1: ty, $t2: ty, $t3: ident) => {
         impl ToAst<$t2> for $t1 {
-            fn to_ast(self, span: Span) -> $t2 { $t3::new(Spanned { span, node: self }) }
+            fn to_ast(self, span: Span) -> $t2 {
+                $t3::new(Spanned { span, node: self })
+            }
         }
-    );
-    ($t1: ty, $t2: ty) => (
+    };
+    ($t1: ty, $t2: ty) => {
         impl ToAst<$t2> for $t1 {
-            fn to_ast(self, span: Span) -> $t2 { Spanned { span, node: self } }
+            fn to_ast(self, span: Span) -> $t2 {
+                Spanned { span, node: self }
+            }
         }
-    )
+    };
 }
 
 to_ast_trait!(i64, AstInt);
@@ -83,7 +87,13 @@ to_ast_trait!(Parameter, AstParameter);
 pub enum Expr {
     Tuple(Vec<AstExpr>),
     Dot(AstExpr, AstString),
-    Call(AstExpr, Vec<AstExpr>, Vec<(AstString, AstExpr)>, Option<AstExpr>, Option<AstExpr>),
+    Call(
+        AstExpr,
+        Vec<AstExpr>,
+        Vec<(AstString, AstExpr)>,
+        Option<AstExpr>,
+        Option<AstExpr>,
+    ),
     ArrayIndirection(AstExpr, AstExpr),
     Slice(AstExpr, Option<AstExpr>, Option<AstExpr>, Option<AstExpr>),
     Identifier(AstString),
@@ -237,20 +247,18 @@ pub enum Statement {
 to_ast_trait!(Statement, AstStatement, Box);
 
 macro_rules! test_param_name {
-    ($argset:ident, $n: ident, $arg: ident) => (
-        {
-            if $argset.contains(&$n.node) {
-                return Err(lalrpop_util::ParseError::User {
-                    error: lexer::LexerError::WrappedError {
-                        span: $arg.span,
-                        code: "CS08", // Critical Semantic 08
-                        label: "duplicated parameter name",
-                    },
-                });
-            }
-            $argset.insert($n.node.clone());
+    ($argset:ident, $n: ident, $arg: ident) => {{
+        if $argset.contains(&$n.node) {
+            return Err(lalrpop_util::ParseError::User {
+                error: lexer::LexerError::WrappedError {
+                    span: $arg.span,
+                    code: "CS08", // Critical Semantic 08
+                    label: "duplicated parameter name",
+                },
+            });
         }
-    )
+        $argset.insert($n.node.clone());
+    }};
 }
 
 impl Statement {
@@ -282,7 +290,8 @@ impl Statement {
                                 error: lexer::LexerError::WrappedError {
                                     span: arg.span,
                                     code: "CS05", // Critical Semantic 05
-                                    label: "Default parameter after args array or kwargs dictionary",
+                                    label:
+                                        "Default parameter after args array or kwargs dictionary",
                                 },
                             });
                         } else if stage == 0 {

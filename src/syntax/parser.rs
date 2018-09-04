@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::ast::AstStatement;
+use super::errors::SyntaxError;
+use super::grammar::{parse_build_file, parse_starlark};
+use super::lexer::{Lexer, LexerError, LexerIntoIter, LexerItem, Token};
+use codemap::{CodeMap, Span};
+use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
+use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
-use std::error::Error;
-use codemap::{Span, CodeMap};
-use codemap_diagnostic::{Level, SpanLabel, SpanStyle, Diagnostic};
-use super::lexer::{Lexer, Token, LexerError, LexerIntoIter, LexerItem};
-use super::grammar::{parse_starlark, parse_build_file};
-use super::ast::AstStatement;
-use super::errors::SyntaxError;
 extern crate lalrpop_util as lu;
 
 // TODO: move that code in some common error code list?
@@ -64,14 +64,11 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
                 Some("Reserved keyword".to_owned()),
                 format!("Parse error: cannot use reserved keyword {}", s),
             ),
-            lu::ParseError::ExtraToken { token: (_x, Token::Reserved(ref s), _y) } => (
-                Some(
-                    "Reserved keyword".to_owned(),
-                ),
-                format!(
-                    "Parse error: cannot use reserved keyword {}",
-                    s
-                ),
+            lu::ParseError::ExtraToken {
+                token: (_x, Token::Reserved(ref s), _y),
+            } => (
+                Some("Reserved keyword".to_owned()),
+                format!("Parse error: cannot use reserved keyword {}", s),
             ),
             lu::ParseError::UnrecognizedToken {
                 token: Some((_x, ref t, ..)),
@@ -84,20 +81,15 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
                     one_of(expected)
                 ),
             ),
-            lu::ParseError::ExtraToken { token: (_x, ref t, ..) } => (
-                Some(
-                    format!("Extraneous {}", t),
-                ),
-                format!(
-                    "Parse error: extraneous token {}",
-                    t
-                ),
+            lu::ParseError::ExtraToken {
+                token: (_x, ref t, ..),
+            } => (
+                Some(format!("Extraneous {}", t)),
+                format!("Parse error: extraneous token {}", t),
             ),
-            lu::ParseError::UnrecognizedToken { .. } => (
-                None,
-                "Parse error: unexpected end of file"
-                    .to_owned(),
-            ),
+            lu::ParseError::UnrecognizedToken { .. } => {
+                (None, "Parse error: unexpected end of file".to_owned())
+            }
             lu::ParseError::User { ref error } => return error.to_diagnostic(file_span),
         };
         let sl = SpanLabel {
@@ -105,9 +97,10 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
                 lu::ParseError::InvalidToken { ref location } => {
                     file_span.subspan(*location, *location)
                 }
-                lu::ParseError::UnrecognizedToken { token: Some((x, .., y)), .. } => {
-                    file_span.subspan(x, y)
-                }
+                lu::ParseError::UnrecognizedToken {
+                    token: Some((x, .., y)),
+                    ..
+                } => file_span.subspan(x, y),
                 lu::ParseError::UnrecognizedToken { .. } => {
                     let x = file_span.high() - file_span.low();
                     file_span.subspan(x, x)
@@ -119,7 +112,6 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
             label,
         };
 
-
         Diagnostic {
             level: Level::Error,
             message,
@@ -127,11 +119,12 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
                 match self {
                     lu::ParseError::InvalidToken { .. } => INVALID_TOKEN_ERROR_CODE,
                     lu::ParseError::UnrecognizedToken {
-                        token: Some((_x, Token::Reserved(..), ..)), ..
-                    } |
-                    lu::ParseError::ExtraToken { token: (_x, Token::Reserved(..), ..) } => {
-                        RESERVED_KEYWORD_ERROR_CODE
+                        token: Some((_x, Token::Reserved(..), ..)),
+                        ..
                     }
+                    | lu::ParseError::ExtraToken {
+                        token: (_x, Token::Reserved(..), ..),
+                    } => RESERVED_KEYWORD_ERROR_CODE,
                     lu::ParseError::UnrecognizedToken { .. } => UNEXPECTED_TOKEN_ERROR_CODE,
                     lu::ParseError::ExtraToken { .. } => EXTRA_TOKEN_ERROR_CODE,
                     lu::ParseError::User { .. } => unreachable!(),
@@ -143,14 +136,19 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
 }
 
 macro_rules! iotry {
-    ($e:expr) => (match $e {
-        Ok(val) => val,
-        Err(err) => return Err(Diagnostic {
-            level:Level::Error,
-            message: format!("IOError: {}", err.description()),
-            code:Some(IO_ERROR_CODE.to_owned()),
-            spans: vec![] }),
-    });
+    ($e:expr) => {
+        match $e {
+            Ok(val) => val,
+            Err(err) => {
+                return Err(Diagnostic {
+                    level: Level::Error,
+                    message: format!("IOError: {}", err.description()),
+                    code: Some(IO_ERROR_CODE.to_owned()),
+                    spans: vec![],
+                })
+            }
+        }
+    };
 }
 
 /// Parse a build file (if build is true) or a starlark file provided as a content using a custom
