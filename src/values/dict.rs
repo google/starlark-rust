@@ -201,7 +201,7 @@ impl TypedValue for Dictionary {
         if self.frozen {
             Err(ValueError::CannotMutateImmutableValue)
         } else {
-            let new_value = new_value.clone_for_container(self);
+            let new_value = new_value.clone_for_container(self)?;
             {
                 if let Some(x) = self.content.get_mut(&index) {
                     *x = new_value;

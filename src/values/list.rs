@@ -259,7 +259,7 @@ impl TypedValue for List {
             Err(ValueError::CannotMutateImmutableValue)
         } else {
             let i = index.convert_index(self.length()?)? as usize;
-            self.content[i] = new_value.clone_for_container(self);
+            self.content[i] = new_value.clone_for_container(self)?;
             Ok(())
         }
     }

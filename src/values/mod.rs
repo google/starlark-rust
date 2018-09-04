@@ -85,7 +85,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use syntax::errors::SyntaxError;
 
 // TODO: move that code in some common error code list?
@@ -103,6 +103,7 @@ pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &'static str = "CV09";
 pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CV10";
 pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &'static str = "CV12";
 pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &'static str = "CV13";
+pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &'static str = "CV14";
 
 // Maximum recursion level for comparison
 // TODO(dmarting): those are rather short, maybe make it configurable?
@@ -151,8 +152,10 @@ pub enum ValueError {
     /// Interpolation parameter is too small for the format string.
     NotEnoughParametersForInterpolation,
     InterpolationValueNotChar,
-    // Too many recursion in internal operation
+    /// Too many recursion in internal operation
     TooManyRecursionLevel,
+    /// Recursive data structure are not allowed because they would allow infinite loop.
+    UnsupportedRecursiveDataStructure,
 }
 
 /// A simpler error format to return as a ValueError
@@ -223,6 +226,9 @@ impl SyntaxError for ValueError {
                             "'%c' formatter requires a single-character string".to_owned()
                         }
                         ValueError::TooManyRecursionLevel => "Too many recursion".to_owned(),
+                        ValueError::UnsupportedRecursiveDataStructure => {
+                            "Unsupported recursive data structure".to_owned()
+                        }
                         _ => unreachable!(),
                     }),
                 };
@@ -276,6 +282,10 @@ impl SyntaxError for ValueError {
                             "'%c' formatter requires a single-character string".to_owned()
                         }
                         ValueError::TooManyRecursionLevel => "Too many recursion levels".to_owned(),
+                        ValueError::UnsupportedRecursiveDataStructure => concat!(
+                            "This operation create a recursive data structure. Recursive data",
+                            "structure are disallowed because infinite loops are disallowed in Starlark."
+                        ).to_owned(),
                         _ => unreachable!(),
                     },
                     code: Some(
@@ -306,6 +316,9 @@ impl SyntaxError for ValueError {
                             }
                             ValueError::TooManyRecursionLevel => {
                                 TOO_MANY_RECURSION_LEVEL_ERROR_CODE
+                            }
+                            ValueError::UnsupportedRecursiveDataStructure => {
+                                UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE
                             }
                             ValueError::DiagnosedError(..) => "U999", // Unknown error
                         }.to_owned(),
@@ -340,83 +353,39 @@ impl PartialEq for ValueError {
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub enum Value {
-    Value(Rc<RefCell<TypedValue>>),
-    WeakValue(Weak<RefCell<TypedValue>>),
-}
+pub struct Value(Rc<RefCell<TypedValue>>);
+
 pub type ValueResult = Result<Value, ValueError>;
 
 impl Value {
     /// Create a new `Value` from a static value.
     pub fn new<T: 'static + TypedValue>(t: T) -> Value {
-        Value::Value(Rc::new(RefCell::new(t)))
+        Value(Rc::new(RefCell::new(t)))
     }
 
-    /// A method to upgrade to a strong pointer for local operation
-    fn upgrade(&self) -> Rc<RefCell<TypedValue>> {
-        match self {
-            &Value::Value(ref v) => v.clone(),
-            &Value::WeakValue(ref v) => v.clone().upgrade().unwrap(),
-        }
-    }
-
-    /// Return a weak pointer for cyclic reference
-    fn downgrade(&self) -> Value {
-        Value::WeakValue(match self {
-            &Value::Value(ref v) => Rc::downgrade(v),
-            &Value::WeakValue(ref v) => v.clone(),
-        })
-    }
 
     /// Clone for inserting into the other container, using weak reference if we do a
     /// recursive insertion.
-    pub fn clone_for_container(&self, other: &TypedValue) -> Value {
+    pub fn clone_for_container(&self, other: &TypedValue) -> Result<Value, ValueError> {
         if self.is_descendant(other) {
-            self.downgrade()
+            Err(ValueError::UnsupportedRecursiveDataStructure)
         } else {
-            self.clone()
+            Ok(self.clone())
         }
     }
 
     /// Determine if the value pointed by other is a descendant of self
     pub fn is_descendant_value(&self, other: &Value) -> bool {
-        let upgraded = other.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = other.0.borrow();
         self.is_descendant(borrowed.deref())
-    }
-
-    /// Clone for inserting into the other container, using weak reference if we do a
-    /// recursive insertion.
-    pub fn clone_for_container_value(&self, other: &Value) -> Value {
-        if self.is_descendant_value(other) {
-            self.downgrade()
-        } else {
-            self.clone()
-        }
-    }
-
-    /// Return true if the current value is a weak pointer
-    pub fn is_weak(&self) -> bool {
-        match self {
-            &Value::Value(..) => false,
-            &Value::WeakValue(..) => true,
-        }
     }
 
     /// Return true if other is pointing to the same value as self
     pub fn same_as(&self, other: &TypedValue) -> bool {
         // We use raw pointers..
         let p: *const TypedValue = other;
-        match self {
-            &Value::Value(ref v) => {
-                let p1: *const TypedValue = v.as_ptr();
-                p1 == p
-            }
-            &Value::WeakValue(ref v) => {
-                let p1: *const TypedValue = v.upgrade().unwrap().as_ptr();
-                p1 == p
-            }
-        }
+        let p1: *const TypedValue = self.0.as_ptr();
+        p1 == p
     }
 }
 
@@ -956,56 +925,42 @@ macro_rules! immutable {
 
 impl TypedValue for Value {
     fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
-        let upgraded = self.upgrade();
-        let mut borrowed = upgraded.borrow_mut();
+        let mut borrowed = self.0.borrow_mut();
         borrowed.any_apply(f)
     }
 
     fn immutable(&self) -> bool {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.immutable()
     }
     fn freeze(&mut self) {
-        let upgraded = self.upgrade();
-        let mut borrowed = upgraded.borrow_mut();
+        let mut borrowed = self.0.borrow_mut();
         borrowed.freeze()
     }
     fn to_str(&self) -> String {
-        match self {
-            &Value::Value(ref v) => v.borrow().to_str(),
-            &Value::WeakValue(..) => "...".to_owned(),
-        }
+        self.0.borrow().to_str()
     }
     fn to_repr(&self) -> String {
-        match self {
-            &Value::Value(ref v) => v.borrow().to_repr(),
-            &Value::WeakValue(..) => "...".to_owned(),
-        }
+        self.0.borrow().to_repr()
     }
     fn get_type(&self) -> &'static str {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.get_type()
     }
     fn to_bool(&self) -> bool {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.to_bool()
     }
     fn to_int(&self) -> Result<i64, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.to_int()
     }
     fn get_hash(&self) -> Result<u64, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.get_hash()
     }
     fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         if recursion > MAX_RECURSION {
             return Err(ValueError::TooManyRecursionLevel);
         }
@@ -1021,8 +976,7 @@ impl TypedValue for Value {
         if self.same_as(other) {
             return true;
         }
-        let upgraded = self.upgrade();
-        let try_borrowed = upgraded.try_borrow();
+        let try_borrowed = self.0.try_borrow();
         if let Ok(borrowed) = try_borrowed {
             borrowed.is_descendant(other)
         } else {
@@ -1040,18 +994,15 @@ impl TypedValue for Value {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.call(call_stack, env, positional, named, args, kwargs)
     }
     fn at(&self, index: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.at(index)
     }
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        let upgraded = self.upgrade();
-        let mut borrowed = upgraded.borrow_mut();
+        let mut borrowed = self.0.borrow_mut();
         borrowed.set_at(index, new_value)
     }
     fn slice(
@@ -1060,97 +1011,79 @@ impl TypedValue for Value {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow_mut();
+        let borrowed = self.0.borrow_mut();
         borrowed.slice(start, stop, stride)
     }
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         let v: Vec<Value> = borrowed.into_iter()?.map(|x| x.clone()).collect();
         Ok(Box::new(v.into_iter()))
     }
     fn length(&self) -> Result<i64, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.length()
     }
     fn get_attr(&self, attribute: &str) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.get_attr(attribute)
     }
     fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.has_attr(attribute)
     }
     fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        let upgraded = self.upgrade();
-        let mut borrowed = upgraded.borrow_mut();
+        let mut borrowed = self.0.borrow_mut();
         borrowed.set_attr(attribute, new_value)
     }
     fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.dir_attr()
     }
     fn is_in(&self, other: &Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.is_in(other)
     }
     fn plus(&self) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.plus()
     }
     fn minus(&self) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.minus()
     }
     fn add(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.add(other)
     }
     fn sub(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.sub(other)
     }
     fn mul(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.mul(other)
     }
     fn percent(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.percent(other)
     }
     fn div(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.div(other)
     }
     fn floor_div(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.floor_div(other)
     }
     fn pipe(&self, other: Value) -> ValueResult {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.pipe(other)
     }
 }
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         write!(f, "{:?}", borrowed)
     }
 }
@@ -1548,8 +1481,7 @@ impl Value {
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
-        let upgraded = self.upgrade();
-        let borrowed = upgraded.borrow();
+        let borrowed = self.0.borrow();
         borrowed.convert_index(len)
     }
 

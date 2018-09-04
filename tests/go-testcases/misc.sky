@@ -52,29 +52,23 @@ lam < 0
 # cyclic data structures
 
 cyclic = [1, 2, 3] # list cycle
-cyclic[1] = cyclic
-assert_eq(str(cyclic), "[1, ..., 3]")
-assert_(not (cyclic < cyclic))
-assert_(cyclic == cyclic)
+cyclic[1] = cyclic  ### Unsupported recursive data structure
+---
 cyclic2 = [1, 2, 3]
-cyclic2[1] = cyclic2
-cyclic2 == cyclic  ### Too many recursion
+cyclic2[1] = cyclic2  ### Unsupported recursive data structure
 ---
 
 cyclic3 = [1, [2, 3]] # list-list cycle
-cyclic3[1][0] = cyclic3
-assert_eq(str(cyclic3), "[1, [..., 3]]")
+cyclic3[1][0] = cyclic3  ### Unsupported recursive data structure
+---
 cyclic4 = {"x": 1}
-cyclic4["x"] = cyclic4
-assert_eq(str(cyclic4), "{'x': ...}")
+cyclic4["x"] = cyclic4  ### Unsupported recursive data structure
+---
 cyclic5 = [0, {"x": 1}] # list-dict cycle
-cyclic5[1]["x"] = cyclic5
-assert_eq(str(cyclic5), "[0, {'x': ...}]")
-assert_eq(str(cyclic5), "[0, {'x': ...}]")
-assert_(cyclic5 == cyclic5)
+cyclic5[1]["x"] = cyclic5  ### Unsupported recursive data structure
+---
 cyclic6 = [0, {"x": 1}]
-cyclic6[1]["x"] = cyclic6
-cyclic5 == cyclic6  ### Too many recursion
+cyclic6[1]["x"] = cyclic6  ### Unsupported recursive data structure
 ---
 # was a parse error:
 assert_eq(("ababab"[2:]).replace("b", "c"), "acac")

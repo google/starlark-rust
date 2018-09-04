@@ -271,7 +271,7 @@ starlark_module!{global =>
                 if let Some(r) = x.get(&key) {
                     return Ok(r.clone())
                 }
-                x.insert(key.clone(), default.clone_for_container(&cloned_this));
+                x.insert(key.clone(), default.clone_for_container(&cloned_this)?);
                 Ok(default.clone())
             }
         )

@@ -55,7 +55,7 @@ starlark_module!{global =>
     list.append(this, #el) {
         let cloned_this = this.clone();
         list::List::mutate(&this, &|x| {
-            x.push(el.clone_for_container(&cloned_this));
+            x.push(el.clone_for_container(&cloned_this)?);
             ok!(None)
         })
     }
@@ -111,7 +111,8 @@ starlark_module!{global =>
     list.extend(this, #other) {
         let this_cloned = this.clone();
         list::List::mutate(&this, &|x| {
-            x.extend(other.into_iter()?.map(|v| v.clone_for_container(&this_cloned)));
+            let other : Result<Vec<_>, _> = other.into_iter()?.map(|v| v.clone_for_container(&this_cloned)).collect();
+            x.extend(other?);
             ok!(None)
         })
     }
@@ -188,7 +189,7 @@ starlark_module!{global =>
         convert_indices!(this, index);
         let cloned_this = this.clone();
         list::List::mutate(&this, &|x| {
-            x.insert(index, el.clone_for_container(&cloned_this));
+            x.insert(index, el.clone_for_container(&cloned_this)?);
             ok!(None)
         })
     }
