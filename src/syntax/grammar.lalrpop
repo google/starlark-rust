@@ -54,11 +54,11 @@ COMMA<E>: Vec<E> =
     <v0:(<E> ",")*> <e1:E?>
         => v0.into_iter().chain(e1).collect();
 
-pub starlark: AstStatement = ASTS<starlark_>;
+pub Starlark: AstStatement = ASTS<starlark_>;
 starlark_: Statement = "\n"* <(<TopStmt> "\n"*)*>
     => Statement::Statements(<>);
 
-pub build_file: AstStatement = ASTS<build_file_>;
+pub BuildFile: AstStatement = ASTS<build_file_>;
 build_file_: Statement = "\n"* <(<BuildTopStmt> "\n"+)*>
     => Statement::Statements(<>);
 
@@ -169,9 +169,9 @@ L<E>: AstExpr = <l:@L> <v:(<E> ",")*> <e:E> <f:","?> <r:@R>
         }
     };
 
-pub ExprList: AstExpr = L<Expr>;
+ExprList: AstExpr = L<Expr>;
 
-pub TestList: AstExpr = L<Test>;
+TestList: AstExpr = L<Test>;
 
 PipedExpr: AstExpr = {
     <l:@L> <e1:AddExpr> "|" <e2:PipedExpr> <r:@R>

@@ -14,7 +14,7 @@
 
 use super::ast::AstStatement;
 use super::errors::SyntaxError;
-use super::grammar::{parse_build_file, parse_starlark};
+use super::grammar::{BuildFileParser, StarlarkParser};
 use super::lexer::{Lexer, LexerError, LexerIntoIter, LexerItem, Token};
 use codemap::{CodeMap, Span};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -22,6 +22,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
+
 extern crate lalrpop_util as lu;
 
 // TODO: move that code in some common error code list?
@@ -177,9 +178,9 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     };
     match {
         if build {
-            parse_build_file(content, filespan, lexer)
+            BuildFileParser::new().parse(content, filespan, lexer)
         } else {
-            parse_starlark(content, filespan, lexer)
+            StarlarkParser::new().parse(content, filespan, lexer)
         }
     } {
         Result::Ok(v) => Result::Ok(v),

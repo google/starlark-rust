@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::parse_starlark;
+use super::StarlarkParser;
 use std::sync::{Arc, Mutex};
 use syntax::ast::Statement;
 use syntax::parser::parse_file;
@@ -28,7 +28,7 @@ macro_rules! unwrap_parse {
             let lexer = super::lexer::Lexer::new($e);
             let mut codemap = codemap::CodeMap::new();
             let filespan = codemap.add_file("<test>".to_owned(), $e.to_string()).span;
-            match parse_starlark($e, filespan, lexer) {
+            match StarlarkParser::new().parse($e, filespan, lexer) {
                 Ok(x) => match x.node {
                     Statement::Statements(bv) => format!("{}", Statement::Statements(bv)),
                     y => panic!("Expected statements, got {:?}", y),
@@ -172,7 +172,7 @@ fail(2)
     let filespan = codemap
         .add_file("<test>".to_owned(), content.to_string())
         .span;
-    match parse_starlark(content, filespan, lexer) {
+    match StarlarkParser::new().parse(content, filespan, lexer) {
         Ok(x) => {
             match x.node {
                 Statement::Statements(bv) => {

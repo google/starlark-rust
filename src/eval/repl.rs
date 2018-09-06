@@ -18,8 +18,8 @@ use codemap_diagnostic::{ColorConfig, Emitter};
 use environment::Environment;
 use eval::eval_lexer;
 use eval::simple::SimpleFileLoader;
-use linefeed::{ReadResult, Reader};
 use std::sync::{Arc, Mutex};
+use linefeed::{Interface, ReadResult};
 use syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
 use values::TypedValue;
 
@@ -60,15 +60,15 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
 /// * build_file: set to true to run in BUILD mode, false to run in full Starlark,
 pub fn repl(global_environment: &Environment, build_file: bool) {
     let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
-    let mut reader = Reader::new("Starlark").unwrap();
+    let reader = Interface::new("Starlark").unwrap();
     let mut env = global_environment.child("repl");
     let mut n = 0;
 
-    reader.set_prompt(">>> ");
+    reader.set_prompt(">>> ").unwrap();
 
     while let Ok(ReadResult::Input(input)) = reader.read_line() {
         if input.len() != 0 {
-            reader.set_prompt("... ");
+            reader.set_prompt("... ").unwrap();
             n += 1;
             let input = input + "\n";
             let mut lexer = BufferedLexer::new(&input);
@@ -94,7 +94,7 @@ pub fn repl(global_environment: &Environment, build_file: bool) {
                 &mut env,
             )
         }
-        reader.set_prompt(">>> ")
+        reader.set_prompt(">>> ").unwrap();
     }
     println!("\nGoodbye!");
 }

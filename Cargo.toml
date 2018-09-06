@@ -5,15 +5,15 @@ authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
 build = "build.rs"
 
 [build-dependencies]
-lalrpop = "0.14.0"
+lalrpop = "0.15.2"
 
 [dependencies]
 codemap = "0.1.1"
 codemap-diagnostic = "0.1"
 getopts = "0.2"
-lalrpop-util = "0.14.0"
+lalrpop-util = "0.15.2"
 linked-hash-map = "0.5.1"
-linefeed = "0.4"
+linefeed = "0.5.1"
 
 [lib]
 
