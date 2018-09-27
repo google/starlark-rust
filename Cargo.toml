@@ -4,6 +4,17 @@ version = "0.1.0"
 authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
 build = "build.rs"
 
+description = "An implementation in Rust of the Starlark language."
+# TODO(damienmg): publish the documentation on docs-rs.
+# documentation = "..."
+homepage = "https://github.com/google/starlark-rust"
+repository = "https://github.com/google/starlark-rust"
+readme = "README.md"
+keywords = ["starlark", "skylark", "bazel", "language", "interpreter"]
+categories = ["development-tools"]
+license = "Apache-2.0"
+license-file = "LICENSE"
+
 [build-dependencies]
 lalrpop = "0.15.2"
 
