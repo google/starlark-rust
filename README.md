@@ -1,6 +1,9 @@
 # Starlark in Rust
 _An implementation in Rust of the Starlark language_
 
+**Disclaimer:** This is not an officially supported Google product. This project is supported
+on a best-effort basis and [welcome contributions](CONTRIBUTING.md).
+
 Starlark, formerly codenamed Skylark, is a non-Turing complete language based
 on Python that was made for the [Bazel build system](https://bazel.build) to
 define compilation plugin.
