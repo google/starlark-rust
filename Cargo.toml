@@ -1,6 +1,6 @@
 [package]
 name = "starlark"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
 build = "build.rs"
 
