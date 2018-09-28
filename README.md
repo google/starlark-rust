@@ -26,7 +26,7 @@ integer.
 
 ## Usage
 
-You can depend on this crate `starlark`, it is documented using [docs.rs](https://docs.rs/crates/skylark).
+You can depend on this crate `starlark`, it is documented using [docs.rs](https://docs.rs/crate/starlark).
 
 A command line interpreter is also provided by this project, it can interpret
 files passed at the command line and also start a REPL (Read-Eval-Print Loop).
