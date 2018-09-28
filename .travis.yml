@@ -3,14 +3,16 @@ rust:
   - stable
   - beta
   - nightly
+env: FORMATTING=false
 before_script: ./.ci/setup.sh
 script: ./.ci/build.sh
 matrix:
   include:
-  - name: "Format"
+  - name: "format"
     env: FORMATTING=true
     rust: nightly
   allow_failures:
     - rust: nightly
+      FORMATTING=false
   fast_finish: true
 cache: cargo
