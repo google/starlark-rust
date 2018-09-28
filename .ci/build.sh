@@ -1,8 +1,14 @@
 #!/bin/bash
 
-if ${FORMATTING:-false}; then
-  cargo +nightly fmt --all -- --check
-else
-  cargo build --all
-  cargo test --all
-fi
+case "$1" in
+  format)
+    cargo +nightly fmt --all -- --check
+    ;;
+  build)
+    cargo build --all
+    cargo test --all
+    ;;
+  doc)
+    cargo doc --all
+    ;;
+esac
