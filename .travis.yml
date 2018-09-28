@@ -3,15 +3,13 @@ rust:
   - stable
   - beta
   - nightly
-before_script:
-  - rustup toolchain install nightly
-  - rustup component add --toolchain nightly rustfmt-preview
-  - which rustfmt || cargo install --force rustfmt-nightly
-script:
-  - cargo +nightly fmt --all -- --check
-  - cargo build --all
-  - cargo test --all
+before_script: ./.ci/setup.sh
+script: ./.ci/build.sh
 matrix:
+  include:
+  - name: "Format"
+    env: FORMATTING=true
+    rust: nightly
   allow_failures:
     - rust: nightly
   fast_finish: true
