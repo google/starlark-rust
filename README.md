@@ -1,6 +1,9 @@
 # Starlark in Rust
 _An implementation in Rust of the Starlark language_
 
+[![Build
+Status](https://travis-ci.org/google/starlark-rust.svg?branch=master)](https://travis-ci.org/google/starlark-rust)
+
 **Disclaimer:** This is not an officially supported Google product. This project is supported
 on a best-effort basis and [welcome contributions](CONTRIBUTING.md).
 
