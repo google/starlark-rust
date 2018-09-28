@@ -5,8 +5,7 @@ authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
 build = "build.rs"
 
 description = "An implementation in Rust of the Starlark language."
-# TODO(damienmg): publish the documentation on docs-rs.
-# documentation = "..."
+documentation = "https://docs.rs/crate/starlark"
 homepage = "https://github.com/google/starlark-rust"
 repository = "https://github.com/google/starlark-rust"
 readme = "README.md"
