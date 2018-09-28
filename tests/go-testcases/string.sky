@@ -55,7 +55,7 @@ assert_eq(list("".codepoints()), [])
 
 # string.split_codepoints
 assert_eq(type("abcЙ😿".split_codepoints()), "list")
-assert_eq(str("abcЙ😿".split_codepoints()), "['a', 'b', 'c', '\\u{419}', '\\u{1f63f}']")
+assert_eq(str("abcЙ😿".split_codepoints()), "['a', 'b', 'c', 'Й', '😿']")
 assert_eq(list("abcЙ😿".split_codepoints()), ["a", "b", "c", "Й", "😿"])
 assert_eq(list("".split_codepoints()), [])
 
