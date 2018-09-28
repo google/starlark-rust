@@ -59,7 +59,8 @@ fn test_{}() {{
         "#,
                 path_entry.file_stem().unwrap().to_str().unwrap(),
                 path
-            ).unwrap();
+            )
+            .unwrap();
         }
     }
 }

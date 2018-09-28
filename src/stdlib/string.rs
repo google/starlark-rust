@@ -76,7 +76,8 @@ fn format_capture<T: Iterator<Item = Value>>(
                 concat!(
                     "Cannot mix manual field specification and ",
                     "automatic field numbering in format string"
-                ).to_owned(),
+                )
+                .to_owned(),
                 "Mixed manual and automatic field numbering".to_owned()
             )
         } else {
@@ -99,7 +100,8 @@ fn format_capture<T: Iterator<Item = Value>>(
                     concat!(
                         "Cannot mix manual field specification and ",
                         "automatic field numbering in format string"
-                    ).to_owned(),
+                    )
+                    .to_owned(),
                     "Mixed manual and automatic field numbering".to_owned()
                 )
             } else {
@@ -1397,7 +1399,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).unwrap(),
+            )
+            .unwrap(),
             "1"
         );
         assert_eq!(
@@ -1408,7 +1411,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).unwrap(),
+            )
+            .unwrap(),
             "2"
         );
         assert_eq!(
@@ -1419,7 +1423,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).unwrap(),
+            )
+            .unwrap(),
             "'3'"
         );
         assert_eq!(
@@ -1430,7 +1435,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).unwrap(),
+            )
+            .unwrap(),
             "'x'"
         );
         assert_eq!(
@@ -1441,7 +1447,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).unwrap(),
+            )
+            .unwrap(),
             "x"
         );
         assert!(
@@ -1452,7 +1459,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).is_err()
+            )
+            .is_err()
         );
         captured_by_order = false;
         it = args.into_iter().unwrap();
@@ -1464,7 +1472,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).unwrap(),
+            )
+            .unwrap(),
             "2"
         );
         assert!(
@@ -1475,7 +1484,8 @@ mod tests {
                 &mut captured_by_order,
                 &args,
                 &kwargs,
-            ).is_err()
+            )
+            .is_err()
         );
     }
 

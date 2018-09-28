@@ -18,8 +18,8 @@ use codemap_diagnostic::{ColorConfig, Emitter};
 use environment::Environment;
 use eval::eval_lexer;
 use eval::simple::SimpleFileLoader;
-use std::sync::{Arc, Mutex};
 use linefeed::{Interface, ReadResult};
+use std::sync::{Arc, Mutex};
 use syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
 use values::TypedValue;
 

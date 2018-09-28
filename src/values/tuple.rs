@@ -51,7 +51,8 @@ pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &Vec<Value>) ->
             } else {
                 None
             }
-        }).collect()
+        })
+        .collect()
 }
 
 impl Tuple {

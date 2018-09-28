@@ -64,8 +64,10 @@ fn assert_diagnostic(
                 &format!(
                     "Expected error '{}' at {}:{}, got {}\n",
                     expected, path, offset, msg,
-                ).into_bytes(),
-            ).unwrap();
+                )
+                .into_bytes(),
+            )
+            .unwrap();
         Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d]);
         false
     } else {
@@ -92,7 +94,8 @@ def assert_(cond, msg="assertion failed"):
 "#,
         false,
         &mut prelude,
-    ).unwrap();
+    )
+    .unwrap();
     prelude.freeze();
     for (offset, content) in read_input(path) {
         let err = if let Some(x) = content.find("###") {
@@ -125,8 +128,10 @@ def assert_(cond, msg="assertion failed"):
                             &format!(
                                 "Expected error '{}' at {}:{}, got success",
                                 err, path, offset,
-                            ).into_bytes(),
-                        ).unwrap();
+                            )
+                            .into_bytes(),
+                        )
+                        .unwrap();
                     return false;
                 }
             }

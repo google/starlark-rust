@@ -129,7 +129,8 @@ impl SyntaxError for lu::ParseError<u64, Token, LexerError> {
                     lu::ParseError::UnrecognizedToken { .. } => UNEXPECTED_TOKEN_ERROR_CODE,
                     lu::ParseError::ExtraToken { .. } => EXTRA_TOKEN_ERROR_CODE,
                     lu::ParseError::User { .. } => unreachable!(),
-                }.to_owned(),
+                }
+                .to_owned(),
             ),
             spans: vec![sl],
         }

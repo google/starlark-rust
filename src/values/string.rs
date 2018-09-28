@@ -109,7 +109,8 @@ impl TypedValue for String {
                     } else {
                         None
                     }
-                }).collect()
+                })
+                .collect()
         } else {
             v.chars()
                 .rev()
@@ -120,7 +121,8 @@ impl TypedValue for String {
                     } else {
                         None
                     }
-                }).collect()
+                })
+                .collect()
         };
         Ok(Value::new(v))
     }
