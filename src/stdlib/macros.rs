@@ -380,7 +380,8 @@ macro_rules! starlark_err {
             code: $code,
             message: $message,
             label: $label,
-        }.into());
+        }
+        .into());
     };
 }
 

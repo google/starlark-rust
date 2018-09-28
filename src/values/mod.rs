@@ -363,7 +363,6 @@ impl Value {
         Value(Rc::new(RefCell::new(t)))
     }
 
-
     /// Clone for inserting into the other container, using weak reference if we do a
     /// recursive insertion.
     pub fn clone_for_container(&self, other: &TypedValue) -> Result<Value, ValueError> {

@@ -209,7 +209,8 @@ fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> Str
                 &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
                 &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
-        }).collect();
+        })
+        .collect();
     format!("{}({})", function_type.to_repr(), v.join(", "))
 }
 
@@ -225,7 +226,8 @@ fn to_str(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> S
                 &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
                 &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
-        }).collect();
+        })
+        .collect();
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
@@ -314,7 +316,8 @@ impl TypedValue for Function {
                                 missing: name.to_string(),
                                 function_type: self.function_type.clone(),
                                 signature: self.signature.clone(),
-                            }.into());
+                            }
+                            .into());
                         }
                     }
                 }

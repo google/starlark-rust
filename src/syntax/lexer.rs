@@ -67,7 +67,8 @@ impl SyntaxError for LexerError {
                     LexerError::UnfinishedStringLitteral(..) => "Unfinished string litteral",
                     LexerError::InvalidEscapeSequence(..) => "Invalid string escape sequence",
                     LexerError::WrappedError { label, .. } => label,
-                }.to_owned(),
+                }
+                .to_owned(),
             ),
         };
         Diagnostic {
@@ -80,7 +81,8 @@ impl SyntaxError for LexerError {
                     LexerError::UnfinishedStringLitteral(..) => UNFINISHED_STRING_LITTERAL_CODE,
                     LexerError::InvalidEscapeSequence(..) => INVALID_ESCAPE_SEQUENCE_CODE,
                     LexerError::WrappedError { code, .. } => code,
-                }.to_owned(),
+                }
+                .to_owned(),
             ),
             spans: vec![sl],
         }
@@ -1072,7 +1074,8 @@ mod tests {
                     &Token::IntegerLitteral(r) => Some(r),
                     &Token::Newline => None,
                     _ => panic!("{:?} is not a integer litteral", v),
-                }).collect()
+                })
+                .collect()
         };
         assert_eq!(vec![0, 123], get_result("0 123"));
         assert_eq!(vec![0x7f, 0x7f], get_result("0x7F 0x7f"));
@@ -1401,7 +1404,8 @@ def test(a):
 
 test("abc")
 "#,
-        ).map(|x| x.unwrap())
+        )
+        .map(|x| x.unwrap())
         .collect();
         assert_eq!(expected, actual);
     }
