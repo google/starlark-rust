@@ -7,8 +7,8 @@ Status](https://travis-ci.org/google/starlark-rust.svg?branch=master)](https://t
 **Disclaimer:** This is not an officially supported Google product. This project is supported
 on a best-effort basis and [welcome contributions](CONTRIBUTING.md).
 
-Starlark, formerly codenamed Skylark, is a non-Turing complete language based
-on Python that was made for the [Bazel build system](https://bazel.build) to
+[Starlark](https://github.com/bazelbuild/starlark), formerly codenamed Skylark, is a non-Turing
+complete language based on Python that was made for the [Bazel build system](https://bazel.build) to
 define compilation plugin.
 
 Starlark has at least 3 implementations: a [Java one for Bazel](
@@ -63,4 +63,4 @@ and `cargo run` to run the command-line interpreter.
 * Evaluation:
   - Static rewrite of the AST before evaluation (e.g. for constant values)
 * Awesome feature:
-  - Implement a debugging protocol
+  - Implement a debugging protocol server side (compatible with the Java one).
