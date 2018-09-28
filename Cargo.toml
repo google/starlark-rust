@@ -15,6 +15,10 @@ categories = ["development-tools"]
 license = "Apache-2.0"
 license-file = "LICENSE"
 
+[badges]
+travis-ci = { repository = "google/starlark-rust", branch = "master" }
+maintenance = { status = "passively-maintained" }
+
 [build-dependencies]
 lalrpop = "0.15.2"
 
