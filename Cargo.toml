@@ -19,15 +19,15 @@ travis-ci = { repository = "google/starlark-rust", branch = "master" }
 maintenance = { status = "passively-maintained" }
 
 [build-dependencies]
-lalrpop = "0.15.2"
+lalrpop = "0.16.0"
 
 [dependencies]
 codemap = "0.1.1"
 codemap-diagnostic = "0.1"
 getopts = "0.2"
-lalrpop-util = "0.15.2"
+lalrpop-util = "0.16.0"
 linked-hash-map = "0.5.1"
-linefeed = "0.5.1"
+linefeed = "0.5.3"
 
 [lib]
 
