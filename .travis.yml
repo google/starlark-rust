@@ -3,16 +3,19 @@ rust:
   - stable
   - beta
   - nightly
-env: FORMATTING=false
-before_script: ./.ci/setup.sh
-script: ./.ci/build.sh
+env: ACTION=build
+before_script: ./.ci/setup.sh "${ACTION}"
+script: ./.ci/build.sh "${ACTION}"
 matrix:
   include:
-  - name: "format"
-    env: FORMATTING=true
+  - name: "Rust: format"
+    env: ACTION=format
     rust: nightly
+  - name: "Rust: doc"
+    env: ACTION=doc
+    rust: stable
   allow_failures:
     - rust: nightly
-      env: FORMATTING=false
+      env: ACTION=build
   fast_finish: true
 cache: cargo
