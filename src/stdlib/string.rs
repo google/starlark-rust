@@ -433,7 +433,7 @@ starlark_module!{global =>
     /// "({1}, {0})".format("zero", "one") == "(one, zero)"
     /// # )"#).unwrap());
     /// # assert!(starlark_default(r#"(
-    /// "Is {0!r} {0!s}?".format('heterological') == "Is 'heterological' heterological?"
+    /// "Is {0!r} {0!s}?".format("heterological") == "Is 'heterological' heterological?"
     /// # )"#).unwrap());
     /// ```
     string.format(this, *args, **kwargs) {
@@ -1206,7 +1206,7 @@ starlark_module!{global =>
     /// ```
     /// # use starlark::stdlib::starlark_default;
     /// # assert!(starlark_default(r#"(
-    /// list('Hello, 世界'.split_codepoints()) == ['H', 'e', 'l', 'l', 'o', ',', ' ', '世', '界']
+    /// list("Hello, 世界".split_codepoints()) == ["H", "e", "l", "l", "o", ",", " ", "世", "界"]
     /// # )"#).unwrap());
     /// ```
     string.split_codepoints(this) {

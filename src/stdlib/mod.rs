@@ -310,12 +310,12 @@ starlark_module!{global_functions =>
     ///
     /// ```
     /// # use starlark::stdlib::starlark_default;
-    /// # assert!(starlark_default("(
-    /// enumerate(['zero', 'one', 'two']) == [(0, 'zero'), (1, 'one'), (2, 'two')]
-    /// # )").unwrap());
-    /// # assert!(starlark_default("(
-    /// enumerate(['one', 'two'], 1) == [(1, 'one'), (2, 'two')]
-    /// # )").unwrap());
+    /// # assert!(starlark_default(r#"(
+    /// enumerate(["zero", "one", "two"]) == [(0, "zero"), (1, "one"), (2, "two")]
+    /// # )"#).unwrap());
+    /// # assert!(starlark_default(r#"(
+    /// enumerate(["one", "two"], 1) == [(1, "one"), (2, "two")]
+    /// # )"#).unwrap());
     /// ```
     enumerate(#it, #offset = 0) {
         let v2 = offset.to_int()?;

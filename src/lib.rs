@@ -48,7 +48,7 @@
 //! # Defining a Starlark dialect
 //!
 //! To specify a new Starlark dialect, the global [Environment](environment::Environment) can be
-//! edited, adding functions or constants. The [skylark_modules!](skylark_modules) macro let you
+//! edited, adding functions or constants. The [starlark_module!](starlark_module) macro let you
 //! define new function with limited boilerplate.
 //!
 //! Those added function or macros can however return their own type, all of them should implement
