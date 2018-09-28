@@ -63,4 +63,5 @@ and `cargo run` to run the command-line interpreter.
 * Evaluation:
   - Static rewrite of the AST before evaluation (e.g. for constant values)
 * Awesome feature:
-  - Implement a debugging protocol server side (compatible with the Java one).
+  - Implement a debugging protocol server side (compatible with the Java one,
+    see (bazelbuild/vscode-bazel#6)).
