@@ -187,5 +187,5 @@ assert_eq(getattr(myset, "onion", 42), 42)
 
 # repr
 assert_eq(repr(1), "1")
-assert_eq(repr("x"), "'x'")
-assert_eq(repr(["x", 1]), "['x', 1]")
+assert_eq(repr("x"), '"x"')
+assert_eq(repr(["x", 1]), '["x", 1]')

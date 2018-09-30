@@ -433,7 +433,7 @@ starlark_module!{global =>
     /// "({1}, {0})".format("zero", "one") == "(one, zero)"
     /// # )"#).unwrap());
     /// # assert!(starlark_default(r#"(
-    /// "Is {0!r} {0!s}?".format("heterological") == "Is 'heterological' heterological?"
+    /// "Is {0!r} {0!s}?".format("heterological") == "Is \"heterological\" heterological?"
     /// # )"#).unwrap());
     /// ```
     string.format(this, *args, **kwargs) {
@@ -1425,7 +1425,7 @@ mod tests {
                 &kwargs,
             )
             .unwrap(),
-            "'3'"
+            "\"3\""
         );
         assert_eq!(
             format_capture(
@@ -1437,7 +1437,7 @@ mod tests {
                 &kwargs,
             )
             .unwrap(),
-            "'x'"
+            "\"x\""
         );
         assert_eq!(
             format_capture(
@@ -1536,7 +1536,7 @@ mod tests {
         starlark_ok!(r#"("({1}, {0})".format("zero", "one") == "(one, zero)")"#);
         starlark_ok!(
             r#"("Is {0!r} {0!s}?".format('heterological') ==
-                    "Is 'heterological' heterological?")"#
+                    "Is \"heterological\" heterological?")"#
         );
     }
 

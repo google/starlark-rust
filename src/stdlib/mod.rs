@@ -753,9 +753,9 @@ starlark_module!{global_functions =>
     /// # assert!(starlark_default(r#"(
     /// repr(1)                 == '1'
     /// # and
-    /// repr("x")               == "'x'"
+    /// repr("x")               == "\"x\""
     /// # and
-    /// repr([1, "x"])          == "[1, 'x']"
+    /// repr([1, "x"])          == "[1, \"x\"]"
     /// # )"#).unwrap());
     /// ```
     repr(#a) {
@@ -854,7 +854,7 @@ starlark_module!{global_functions =>
     /// # and
     /// str("x")                        == 'x'
     /// # and
-    /// str([1, "x"])                   == "[1, 'x']"
+    /// str([1, "x"])                   == "[1, \"x\"]"
     /// # )"#).unwrap());
     /// ```
     _str(#a) {
@@ -1112,15 +1112,15 @@ pub mod tests {
     #[test]
     fn test_repr() {
         starlark_ok!("(repr(1) == '1')");
-        starlark_ok!("(repr('x') == \"'x'\")");
-        starlark_ok!("(repr([1, 'x']) == \"[1, 'x']\")");
+        starlark_ok!("(repr('x') == '\"x\"')");
+        starlark_ok!("(repr([1, 'x']) == '[1, \"x\"]')");
     }
 
     #[test]
     fn test_str() {
         starlark_ok!("(str(1) == '1')");
         starlark_ok!("(str('x') == 'x')");
-        starlark_ok!("(str([1, 'x']) == \"[1, 'x']\")");
+        starlark_ok!("(str([1, 'x']) == '[1, \"x\"]')");
     }
 
     #[test]
