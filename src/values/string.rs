@@ -152,7 +152,7 @@ impl TypedValue for String {
 
     /// Repeat `other` times this string.
     ///
-    /// `other` has to be an int or a boolean.
+    /// `other` has to be an int.
     ///
     /// # Example
     ///
@@ -165,7 +165,7 @@ impl TypedValue for String {
     /// # );
     /// ```
     fn mul(&self, other: Value) -> ValueResult {
-        if other.get_type() == "int" || other.get_type() == "boolean" {
+        if other.get_type() == "int" {
             let l = other.to_int()?;
             let mut result = String::new();
             for _i in 0..l {
