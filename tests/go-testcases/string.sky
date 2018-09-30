@@ -55,7 +55,7 @@ assert_eq(list("".codepoints()), [])
 
 # string.split_codepoints
 assert_eq(type("abcЙ😿".split_codepoints()), "list")
-assert_eq(str("abcЙ😿".split_codepoints()), "['a', 'b', 'c', 'Й', '😿']")
+assert_eq(str("abcЙ😿".split_codepoints()), '["a", "b", "c", "Й", "😿"]')
 assert_eq(list("abcЙ😿".split_codepoints()), ["a", "b", "c", "Й", "😿"])
 assert_eq(list("".split_codepoints()), [])
 
@@ -147,7 +147,7 @@ assert_("hello" != "Hello")
 # string % tuple formatting
 assert_eq("A %d %x Z" % (123, 456), "A 123 1c8 Z")
 assert_eq("A %(foo)d %(bar)s Z" % {"foo": 123, "bar":"hi"}, "A 123 hi Z")
-assert_eq("%s %r" % ("hi", "hi"), "hi 'hi'")
+assert_eq("%s %r" % ("hi", "hi"), 'hi "hi"')
 assert_eq("%%d %d" % 1, "%d 1")
 ---
 "%d %d" % 1  ### Not enough arguments for format string
@@ -193,8 +193,8 @@ assert_eq("a{010}b".format(0,1,2,3,4,5,6,7,8,9,10), "a10b") # index is decimal
 "a{}b{1}c".format(1, 2) ### Mixed manual and automatic field numbering
 ---
 assert_eq("a{!s}c".format("b"), "abc")
-assert_eq("a{!r}c".format("b"), r"a'b'c")
-assert_eq("a{x!r}c".format(x='b'), r"a'b'c")
+assert_eq("a{!r}c".format("b"), r'a"b"c')
+assert_eq("a{x!r}c".format(x='b'), r'a"b"c')
 ---
 "{x!}".format(x=1)  ### Invalid format string specifier
 ---

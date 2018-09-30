@@ -18,7 +18,7 @@ assert_eq({x: x*x for x in range(3)}, {0: 0, 1: 1, 2: 4})
 # dict.pop
 x6 = {"a": 1, "b": 2}
 assert_eq(x6.pop("a"), 1)
-assert_eq(str(x6), "{'b': 2}")
+assert_eq(str(x6), '{"b": 2}')
 x6.pop("c")  ### not found
 ---
 x6 = {"b": 2}
@@ -177,18 +177,18 @@ def test_delete():
   # delete tail first
   d["one"] = 1
   d["two"] = 2
-  assert_eq(str(d), "{'one': 1, 'two': 2}")
+  assert_eq(str(d), '{"one": 1, "two": 2}')
   d.pop("two")
-  assert_eq(str(d), "{'one': 1}")
+  assert_eq(str(d), '{"one": 1}')
   d.pop("one")
   assert_eq(str(d), '{}')
 
   # delete head first
   d["one"] = 1
   d["two"] = 2
-  assert_eq(str(d), "{'one': 1, 'two': 2}")
+  assert_eq(str(d), '{"one": 1, "two": 2}')
   d.pop("one")
-  assert_eq(str(d), "{'two': 2}")
+  assert_eq(str(d), '{"two": 2}')
   d.pop("two")
   assert_eq(str(d), '{}')
 
@@ -196,11 +196,11 @@ def test_delete():
   d["one"] = 1
   d["two"] = 2
   d["three"] = 3
-  assert_eq(str(d), "{'one': 1, 'two': 2, 'three': 3}")
+  assert_eq(str(d), '{"one": 1, "two": 2, "three": 3}')
   d.pop("two")
-  assert_eq(str(d), "{'one': 1, 'three': 3}")
+  assert_eq(str(d), '{"one": 1, "three": 3}')
   d.pop("three")
-  assert_eq(str(d), "{'one': 1}")
+  assert_eq(str(d), '{"one": 1}')
   d.pop("one")
   assert_eq(str(d), '{}')
 

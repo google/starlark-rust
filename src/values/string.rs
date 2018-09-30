@@ -28,7 +28,7 @@ impl TypedValue for String {
     }
     fn to_repr(&self) -> String {
         format!(
-            "'{}'",
+            "\"{}\"",
             self.chars()
                 .map(|x| -> String { x.escape_debug().collect() })
                 .fold("".to_string(), |accum, s| accum + &s)
@@ -330,8 +330,8 @@ mod tests {
 
     #[test]
     fn test_to_repr() {
-        assert_eq!("'\\t\\n\\'\\\"'", Value::from("\t\n'\"").to_repr());
-        assert_eq!("'Hello, 世界'", Value::from("Hello, 世界").to_repr());
+        assert_eq!("\"\\t\\n\\'\\\"\"", Value::from("\t\n'\"").to_repr());
+        assert_eq!("\"Hello, 世界\"", Value::from("Hello, 世界").to_repr());
     }
 
     #[test]
