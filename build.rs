@@ -19,7 +19,7 @@ use std::path::Path;
 extern crate lalrpop;
 
 fn main() {
-    conformance_test_cases("tests/testcases");
+    conformance_test_cases("tests/java-testcases");
     conformance_test_cases("tests/go-testcases");
     lalrpop();
 }
