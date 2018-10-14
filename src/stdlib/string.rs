@@ -14,7 +14,6 @@
 
 //! Methods for the `string` type.
 
-use environment::Environment;
 use std::str::FromStr;
 use values::*;
 
