@@ -14,7 +14,6 @@
 
 //! Methods for the `dict` type.
 
-use environment::Environment;
 use linked_hash_map::LinkedHashMap;
 use values::*;
 

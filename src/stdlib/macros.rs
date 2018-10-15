@@ -22,30 +22,30 @@ macro_rules! starlark_signature {
     ($signature:ident call_stack $e:ident) => {};
     ($signature:ident env $e:ident) => {};
     ($signature:ident * $t:ident) => {
-        $signature.push(function::FunctionParameter::ArgsArray(stringify!($t).to_owned()));
+        $signature.push($crate::values::function::FunctionParameter::ArgsArray(stringify!($t).to_owned()));
     };
     ($signature:ident ** $t:ident) => {
-        $signature.push(function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
+        $signature.push($crate::values::function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
     };
     ($signature:ident # $t:ident) => {
-        $signature.push(function::FunctionParameter::Normal(format!("${}", stringify!($t))));
+        $signature.push($crate::values::function::FunctionParameter::Normal(format!("${}", stringify!($t))));
     };
     ($signature:ident $t:ident) => {
-        $signature.push(function::FunctionParameter::Normal(stringify!($t).to_owned()));
+        $signature.push($crate::values::function::FunctionParameter::Normal(stringify!($t).to_owned()));
     };
     ($signature:ident # $t:ident = $e:expr) => {
         $signature.push(
-            function::FunctionParameter::WithDefaultValue(
+            $crate::values::function::FunctionParameter::WithDefaultValue(
                 format!("${}", stringify!($t)),
-                Value::from($e)
+                $crate::values::Value::from($e)
             )
         );
     };
     ($signature:ident $t:ident = $e:expr) => {
         $signature.push(
-            function::FunctionParameter::WithDefaultValue(
+            $crate::values::function::FunctionParameter::WithDefaultValue(
                 stringify!($t).to_owned(),
-                Value::from($e)
+                $crate::values::Value::from($e)
             )
         );
     };
@@ -152,9 +152,9 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         pub fn $fn(
             __call_stack: &Vec<(String, String)>,
-            __env: Environment,
-            args: Vec<Value>
-        ) -> ValueResult {
+            __env: $crate::environment::Environment,
+            args: Vec<$crate::values::Value>
+        ) -> $crate::values::ValueResult {
             let mut __args = args.iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
@@ -164,9 +164,9 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         pub fn $fn(
             __call_stack: &Vec<(String, String)>,
-            __env: Environment,
-            args: Vec<Value>
-        ) -> ValueResult {
+            __env: $crate::environment::Environment,
+            args: Vec<$crate::values::Value>
+        ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
@@ -179,9 +179,9 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         pub fn $fn(
             __call_stack: &Vec<(String, String)>,
-            __env: Environment,
-            args: Vec<Value>
-        ) -> ValueResult {
+            __env: $crate::environment::Environment,
+            args: Vec<$crate::values::Value>
+        ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
@@ -192,9 +192,9 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         pub fn $fn(
             __call_stack: &Vec<(String, String)>,
-            __env: Environment,
-            args: Vec<Value>
-        ) -> ValueResult {
+            __env: $crate::environment::Environment,
+            args: Vec<$crate::values::Value>
+        ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
@@ -213,7 +213,7 @@ macro_rules! starlark_signatures {
             let name = stringify!($name).trim_matches('_');
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
-            $env.set(name, function::Function::new(name.to_owned(), &$name, signature)).unwrap();
+            $env.set(name, $crate::values::function::Function::new(name.to_owned(), &$name, signature)).unwrap();
         }
     };
     ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }
@@ -222,7 +222,7 @@ macro_rules! starlark_signatures {
             let name = stringify!($name).trim_matches('_');
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
-            $env.set(name, function::Function::new(name.to_owned(), &$name, signature)).unwrap();
+            $env.set(name, $crate::values::function::Function::new(name.to_owned(), &$name, signature)).unwrap();
         }
         starlark_signatures!{ $env,
             $($rest)*
@@ -235,7 +235,7 @@ macro_rules! starlark_signatures {
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
             $env.add_type_value(stringify!($ty), name,
-                function::Function::new(name.to_owned(), &$name, signature));
+                $crate::values::function::Function::new(name.to_owned(), &$name, signature));
         }
     };
     ($env:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* ) { $($content:tt)* }
@@ -245,7 +245,7 @@ macro_rules! starlark_signatures {
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
             $env.add_type_value(stringify!($ty), name,
-                function::Function::new(name.to_owned(), &$name, signature));
+                $crate::values::function::Function::new(name.to_owned(), &$name, signature));
         }
         starlark_signatures!{ $env,
             $($rest)*
@@ -357,7 +357,7 @@ macro_rules! starlark_module {
         }
 
         #[doc(hidden)]
-        pub fn $name(env: Environment) -> Environment {
+        pub fn $name(env: $crate::environment::Environment) -> $crate::environment::Environment {
             starlark_signatures!{ env,
                 $($t)*
             }
