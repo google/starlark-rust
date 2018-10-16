@@ -97,8 +97,8 @@ pub enum Expr {
     ArrayIndirection(AstExpr, AstExpr),
     Slice(AstExpr, Option<AstExpr>, Option<AstExpr>, Option<AstExpr>),
     Identifier(AstString),
-    IntLitteral(AstInt),
-    StringLitteral(AstString),
+    IntLiteral(AstInt),
+    StringLiteral(AstString),
     Not(AstExpr),
     Minus(AstExpr),
     Plus(AstExpr),
@@ -392,7 +392,7 @@ where
     Ok(())
 }
 
-fn fmt_string_litteral(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
+fn fmt_string_literal(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
     write!(f, "\"")?;
     for c in s.chars() {
         match c {
@@ -466,7 +466,7 @@ impl fmt::Display for Expr {
                 Ok(())
             }
             Expr::Identifier(ref s) => write!(f, "{}", s.node),
-            Expr::IntLitteral(ref i) => write!(f, "{}", i.node),
+            Expr::IntLiteral(ref i) => write!(f, "{}", i.node),
             Expr::Not(ref e) => write!(f, "(not {})", e.node),
             Expr::Minus(ref e) => write!(f, "-{}", e.node),
             Expr::Plus(ref e) => write!(f, "+{}", e.node),
@@ -494,7 +494,7 @@ impl fmt::Display for Expr {
                 comma_separated_fmt(f, c, |x, f| write!(f, "{}", x.node), false)?;
                 write!(f, "}}")
             }
-            Expr::StringLitteral(ref s) => fmt_string_litteral(f, &s.node),
+            Expr::StringLiteral(ref s) => fmt_string_literal(f, &s.node),
         }
     }
 }
@@ -570,13 +570,13 @@ impl Statement {
             }
             Statement::Load(ref filename, ref v) => {
                 write!(f, "{}load(", tab)?;
-                fmt_string_litteral(f, &filename.node)?;
+                fmt_string_literal(f, &filename.node)?;
                 comma_separated_fmt(
                     f,
                     v,
                     |x, f| {
                         write!(f, "{} = ", x.0.node)?;
-                        fmt_string_litteral(f, &(x.1.node))
+                        fmt_string_literal(f, &(x.1.node))
                     },
                     false,
                 )?;

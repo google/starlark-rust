@@ -486,8 +486,8 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 t!(a.slice(start, stop, stride), self)
             }
             Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
-            Expr::IntLitteral(ref i) => Ok(Value::new(i.node)),
-            Expr::StringLitteral(ref s) => Ok(Value::new(s.node.clone())),
+            Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
+            Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
             Expr::Not(ref s) => Ok(Value::new(!s.eval(context)?.to_bool())),
             Expr::Minus(ref s) => t!(s.eval(context)?.minus(), self),
             Expr::Plus(ref s) => t!(s.eval(context)?.plus(), self),
