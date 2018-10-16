@@ -210,9 +210,9 @@ Operand: AstExpr = {
     <l:@L> <i:identifier> <r:@R>
         => Expr::Identifier(i).to_ast(file_span.subspan(l, r)),
     <l:@L> <i:integer> <r:@R>
-        => Expr::IntLitteral(i).to_ast(file_span.subspan(l, r)),
+        => Expr::IntLiteral(i).to_ast(file_span.subspan(l, r)),
     <l:@L> <s:string> <r:@R>
-        => Expr::StringLitteral(s).to_ast(file_span.subspan(l, r)),
+        => Expr::StringLiteral(s).to_ast(file_span.subspan(l, r)),
     <l:@L> "[" <e:COMMA<Test>> "]" <r:@R>
         => Expr::List(e).to_ast(file_span.subspan(l, r)),
     ListComp,
@@ -398,7 +398,7 @@ extern {
 
       "RESERVED" => lexer::Token::Reserved(<String>),
       "IDENTIFIER" => lexer::Token::Identifier(<String>),
-      "INTEGER" => lexer::Token::IntegerLitteral(<i64>),
-      "STRING" => lexer::Token::StringLitteral(<String>)
+      "INTEGER" => lexer::Token::IntegerLiteral(<i64>),
+      "STRING" => lexer::Token::StringLiteral(<String>)
     }
 }
