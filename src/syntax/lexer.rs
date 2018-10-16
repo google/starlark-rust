@@ -27,7 +27,7 @@ use std::str::CharIndices;
 // CL prefix = Critical Lexing
 const LEX_ERROR_CODE: &'static str = "CL00";
 const INDENT_ERROR_CODE: &'static str = "CL01";
-const UNFINISHED_STRING_LITTERAL_CODE: &'static str = "CL02";
+const UNFINISHED_STRING_LITERAL_CODE: &'static str = "CL02";
 const INVALID_ESCAPE_SEQUENCE_CODE: &'static str = "CL03";
 
 /// Errors that can be generated during lexing
@@ -36,7 +36,7 @@ const INVALID_ESCAPE_SEQUENCE_CODE: &'static str = "CL03";
 pub enum LexerError {
     Indentation(u64, u64),
     InvalidCharacter(u64),
-    UnfinishedStringLitteral(u64, u64),
+    UnfinishedStringLiteral(u64, u64),
     InvalidEscapeSequence(u64, u64),
     WrappedError {
         span: Span,
@@ -54,7 +54,7 @@ impl SyntaxError for LexerError {
         let sl = SpanLabel {
             span: match self {
                 LexerError::Indentation(x, y)
-                | LexerError::UnfinishedStringLitteral(x, y)
+                | LexerError::UnfinishedStringLiteral(x, y)
                 | LexerError::InvalidEscapeSequence(x, y) => file_span.subspan(x, y),
                 LexerError::InvalidCharacter(x) => file_span.subspan(x, x),
                 LexerError::WrappedError { span, .. } => span,
@@ -64,7 +64,7 @@ impl SyntaxError for LexerError {
                 match self {
                     LexerError::Indentation(..) => "Incorrect indentation",
                     LexerError::InvalidCharacter(..) => "Character not valid at present location",
-                    LexerError::UnfinishedStringLitteral(..) => "Unfinished string litteral",
+                    LexerError::UnfinishedStringLiteral(..) => "Unfinished string literal",
                     LexerError::InvalidEscapeSequence(..) => "Invalid string escape sequence",
                     LexerError::WrappedError { label, .. } => label,
                 }
@@ -78,7 +78,7 @@ impl SyntaxError for LexerError {
                 match self {
                     LexerError::Indentation(..) => INDENT_ERROR_CODE,
                     LexerError::InvalidCharacter(..) => LEX_ERROR_CODE,
-                    LexerError::UnfinishedStringLitteral(..) => UNFINISHED_STRING_LITTERAL_CODE,
+                    LexerError::UnfinishedStringLiteral(..) => UNFINISHED_STRING_LITERAL_CODE,
                     LexerError::InvalidEscapeSequence(..) => INVALID_ESCAPE_SEQUENCE_CODE,
                     LexerError::WrappedError { code, .. } => code,
                 }
@@ -147,10 +147,10 @@ pub enum Token {
     ClosingCurlyBracket, // '}'
     ClosingParenthesis,  // ')'
 
-    Reserved(String),       // One of the reserved keywords
-    Identifier(String),     // An identifier
-    IntegerLitteral(i64),   // An integer litteral (123, 0x1, 0b1011, 0755, ...)
-    StringLitteral(String), // A string litteral
+    Reserved(String),      // One of the reserved keywords
+    Identifier(String),    // An identifier
+    IntegerLiteral(i64),   // An integer literal (123, 0x1, 0b1011, 0755, ...)
+    StringLiteral(String), // A string literal
 }
 
 impl fmt::Display for Token {
@@ -207,8 +207,8 @@ impl fmt::Display for Token {
             &Token::ClosingParenthesis => write!(f, "symbol ')'"),
             &Token::Reserved(ref s) => write!(f, "reserved keyword '{}'", s),
             &Token::Identifier(ref s) => write!(f, "identifier '{}'", s),
-            &Token::IntegerLitteral(ref i) => write!(f, "integer litteral '{}'", i),
-            &Token::StringLitteral(ref s) => write!(f, "string litteral '{}'", s),
+            &Token::IntegerLiteral(ref i) => write!(f, "integer literal '{}'", i),
+            &Token::StringLiteral(ref s) => write!(f, "string literal '{}'", s),
         }
     }
 }
@@ -658,7 +658,7 @@ impl Lexer {
             if val.is_err() {
                 self.invalid()
             } else {
-                self.end(Token::IntegerLitteral(val.unwrap()))
+                self.end(Token::IntegerLiteral(val.unwrap()))
             }
         }
     }
@@ -683,7 +683,7 @@ impl Lexer {
                     self.pop();
                     self.consume_int_radix(2)
                 }
-                c if !c.is_alphanumeric() => self.end(Token::IntegerLitteral(0)),
+                c if !c.is_alphanumeric() => self.end(Token::IntegerLiteral(0)),
                 _ => self.invalid(),
             }
         } else {
@@ -786,7 +786,7 @@ impl Lexer {
                 self.next_char();
                 triple = true;
             } else {
-                return self.end(Token::StringLitteral(res));
+                return self.end(Token::StringLiteral(res));
             }
         }
         loop {
@@ -813,12 +813,12 @@ impl Lexer {
                         res.push(self.next_char());
                     } else {
                         let p = self.end_pos();
-                        return Some(Err(LexerError::UnfinishedStringLitteral(p.0, p.1)));
+                        return Some(Err(LexerError::UnfinishedStringLiteral(p.0, p.1)));
                     }
                 }
                 '\0' => {
                     let p = self.end_pos();
-                    return Some(Err(LexerError::UnfinishedStringLitteral(p.0, p.1)));
+                    return Some(Err(LexerError::UnfinishedStringLiteral(p.0, p.1)));
                 }
                 x if x == quote => {
                     self.pop();
@@ -843,7 +843,7 @@ impl Lexer {
                 }
             }
         }
-        self.end(Token::StringLitteral(res))
+        self.end(Token::StringLiteral(res))
     }
 
     fn consume_token(&mut self) -> Option<<Self as Iterator>::Item> {
@@ -1071,9 +1071,9 @@ mod tests {
             collect_result(s)
                 .iter()
                 .filter_map(|v| match v {
-                    &Token::IntegerLitteral(r) => Some(r),
+                    &Token::IntegerLiteral(r) => Some(r),
                     &Token::Newline => None,
-                    _ => panic!("{:?} is not a integer litteral", v),
+                    _ => panic!("{:?} is not a integer literal", v),
                 })
                 .collect()
         };
@@ -1269,41 +1269,41 @@ mod tests {
         let r = collect_result("'123' \"123\" '' \"\" '\\'' \"\\\"\" '\"' \"'\" '\\n' '\\w'");
         assert_eq!(
             &[
-                Token::StringLitteral("123".to_owned()),
-                Token::StringLitteral("123".to_owned()),
-                Token::StringLitteral("".to_owned()),
-                Token::StringLitteral("".to_owned()),
-                Token::StringLitteral("'".to_owned()),
-                Token::StringLitteral("\"".to_owned()),
-                Token::StringLitteral("\"".to_owned()),
-                Token::StringLitteral("'".to_owned()),
-                Token::StringLitteral("\n".to_owned()),
-                Token::StringLitteral("\\w".to_owned()),
+                Token::StringLiteral("123".to_owned()),
+                Token::StringLiteral("123".to_owned()),
+                Token::StringLiteral("".to_owned()),
+                Token::StringLiteral("".to_owned()),
+                Token::StringLiteral("'".to_owned()),
+                Token::StringLiteral("\"".to_owned()),
+                Token::StringLiteral("\"".to_owned()),
+                Token::StringLiteral("'".to_owned()),
+                Token::StringLiteral("\n".to_owned()),
+                Token::StringLiteral("\\w".to_owned()),
                 Token::Newline,
             ],
             &r[..]
         );
 
-        // unfinished string litteral
+        // unfinished string literal
         assert_eq!(
             super::Lexer::new("'\n'").next().unwrap(),
-            Err(super::LexerError::UnfinishedStringLitteral(0, 1))
+            Err(super::LexerError::UnfinishedStringLiteral(0, 1))
         );
         assert_eq!(
             super::Lexer::new("\"\n\"").next().unwrap(),
-            Err(super::LexerError::UnfinishedStringLitteral(0, 1))
+            Err(super::LexerError::UnfinishedStringLiteral(0, 1))
         );
         // Multiline string
         let r =
             collect_result("'''''' '''\\n''' '''\n''' \"\"\"\"\"\" \"\"\"\\n\"\"\" \"\"\"\n\"\"\"");
         assert_eq!(
             &[
-                Token::StringLitteral("".to_owned()),
-                Token::StringLitteral("\n".to_owned()),
-                Token::StringLitteral("\n".to_owned()),
-                Token::StringLitteral("".to_owned()),
-                Token::StringLitteral("\n".to_owned()),
-                Token::StringLitteral("\n".to_owned()),
+                Token::StringLiteral("".to_owned()),
+                Token::StringLiteral("\n".to_owned()),
+                Token::StringLiteral("\n".to_owned()),
+                Token::StringLiteral("".to_owned()),
+                Token::StringLiteral("\n".to_owned()),
+                Token::StringLiteral("\n".to_owned()),
                 Token::Newline,
             ],
             &r[..]
@@ -1312,13 +1312,13 @@ mod tests {
         let r = collect_result("r'' r\"\" r'\\'' r\"\\\"\" r'\"' r\"'\" r'\\n'");
         assert_eq!(
             &[
-                Token::StringLitteral("".to_owned()),
-                Token::StringLitteral("".to_owned()),
-                Token::StringLitteral("'".to_owned()),
-                Token::StringLitteral("\"".to_owned()),
-                Token::StringLitteral("\"".to_owned()),
-                Token::StringLitteral("'".to_owned()),
-                Token::StringLitteral("\\n".to_owned()),
+                Token::StringLiteral("".to_owned()),
+                Token::StringLiteral("".to_owned()),
+                Token::StringLiteral("'".to_owned()),
+                Token::StringLiteral("\"".to_owned()),
+                Token::StringLiteral("\"".to_owned()),
+                Token::StringLiteral("'".to_owned()),
+                Token::StringLiteral("\\n".to_owned()),
                 Token::Newline,
             ],
             &r[..]
@@ -1337,7 +1337,7 @@ def _impl(ctx):
         );
         assert_eq!(
             &[
-                Token::StringLitteral("A docstring.".to_owned()),
+                Token::StringLiteral("A docstring.".to_owned()),
                 Token::Newline,
                 Token::Newline,
                 Token::Def,
@@ -1350,7 +1350,7 @@ def _impl(ctx):
                 Token::Indent,
                 Token::Identifier("print".to_owned()),
                 Token::OpeningParenthesis,
-                Token::StringLitteral("Hello, World!".to_owned()),
+                Token::StringLiteral("Hello, World!".to_owned()),
                 Token::ClosingParenthesis,
                 Token::Newline,
                 Token::Dedent,
@@ -1393,7 +1393,7 @@ def _impl(ctx):
             (25, Token::Dedent, 25),
             (25, Token::Identifier("test".to_owned()), 29),
             (29, Token::OpeningParenthesis, 30),
-            (30, Token::StringLitteral("abc".to_owned()), 35),
+            (30, Token::StringLiteral("abc".to_owned()), 35),
             (35, Token::ClosingParenthesis, 36),
             (36, Token::Newline, 37),
         ];
@@ -1415,7 +1415,7 @@ test("abc")
         let r = collect_result_buffered(vec!["\"\"\"A docstring.\"\"\"\n"]);
         assert_eq!(
             &[
-                Token::StringLitteral("A docstring.".to_owned()),
+                Token::StringLiteral("A docstring.".to_owned()),
                 Token::Newline,
             ],
             &r[..]
@@ -1440,7 +1440,7 @@ test("abc")
                 Token::Indent,
                 Token::Identifier("print".to_owned()),
                 Token::OpeningParenthesis,
-                Token::StringLitteral("Hello, World!".to_owned()),
+                Token::StringLiteral("Hello, World!".to_owned()),
                 Token::ClosingParenthesis,
                 Token::Newline,
                 Token::Newline,
