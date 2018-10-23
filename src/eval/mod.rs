@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Evaluation environment, provide converters from Ast* element to value
+//! Evaluation environment, provide converters from Ast* element to value.
+//!
+//! # <a name="build_file"></a>Starlark and BUILD dialect
+//! 
+//! All evaluation function can evaluate the full Starlark language (i.e. Bazel's
+//! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
+//! The BUILD dialect does not allow `def` statements.
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use environment::Environment;
@@ -826,7 +832,9 @@ pub fn eval_def(
 /// * map: the codemap object used for diagnostics
 /// * filename: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate, for diagnostics
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
+/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
+///   More information about the difference can be found in [this module's
+///   documentation](index.html#build_file).
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
@@ -853,7 +861,9 @@ fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoa
 /// * map: the codemap object used for diagnostics
 /// * path: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
+/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
+///   More information about the difference can be found in [this module's
+///   documentation](index.html#build_file).
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
 pub fn eval<T: FileLoader + 'static>(
@@ -877,7 +887,9 @@ pub fn eval<T: FileLoader + 'static>(
 ///
 /// * map: the codemap object used for diagnostics
 /// * path: the file to parse and evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
+/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
+///   More information about the difference can be found in [this module's
+///   documentation](index.html#build_file).
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
 pub fn eval_file<T: FileLoader + 'static>(

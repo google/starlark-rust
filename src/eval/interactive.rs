@@ -30,7 +30,9 @@ use values::*;
 ///
 /// * path: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
+/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
+///   More information about the difference can be found in [the eval module's
+///   documentation](../index.html#build_file).
 /// * env: the environment to mutate during the evaluation
 pub fn eval(path: &str, content: &str, build: bool, env: &mut Environment) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
@@ -53,7 +55,9 @@ pub fn eval(path: &str, content: &str, build: bool, env: &mut Environment) {
 /// # Arguments
 ///
 /// * path: the file to parse and evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
+/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
+///   More information about the difference can be found in [the eval module's
+///   documentation](../index.html#build_file).
 /// * env: the environment to mutate during the evaluation
 pub fn eval_file(path: &str, build: bool, env: &mut Environment) {
     let map = Arc::new(Mutex::new(CodeMap::new()));

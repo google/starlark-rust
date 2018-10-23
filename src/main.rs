@@ -49,7 +49,11 @@ fn main() {
     opts.optflag(
         "b",
         "build_file",
-        "Parse the build file format instead of full Starlark.",
+        concat!(
+            "Parse the build file format instead of full Starlark. See https://docs.rs/starlark/",
+            env!("CARGO_PKG_VERSION"),
+            "/starlark/eval/index.html#build_file"
+        ),
     );
     opts.optflag("h", "help", "Show the usage of this program.");
     opts.optflag("r", "repl", "Run a REPL after files have been parsed.");
