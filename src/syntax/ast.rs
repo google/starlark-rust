@@ -43,14 +43,14 @@ pub trait ToAst<T> {
 }
 
 macro_rules! to_ast_trait {
-    ($t1: ty, $t2: ty, $t3: ident) => {
+    ($t1:ty, $t2:ty, $t3:ident) => {
         impl ToAst<$t2> for $t1 {
             fn to_ast(self, span: Span) -> $t2 {
                 $t3::new(Spanned { span, node: self })
             }
         }
     };
-    ($t1: ty, $t2: ty) => {
+    ($t1:ty, $t2:ty) => {
         impl ToAst<$t2> for $t1 {
             fn to_ast(self, span: Span) -> $t2 {
                 Spanned { span, node: self }
@@ -247,7 +247,7 @@ pub enum Statement {
 to_ast_trait!(Statement, AstStatement, Box);
 
 macro_rules! test_param_name {
-    ($argset:ident, $n: ident, $arg: ident) => {{
+    ($argset:ident, $n:ident, $arg:ident) => {{
         if $argset.contains(&$n.node) {
             return Err(lalrpop_util::ParseError::User {
                 error: lexer::LexerError::WrappedError {

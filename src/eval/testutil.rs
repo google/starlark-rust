@@ -42,23 +42,23 @@ pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.
 macro_rules! starlark_ok_fn {
-    ($fn: path, $t:expr) => {
+    ($fn:path, $t:expr) => {
         assert!($fn($t).unwrap());
     };
-    ($fn: path, $t1:expr, $t2:expr) => {
+    ($fn:path, $t1:expr, $t2:expr) => {
         assert!($fn(&format!("{}{}", $t1, $t2)).unwrap());
     };
 }
 
 /// Test that the execution of a starlark code raise an error
 macro_rules! starlark_fail_fn {
-    ($fn: path, $t:expr) => {
+    ($fn:path, $t:expr) => {
         assert!($fn($t).is_err());
     };
-    ($fn: path, $t:expr, $c:expr) => {
+    ($fn:path, $t:expr, $c:expr) => {
         assert_eq!($c, $fn($t).err().unwrap().code.unwrap());
     };
-    ($fn: path, $t1:expr, $t2: expr, $c:expr) => {
+    ($fn:path, $t1:expr, $t2:expr, $c:expr) => {
         assert_eq!(
             $c,
             $fn(&format!("{}{}", $t1, $t2)).err().unwrap().code.unwrap()

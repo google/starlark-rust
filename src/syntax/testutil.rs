@@ -13,7 +13,7 @@
 // limitations under the License.
 
 macro_rules! assert_diagnostics {
-    ($e: expr, $m: expr) => {
+    ($e:expr, $m:expr) => {
         if !$e.is_empty() {
             let nb_errors = $e.len();
             let locked = $m.lock();

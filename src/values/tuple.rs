@@ -269,7 +269,7 @@ impl TypedValue for Tuple {
     fn to_str(&self) -> String {
         format!(
             "({}{})",
-            self.content.iter().map(|x| x.to_repr()).enumerate().fold(
+            self.content.iter().map(|x| x.to_repr(),).enumerate().fold(
                 "".to_string(),
                 |accum, s| if s.0 == 0 {
                     accum + &s.1

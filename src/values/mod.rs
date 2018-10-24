@@ -338,11 +338,7 @@ impl PartialEq for ValueError {
             (
                 &ValueError::OperationNotSupported { op: ref x, .. },
                 &ValueError::OperationNotSupported { op: ref y, .. },
-            )
-                if x == y =>
-            {
-                true
-            }
+            ) if x == y => true,
             (&ValueError::IndexOutOfBound(x), &ValueError::IndexOutOfBound(y)) if x == y => true,
             _ => false,
         }
@@ -1591,10 +1587,10 @@ impl<'a> From<&'a str> for Value {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! int_op {
-    ($v1:tt . $op:ident ( $v2:expr ) ) => {
+    ($v1:tt. $op:ident($v2:expr)) => {
         $v1.$op(Value::new($v2)).unwrap().to_int().unwrap()
     };
-    ($v1:tt . $op:ident ( ) ) => {
+    ($v1:tt. $op:ident()) => {
         $v1.$op().unwrap().to_int().unwrap()
     };
 }

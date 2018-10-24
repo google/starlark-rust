@@ -375,7 +375,7 @@ macro_rules! starlark_module {
 /// * $label is a a short description of the error to be put next to the code.
 #[macro_export]
 macro_rules! starlark_err {
-    ($code:expr, $message: expr, $label: expr) => {
+    ($code:expr, $message:expr, $label:expr) => {
         return Err(RuntimeError {
             code: $code,
             message: $message,
@@ -426,7 +426,7 @@ macro_rules! check_type {
 /// * $end: the variable denoting the end index (optional)
 #[macro_export]
 macro_rules! convert_indices {
-    ($this: ident, $start: ident, $end: ident) => {
+    ($this:ident, $start:ident, $end:ident) => {
         let len = $this.length()?;
         let $end = if $end.get_type() == "NoneType" {
             len
@@ -459,7 +459,7 @@ macro_rules! convert_indices {
             }
         };
     };
-    ($this: ident, $start: ident) => {
+    ($this:ident, $start:ident) => {
         let len = $this.length()?;
         let $start = if $start.get_type() == "NoneType" {
             0
