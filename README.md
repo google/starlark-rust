@@ -13,7 +13,7 @@ define compilation plugin.
 
 Starlark has at least 3 implementations: a [Java one for Bazel](
 https://github.com/bazelbuild/bazel/tree/master/src/main/java/com/google/devtools/skylark),
-a [go one](https://github.com/google/skylark) and this one.
+a [Go one](https://github.com/google/skylark) and this one.
 
 This interpreter was made using the [specification from the go version](
 https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md)
