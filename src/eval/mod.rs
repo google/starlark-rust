@@ -15,7 +15,7 @@
 //! Evaluation environment, provide converters from Ast* element to value.
 //!
 //! # <a name="build_file"></a>Starlark and BUILD dialect
-//! 
+//!
 //! All evaluation function can evaluate the full Starlark language (i.e. Bazel's
 //! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
 //! The BUILD dialect does not allow `def` statements.
@@ -34,7 +34,7 @@ use values::function::FunctionParameter;
 use values::*;
 
 macro_rules! eval_vector {
-    ($v: expr, $ctx: expr) => {{
+    ($v:expr, $ctx:expr) => {{
         let mut r = Vec::new();
         for s in $v.iter() {
             r.push(s.eval($ctx)?)
@@ -78,13 +78,13 @@ pub enum EvalException {
 type EvalResult = Result<Value, EvalException>;
 
 macro_rules! t {
-    ($v: expr, span $el: expr) => {{
+    ($v:expr,span $el:expr) => {{
         match $v {
             Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el))),
             Ok(v) => Ok(v),
         }
     }};
-    ($v: expr, $el: expr) => {{
+    ($v:expr, $el:expr) => {{
         match $v {
             Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el.span))),
             Ok(v) => Ok(v),
@@ -459,7 +459,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                         ),
                     ));
                     t!(
-                        e.eval(context)?.call(
+                        e.eval(context,)?.call(
                             &new_stack,
                             context.env.clone(),
                             npos,

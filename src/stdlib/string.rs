@@ -1450,17 +1450,15 @@ mod tests {
             .unwrap(),
             "x"
         );
-        assert!(
-            format_capture(
-                "{1",
-                &mut it,
-                &mut captured_by_index,
-                &mut captured_by_order,
-                &args,
-                &kwargs,
-            )
-            .is_err()
-        );
+        assert!(format_capture(
+            "{1",
+            &mut it,
+            &mut captured_by_index,
+            &mut captured_by_order,
+            &args,
+            &kwargs,
+        )
+        .is_err());
         captured_by_order = false;
         it = args.into_iter().unwrap();
         assert_eq!(
@@ -1475,17 +1473,15 @@ mod tests {
             .unwrap(),
             "2"
         );
-        assert!(
-            format_capture(
-                "{",
-                &mut it,
-                &mut captured_by_index,
-                &mut captured_by_order,
-                &args,
-                &kwargs,
-            )
-            .is_err()
-        );
+        assert!(format_capture(
+            "{",
+            &mut it,
+            &mut captured_by_index,
+            &mut captured_by_order,
+            &args,
+            &kwargs,
+        )
+        .is_err());
     }
 
     #[test]

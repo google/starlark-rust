@@ -396,26 +396,20 @@ mod tests {
     #[test]
     fn test_string_is_in() {
         // "a" in "abc" == True
-        assert!(
-            Value::from("abc")
-                .is_in(&Value::from("a"))
-                .unwrap()
-                .to_bool()
-        );
+        assert!(Value::from("abc")
+            .is_in(&Value::from("a"))
+            .unwrap()
+            .to_bool());
         // "b" in "abc" == True
-        assert!(
-            Value::from("abc")
-                .is_in(&Value::from("b"))
-                .unwrap()
-                .to_bool()
-        );
+        assert!(Value::from("abc")
+            .is_in(&Value::from("b"))
+            .unwrap()
+            .to_bool());
         // "z" in "abc" == False
-        assert!(
-            !Value::from("abc")
-                .is_in(&Value::from("z"))
-                .unwrap()
-                .to_bool()
-        );
+        assert!(!Value::from("abc")
+            .is_in(&Value::from("z"))
+            .unwrap()
+            .to_bool());
     }
 
     #[test]
