@@ -725,7 +725,10 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                     match st.eval(context) {
                         Err(EvalException::Break(..)) => break,
                         Err(EvalException::Continue(..)) => (),
-                        Err(x) => { result = Err(x); break },
+                        Err(x) => {
+                            result = Err(x);
+                            break;
+                        }
                         _ => (),
                     }
                 }
