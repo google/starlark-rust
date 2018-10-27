@@ -19,6 +19,7 @@ use values::*;
 
 pub struct List {
     frozen: bool,
+    frozen_for_iteration: bool,
     content: Vec<Value>,
 }
 
@@ -26,6 +27,7 @@ impl<T: Into<Value> + Clone> From<Vec<T>> for List {
     fn from(a: Vec<T>) -> List {
         let mut result = List {
             frozen: false,
+            frozen_for_iteration: false,
             content: Vec::new(),
         };
         for x in a.iter() {
@@ -40,6 +42,7 @@ impl List {
     pub fn new() -> Value {
         Value::new(List {
             frozen: false,
+            frozen_for_iteration: false,
             content: Vec::new(),
         })
     }
@@ -52,6 +55,8 @@ impl List {
             v.downcast_apply(|x: &mut List| -> ValueResult {
                 if x.frozen {
                     Err(ValueError::CannotMutateImmutableValue)
+                } else if x.frozen_for_iteration {
+                    Err(ValueError::MutationDuringIteration)
                 } else {
                     f(&mut x.content)
                 }
@@ -70,6 +75,16 @@ impl TypedValue for List {
         self.frozen = true;
         for x in self.content.iter_mut() {
             x.borrow_mut().freeze();
+        }
+    }
+    fn freeze_for_iteration(&mut self) {
+        if !self.frozen {
+            self.frozen_for_iteration = true
+        }
+    }
+    fn unfreeze_for_iteration(&mut self) {
+        if !self.frozen {
+            self.frozen_for_iteration = true
         }
     }
 
@@ -196,6 +211,7 @@ impl TypedValue for List {
         if other.get_type() == "list" {
             let mut result = List {
                 frozen: false,
+                frozen_for_iteration: false,
                 content: Vec::new(),
             };
             for x in self.content.iter() {
@@ -230,6 +246,7 @@ impl TypedValue for List {
             let l = other.to_int()?;
             let mut result = List {
                 frozen: false,
+                frozen_for_iteration: false,
                 content: Vec::new(),
             };
             for _i in 0..l {
@@ -257,6 +274,8 @@ impl TypedValue for List {
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         if self.frozen {
             Err(ValueError::CannotMutateImmutableValue)
+        } else if self.frozen_for_iteration {
+            Err(ValueError::MutationDuringIteration)
         } else {
             let i = index.convert_index(self.length()?)? as usize;
             self.content[i] = new_value.clone_for_container(self)?;

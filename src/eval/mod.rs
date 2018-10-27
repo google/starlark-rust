@@ -280,7 +280,8 @@ fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
                 };
             }
             Clause::For(ref k, ref v) => {
-                let iterable = v.eval(context)?;
+                let mut iterable = v.eval(context)?;
+                iterable.freeze_for_iteration();
                 for i in t!(iterable.into_iter(), c)? {
                     k.set(context, i)?;
                     if tl.is_empty() {
@@ -290,6 +291,7 @@ fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
                         result.append(&mut other);
                     }
                 }
+                iterable.unfreeze_for_iteration();
             }
         }
     }
@@ -715,17 +717,20 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 },
                 ref st,
             ) => {
-                let iterable = e2.eval(context)?;
+                let mut iterable = e2.eval(context)?;
+                let mut result = Ok(Value::new(None));
+                iterable.freeze_for_iteration();
                 for v in t!(iterable.into_iter(), span * span)? {
                     e1.set(context, v)?;
                     match st.eval(context) {
                         Err(EvalException::Break(..)) => break,
                         Err(EvalException::Continue(..)) => (),
-                        Err(x) => return Err(x),
+                        Err(x) => { result = Err(x); break },
                         _ => (),
                     }
                 }
-                Ok(Value::new(None))
+                iterable.unfreeze_for_iteration();
+                result
             }
             Statement::For(
                 AstClause {

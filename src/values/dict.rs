@@ -22,6 +22,7 @@ use values::*;
 /// The Dictionary type
 pub struct Dictionary {
     frozen: bool,
+    frozen_for_iteration: bool,
     content: LinkedHashMap<Value, Value>,
 }
 
@@ -29,6 +30,7 @@ impl Dictionary {
     pub fn new() -> Value {
         Value::new(Dictionary {
             frozen: false,
+            frozen_for_iteration: false,
             content: LinkedHashMap::new(),
         })
     }
@@ -53,6 +55,8 @@ impl Dictionary {
             v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
                 if x.frozen {
                     Err(ValueError::CannotMutateImmutableValue)
+                } else if x.frozen_for_iteration {
+                    Err(ValueError::MutationDuringIteration)
                 } else {
                     f(&mut x.content)
                 }
@@ -67,6 +71,7 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> F
     fn from(a: HashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
             frozen: false,
+            frozen_for_iteration: false,
             content: LinkedHashMap::new(),
         };
         for (k, v) in a.iter() {
@@ -82,6 +87,7 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone>
     fn from(a: LinkedHashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
             frozen: false,
+            frozen_for_iteration: false,
             content: LinkedHashMap::new(),
         };
         for (k, v) in a.iter() {
@@ -96,7 +102,7 @@ impl TypedValue for Dictionary {
     any!();
 
     fn immutable(&self) -> bool {
-        self.frozen
+        self.frozen || self.frozen_for_iteration
     }
     fn freeze(&mut self) {
         self.frozen = true;
@@ -105,7 +111,16 @@ impl TypedValue for Dictionary {
             (*v).borrow_mut().freeze();
         }
     }
-
+    fn freeze_for_iteration(&mut self) {
+        if !self.frozen {
+            self.frozen_for_iteration = true
+        }
+    }
+    fn unfreeze_for_iteration(&mut self) {
+        if !self.frozen {
+            self.frozen_for_iteration = false
+        }
+    }
     fn to_str(&self) -> String {
         format!(
             "{{{}}}",
@@ -200,6 +215,8 @@ impl TypedValue for Dictionary {
         index.get_hash()?;
         if self.frozen {
             Err(ValueError::CannotMutateImmutableValue)
+        } else if self.frozen_for_iteration {
+            Err(ValueError::MutationDuringIteration)
         } else {
             let new_value = new_value.clone_for_container(self)?;
             {
@@ -217,6 +234,7 @@ impl TypedValue for Dictionary {
         if other.get_type() == "dict" {
             let mut result = Dictionary {
                 frozen: false,
+                frozen_for_iteration: false,
                 content: LinkedHashMap::new(),
             };
             for (k, v) in self.content.iter() {
