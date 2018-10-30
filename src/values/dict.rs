@@ -21,16 +21,14 @@ use values::*;
 
 /// The Dictionary type
 pub struct Dictionary {
-    frozen: bool,
-    frozen_for_iteration: bool,
+    mutability: IterableMutability,
     content: LinkedHashMap<Value, Value>,
 }
 
 impl Dictionary {
     pub fn new() -> Value {
         Value::new(Dictionary {
-            frozen: false,
-            frozen_for_iteration: false,
+            mutability: IterableMutability::Mutable,
             content: LinkedHashMap::new(),
         })
     }
@@ -53,13 +51,8 @@ impl Dictionary {
         } else {
             let mut v = v.clone();
             v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
-                if x.frozen {
-                    Err(ValueError::CannotMutateImmutableValue)
-                } else if x.frozen_for_iteration {
-                    Err(ValueError::MutationDuringIteration)
-                } else {
-                    f(&mut x.content)
-                }
+                x.mutability.test()?;
+                f(&mut x.content)
             })
         }
     }
@@ -70,8 +63,7 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone> F
 {
     fn from(a: HashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
-            frozen: false,
-            frozen_for_iteration: false,
+            mutability: IterableMutability::Mutable,
             content: LinkedHashMap::new(),
         };
         for (k, v) in a.iter() {
@@ -86,8 +78,7 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone>
 {
     fn from(a: LinkedHashMap<T1, T2>) -> Dictionary {
         let mut result = Dictionary {
-            frozen: false,
-            frozen_for_iteration: false,
+            mutability: IterableMutability::Mutable,
             content: LinkedHashMap::new(),
         };
         for (k, v) in a.iter() {
@@ -97,30 +88,19 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Hash + Eq + Clone>
     }
 }
 
-/// Define the tuple type
+/// Define the Dictionary type
 impl TypedValue for Dictionary {
     any!();
 
-    fn immutable(&self) -> bool {
-        self.frozen || self.frozen_for_iteration
-    }
     fn freeze(&mut self) {
-        self.frozen = true;
+        self.mutability.freeze();
         for (_, v) in self.content.iter_mut() {
             // XXX: We cannot freeze the key because they are immutable in rust, is it important?
             (*v).borrow_mut().freeze();
         }
     }
-    fn freeze_for_iteration(&mut self) {
-        if !self.frozen {
-            self.frozen_for_iteration = true
-        }
-    }
-    fn unfreeze_for_iteration(&mut self) {
-        if !self.frozen {
-            self.frozen_for_iteration = false
-        }
-    }
+    define_iterable_mutability!(mutability);
+
     fn to_str(&self) -> String {
         format!(
             "{{{}}}",
@@ -213,28 +193,22 @@ impl TypedValue for Dictionary {
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         // Fail the function if the index is non hashable
         index.get_hash()?;
-        if self.frozen {
-            Err(ValueError::CannotMutateImmutableValue)
-        } else if self.frozen_for_iteration {
-            Err(ValueError::MutationDuringIteration)
-        } else {
-            let new_value = new_value.clone_for_container(self)?;
-            {
-                if let Some(x) = self.content.get_mut(&index) {
-                    *x = new_value;
-                    return Ok(());
-                }
+        self.mutability.test()?;
+        let new_value = new_value.clone_for_container(self)?;
+        {
+            if let Some(x) = self.content.get_mut(&index) {
+                *x = new_value;
+                return Ok(());
             }
-            self.content.insert(index, new_value);
-            Ok(())
         }
+        self.content.insert(index, new_value);
+        Ok(())
     }
 
     fn add(&self, other: Value) -> ValueResult {
         if other.get_type() == "dict" {
             let mut result = Dictionary {
-                frozen: false,
-                frozen_for_iteration: false,
+                mutability: IterableMutability::Mutable,
                 content: LinkedHashMap::new(),
             };
             for (k, v) in self.content.iter() {

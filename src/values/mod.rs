@@ -942,6 +942,92 @@ macro_rules! immutable {
     }
 }
 
+/// A helper enum for defining the level of mutability of an iterable.
+///
+/// # Examples
+///
+/// It is made to be used together with default_iterable_mutability! macro, e.g.:
+///
+/// ```rust,ignore
+/// pub struct MyIterable {
+///   IterableMutability mutability;
+///   // ...
+/// }
+///
+/// impl Value for MyIterable {
+///    // define freeze* functions
+///    define_iterable_mutability!(mutability)
+///    
+///    // Later you can use mutability.test()? to
+///    // return an error if trying to mutate a frozen object.
+/// }
+/// ```
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum IterableMutability {
+    Mutable,
+    Immutable,
+    FrozenForIteration,
+}
+
+impl IterableMutability {
+    /// Tests the mutability value and return the appropriate error
+    ///
+    /// This method is to be called simply `mutability.test()?` to return
+    /// an error if the current container is no longer mutable.
+    pub fn test(&self) -> Result<(), ValueError> {
+        match self {
+            IterableMutability::Mutable => Ok(()),
+            IterableMutability::Immutable => Err(ValueError::CannotMutateImmutableValue),
+            IterableMutability::FrozenForIteration => Err(ValueError::MutationDuringIteration),
+        }
+    }
+
+    /// Freezes the current value, can be used when implementing the `freeze` function
+    /// of the [TypedValue] trait.
+    pub fn freeze(&mut self) {
+        *self = IterableMutability::Immutable;
+    }
+
+    /// Tells wether the current value define a permanently immutable function, to be used
+    /// to implement the `immutable` function of the [TypedValue] trait.
+    pub fn immutable(&self) -> bool {
+        *self == IterableMutability::Immutable
+    }
+
+    /// Freezes the current value for iterating over, to be used to implement the
+    /// `freeze_for_iteration` function of the [TypedValue] trait.
+    pub fn freeze_for_iteration(&mut self) {
+        if self.immutable() {
+            return;
+        }
+        *self = IterableMutability::FrozenForIteration
+    }
+
+    /// Unfreezes the current value for iterating over, to be used to implement the
+    /// `unfreeze_for_iteration` function of the [TypedValue] trait.
+    pub fn unfreeze_for_iteration(&mut self) {
+        if self.immutable() {
+            return;
+        }
+        *self = IterableMutability::Mutable
+    }
+}
+
+/// Define functions *freeze_for_iteration/immutable for type using [IterableMutability].
+///
+/// E.g., if `mutability` is a field of type [IterableMutability], then
+/// `define_iterable_mutability(mutability)` would define the four function
+/// `immutable`, `freeze_for_iteration` and `unfreeze_for_iteration`
+/// for the current trait implementation.
+#[macro_export]
+macro_rules! define_iterable_mutability {
+    ($name: ident) => {
+        fn immutable(&self) -> bool { self.$name.immutable() }
+        fn freeze_for_iteration(&mut self) { self.$name.freeze_for_iteration() }
+        fn unfreeze_for_iteration(&mut self) { self.$name.unfreeze_for_iteration() }
+    }
+}
+
 impl TypedValue for Value {
     fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
         let mut borrowed = self.0.borrow_mut();
