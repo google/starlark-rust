@@ -221,10 +221,12 @@ def iterator1():
   for x in list:
     list[x] = 2 * x
   return list
-# This is allowed in the go implementation but following the specification
+# Updating elements of a list while iterating is allowed in the go
+# implementation but following the specification
 # (https://github.com/bazelbuild/starlark/blob/815aed90b552fa70adca4dc18d73082fae83b538/design.md#no-mutation-during-iteration)
-# they are not deep content so we do not allow them.
-assert_eq(iterator1(), [0, 2, 4])   ### Cannot mutate an iterable while iterating
+# a immutable list element like a number does not match the definition of
+# "deep content" so it is disallowed in our implementation.
+iterator1()   ### Cannot mutate an iterable while iterating
 ---
 def iterator2():
   list = [0, 1, 2]
