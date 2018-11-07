@@ -18,14 +18,14 @@ use std::cmp::Ordering;
 use values::*;
 
 pub struct List {
-    frozen: bool,
+    mutability: IterableMutability,
     content: Vec<Value>,
 }
 
 impl<T: Into<Value> + Clone> From<Vec<T>> for List {
     fn from(a: Vec<T>) -> List {
         let mut result = List {
-            frozen: false,
+            mutability: IterableMutability::Mutable,
             content: Vec::new(),
         };
         for x in a.iter() {
@@ -39,7 +39,7 @@ impl<T: Into<Value> + Clone> From<Vec<T>> for List {
 impl List {
     pub fn new() -> Value {
         Value::new(List {
-            frozen: false,
+            mutability: IterableMutability::Mutable,
             content: Vec::new(),
         })
     }
@@ -50,11 +50,8 @@ impl List {
         } else {
             let mut v = v.clone();
             v.downcast_apply(|x: &mut List| -> ValueResult {
-                if x.frozen {
-                    Err(ValueError::CannotMutateImmutableValue)
-                } else {
-                    f(&mut x.content)
-                }
+                x.mutability.test()?;
+                f(&mut x.content)
             })
         }
     }
@@ -63,11 +60,10 @@ impl List {
 impl TypedValue for List {
     any!();
 
-    fn immutable(&self) -> bool {
-        self.frozen
-    }
+    define_iterable_mutability!(mutability);
+
     fn freeze(&mut self) {
-        self.frozen = true;
+        self.mutability.freeze();
         for x in self.content.iter_mut() {
             x.borrow_mut().freeze();
         }
@@ -195,7 +191,7 @@ impl TypedValue for List {
     fn add(&self, other: Value) -> ValueResult {
         if other.get_type() == "list" {
             let mut result = List {
-                frozen: false,
+                mutability: IterableMutability::Mutable,
                 content: Vec::new(),
             };
             for x in self.content.iter() {
@@ -229,7 +225,7 @@ impl TypedValue for List {
         if other.get_type() == "int" || other.get_type() == "boolean" {
             let l = other.to_int()?;
             let mut result = List {
-                frozen: false,
+                mutability: IterableMutability::Mutable,
                 content: Vec::new(),
             };
             for _i in 0..l {
@@ -255,13 +251,10 @@ impl TypedValue for List {
     /// assert_eq!(&v.to_repr(), "[1, 1, [2, 3]]");
     /// ```
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        if self.frozen {
-            Err(ValueError::CannotMutateImmutableValue)
-        } else {
-            let i = index.convert_index(self.length()?)? as usize;
-            self.content[i] = new_value.clone_for_container(self)?;
-            Ok(())
-        }
+        self.mutability.test()?;
+        let i = index.convert_index(self.length()?)? as usize;
+        self.content[i] = new_value.clone_for_container(self)?;
+        Ok(())
     }
 
     not_supported!(attr, function, get_hash);

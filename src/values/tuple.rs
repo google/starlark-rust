@@ -429,6 +429,7 @@ impl TypedValue for Tuple {
         }
     }
 
+    not_supported!(freeze_for_iteration);
     not_supported!(set_indexable);
     not_supported!(attr, function);
     not_supported!(plus, minus, sub, div, pipe, percent, floor_div);

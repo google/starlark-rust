@@ -136,28 +136,28 @@ x16 = kwargs(**x15)
 assert_eq(x16, x15)
 x15["two"] = 2 # mutate
 assert_(x16 != x15)
-
+---
 # iterator invalidation
 def iterator1():
   dict = {1:1, 2:1}
   for k in dict:
     dict[2*k] = dict[k]
-iterator1()
-
+iterator1()   ### Cannot mutate an iterable while iterating
+---
 def iterator2():
   dict = {1:1, 2:1}
   for k in dict:
     dict.pop(k)
-iterator2()
-
+iterator2()   ### Cannot mutate an iterable while iterating
+---
 def f(d):
   d[3] = 3
 
 def iterator3():
   dict = {1:1, 2:1}
   _ = [f(dict) for x in dict]
-iterator3()
-
+iterator3()   ### Cannot mutate an iterable while iterating
+---
 # This assignment is not a modification-during-iteration:
 # the sequence x should be completely iterated before
 # the assignment occurs.

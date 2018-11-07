@@ -214,36 +214,41 @@ assert_eq(bananas[4::-2], list("nnb".split_codepoints()))
 assert_eq(bananas[99::-2], list("snnb".split_codepoints()))
 assert_eq(bananas[100::-2], list("snnb".split_codepoints()))
 # TODO(adonovan): many more tests
-
+---
 # iterator invalidation
 def iterator1():
   list = [0, 1, 2]
   for x in list:
     list[x] = 2 * x
   return list
-assert_eq(iterator1(), [0, 2, 4]) # element updates are allowed
-
+# Updating elements of a list while iterating is allowed in the go
+# implementation but following the specification
+# (https://github.com/bazelbuild/starlark/blob/815aed90b552fa70adca4dc18d73082fae83b538/design.md#no-mutation-during-iteration)
+# a immutable list element like a number does not match the definition of
+# "deep content" so it is disallowed in our implementation.
+iterator1()   ### Cannot mutate an iterable while iterating
+---
 def iterator2():
   list = [0, 1, 2]
   for x in list:
     list.remove(x)
-iterator2()
-
+iterator2()   ### Cannot mutate an iterable while iterating
+---
 def iterator3():
   list = [0, 1, 2]
   for x in list:
     list.append(3)
-iterator3()
-
+iterator3()   ### Cannot mutate an iterable while iterating
+---
 def iterator4():
   list = [0, 1, 2]
   for x in list:
     list.extend([3, 4])
-iterator4()
-
+iterator4()   ### Cannot mutate an iterable while iterating
+---
 def fff(x):
   x.append(4)
 def iterator5():
   list = [1, 2, 3]
   _ = [fff(list) for x in list]
-iterator5()
+iterator5()   ### Cannot mutate an iterable while iterating

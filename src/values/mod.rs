@@ -104,6 +104,7 @@ pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CV10";
 pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &'static str = "CV12";
 pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &'static str = "CV13";
 pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &'static str = "CV14";
+pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &'static str = "CV15";
 
 // Maximum recursion level for comparison
 // TODO(dmarting): those are rather short, maybe make it configurable?
@@ -156,6 +157,8 @@ pub enum ValueError {
     TooManyRecursionLevel,
     /// Recursive data structure are not allowed because they would allow infinite loop.
     UnsupportedRecursiveDataStructure,
+    /// It is not allowed to mutate a structure during iteration.
+    MutationDuringIteration,
 }
 
 /// A simpler error format to return as a ValueError
@@ -229,6 +232,9 @@ impl SyntaxError for ValueError {
                         ValueError::UnsupportedRecursiveDataStructure => {
                             "Unsupported recursive data structure".to_owned()
                         }
+                        ValueError::MutationDuringIteration => {
+                            "Cannot mutate an iterable while iterating".to_owned()
+                        }
                         _ => unreachable!(),
                     }),
                 };
@@ -286,6 +292,9 @@ impl SyntaxError for ValueError {
                             "This operation create a recursive data structure. Recursive data",
                             "structure are disallowed because infinite loops are disallowed in Starlark."
                         ).to_owned(),
+                        ValueError::MutationDuringIteration => {
+                            "This operation mutate an iterable for an iterator is borrowed.".to_owned()
+                        }
                         _ => unreachable!(),
                     },
                     code: Some(
@@ -319,6 +328,9 @@ impl SyntaxError for ValueError {
                             }
                             ValueError::UnsupportedRecursiveDataStructure => {
                                 UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE
+                            }
+                            ValueError::MutationDuringIteration => {
+                                CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE
                             }
                             ValueError::DiagnosedError(..) => "U999", // Unknown error
                         }.to_owned(),
@@ -394,8 +406,16 @@ pub trait TypedValue {
     /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
     fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult;
 
-    /// Freeze, i.e make the value immutable.
+    /// Freeze, i.e. make the value immutable.
     fn freeze(&mut self);
+
+    /// Freeze for interation, i.e. make the value temporary immutable. This does not
+    /// propage to child element commpared to the freeze() function.
+    fn freeze_for_iteration(&mut self);
+
+    /// Unfreeze after a call to freeze_for_iteration(), i.e. make the value mutable
+    /// again.
+    fn unfreeze_for_iteration(&mut self);
 
     /// Return a string describing of self, as returned by the str() function.
     fn to_str(&self) -> String;
@@ -805,8 +825,12 @@ macro_rules! not_supported {
             })
         }
     };
+    (freeze_for_iteration) => {
+        fn freeze_for_iteration(&mut self) {}
+        fn unfreeze_for_iteration(&mut self) {}
+    };
     // Special type: iterable, sequence, indexable, container, function
-    (iterable) => { not_supported!(into_iter); };
+    (iterable) => { not_supported!(into_iter, freeze_for_iteration); };
     (sequence) => { not_supported!(length, is_in); };
     (set_indexable) => { not_supported!(set_at); };
     (indexable) => { not_supported!(slice, at, set_indexable); };
@@ -918,6 +942,92 @@ macro_rules! immutable {
     }
 }
 
+/// A helper enum for defining the level of mutability of an iterable.
+///
+/// # Examples
+///
+/// It is made to be used together with default_iterable_mutability! macro, e.g.:
+///
+/// ```rust,ignore
+/// pub struct MyIterable {
+///   IterableMutability mutability;
+///   // ...
+/// }
+///
+/// impl Value for MyIterable {
+///    // define freeze* functions
+///    define_iterable_mutability!(mutability)
+///    
+///    // Later you can use mutability.test()? to
+///    // return an error if trying to mutate a frozen object.
+/// }
+/// ```
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum IterableMutability {
+    Mutable,
+    Immutable,
+    FrozenForIteration,
+}
+
+impl IterableMutability {
+    /// Tests the mutability value and return the appropriate error
+    ///
+    /// This method is to be called simply `mutability.test()?` to return
+    /// an error if the current container is no longer mutable.
+    pub fn test(&self) -> Result<(), ValueError> {
+        match self {
+            IterableMutability::Mutable => Ok(()),
+            IterableMutability::Immutable => Err(ValueError::CannotMutateImmutableValue),
+            IterableMutability::FrozenForIteration => Err(ValueError::MutationDuringIteration),
+        }
+    }
+
+    /// Freezes the current value, can be used when implementing the `freeze` function
+    /// of the [TypedValue] trait.
+    pub fn freeze(&mut self) {
+        *self = IterableMutability::Immutable;
+    }
+
+    /// Tells wether the current value define a permanently immutable function, to be used
+    /// to implement the `immutable` function of the [TypedValue] trait.
+    pub fn immutable(&self) -> bool {
+        *self == IterableMutability::Immutable
+    }
+
+    /// Freezes the current value for iterating over, to be used to implement the
+    /// `freeze_for_iteration` function of the [TypedValue] trait.
+    pub fn freeze_for_iteration(&mut self) {
+        if self.immutable() {
+            return;
+        }
+        *self = IterableMutability::FrozenForIteration
+    }
+
+    /// Unfreezes the current value for iterating over, to be used to implement the
+    /// `unfreeze_for_iteration` function of the [TypedValue] trait.
+    pub fn unfreeze_for_iteration(&mut self) {
+        if self.immutable() {
+            return;
+        }
+        *self = IterableMutability::Mutable
+    }
+}
+
+/// Define functions *freeze_for_iteration/immutable for type using [IterableMutability].
+///
+/// E.g., if `mutability` is a field of type [IterableMutability], then
+/// `define_iterable_mutability(mutability)` would define the four function
+/// `immutable`, `freeze_for_iteration` and `unfreeze_for_iteration`
+/// for the current trait implementation.
+#[macro_export]
+macro_rules! define_iterable_mutability {
+    ($name: ident) => {
+        fn immutable(&self) -> bool { self.$name.immutable() }
+        fn freeze_for_iteration(&mut self) { self.$name.freeze_for_iteration() }
+        fn unfreeze_for_iteration(&mut self) { self.$name.unfreeze_for_iteration() }
+    }
+}
+
 impl TypedValue for Value {
     fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
         let mut borrowed = self.0.borrow_mut();
@@ -931,6 +1041,14 @@ impl TypedValue for Value {
     fn freeze(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.freeze()
+    }
+    fn freeze_for_iteration(&mut self) {
+        let mut borrowed = self.0.borrow_mut();
+        borrowed.freeze_for_iteration()
+    }
+    fn unfreeze_for_iteration(&mut self) {
+        let mut borrowed = self.0.borrow_mut();
+        borrowed.unfreeze_for_iteration()
     }
     fn to_str(&self) -> String {
         self.0.borrow().to_str()
