@@ -26,17 +26,17 @@ does not have them either). It uses signed 64-bit integers.
 
 ## Usage
 
-You can depend on this crate `starlark`, it is documented using [docs.rs](https://docs.rs/crate/starlark).
+You can depend on the `starlark` crate, it is documented using [docs.rs](https://docs.rs/crate/starlark).
 
-A command line interpreter is also provided by this project, it can interpret
-files passed at the command line and also start a REPL (Read-Eval-Print Loop).
+A command line interpreter is also provided by this project under [starlark-repl](starlark-repl),
+it can interpret files passed at the command line and also start a REPL (Read-Eval-Print Loop).
 The usage of this program is:
 
 ```sh
-$ starlark --help
+$ starlark-repl --help
 [Starlark in Rust interpretor]
 
-Usage: ./target/release/starlark [options] [file1..filen]
+Usage: starlark-repl [options] [file1..filen]
 
 
 Options:

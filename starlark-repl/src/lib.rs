@@ -12,7 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Provide a Read-Eval-Print Loop (REPL)
+//! a Read-Eval-Print Loop (REPL) for Starlark.
+//! 
+//! Starlark, formerly codenamed Skylark, is a non-Turing complete language based on Python that
+//! was made for the [Bazel build system](https://bazel.build) to define compilation plugin.
+//!
+//! See the [starlark](https://docs.rs/crate/starlark) crate documentation for more information
+//! about Starlark.
+//!
+//! # Usage
+//!
+//! One can call the [repl] method to run the repl inside a program or simply run the [starlark-repl]
+//! binary:
+//!  ```sh
+//! $ starlark-repl --help
+//! [Starlark in Rust interpretor]
+//!
+//! Usage: starlark-repl [options] [file1..filen]
+//!
+//!
+//! Options:
+//!     -b, --build_file    Parse the build file format instead of full Starlark.
+//!     -h, --help          Show the usage of this program.
+//!     -r, --repl          Run a REPL after files have been parsed.
+//! ```
 extern crate codemap;
 extern crate codemap_diagnostic;
 extern crate linefeed;
