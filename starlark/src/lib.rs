@@ -43,7 +43,6 @@
 //!   * Interactive versions of those function are provided in the [eval::interactive] module.
 //!     Those function are printing the result / diagnostic to the stdout / stderr instead of
 //!     returning an output.
-//!   * Finally, a REPL loop can be invoked with the [eval::repl::repl] function.
 //!
 //! # Defining a Starlark dialect
 //!
@@ -81,5 +80,4 @@ pub mod eval;
 pub mod stdlib;
 extern crate codemap;
 extern crate codemap_diagnostic;
-extern crate linefeed;
 extern crate linked_hash_map;

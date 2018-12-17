@@ -147,7 +147,7 @@ macro_rules! iotry {
                     message: format!("IOError: {}", err.description()),
                     code: Some(IO_ERROR_CODE.to_owned()),
                     spans: vec![],
-                })
+                });
             }
         }
     };

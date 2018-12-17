@@ -295,7 +295,7 @@ impl TypedValue for String {
                                 None => {
                                     return Err(ValueError::InterpolationValueNotInUTFRange(
                                         codepoint,
-                                    ))
+                                    ));
                                 }
                             }
                         }

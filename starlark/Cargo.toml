@@ -1,0 +1,32 @@
+[package]
+name = "starlark"
+version = "0.2.0-pre"
+authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
+build = "build.rs"
+
+description = "An implementation in Rust of the Starlark language."
+documentation = "https://docs.rs/crate/starlark"
+homepage = "https://github.com/google/starlark-rust"
+repository = "https://github.com/google/starlark-rust"
+readme = "README.md"
+keywords = ["starlark", "skylark", "bazel", "language", "interpreter"]
+categories = ["development-tools"]
+license = "Apache-2.0"
+
+[badges]
+travis-ci = { repository = "google/starlark-rust", branch = "master" }
+maintenance = { status = "passively-maintained" }
+
+[build-dependencies]
+lalrpop = "0.16.0"
+
+[dependencies]
+codemap = "0.1.1"
+codemap-diagnostic = "0.1"
+lalrpop-util = "0.16.0"
+linked-hash-map = "0.5.1"
+
+[lib]
+
+[features]
+trace = []

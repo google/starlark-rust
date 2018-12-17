@@ -16,11 +16,12 @@
 
 extern crate getopts;
 extern crate starlark;
+extern crate starlark_repl;
 
 use getopts::Options;
 use starlark::eval::interactive::eval_file;
-use starlark::eval::repl::repl;
 use starlark::stdlib::global_environment;
+use starlark_repl::repl;
 use std::env;
 
 macro_rules! print_usage {

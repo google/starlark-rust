@@ -1,0 +1,29 @@
+[package]
+name = "starlark-repl"
+version = "0.2.0-pre"
+authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
+
+description = "A REPL for the implementation in Rust of the Starlark language."
+documentation = "https://docs.rs/crate/starlark-repl"
+homepage = "https://github.com/google/starlark-rust"
+repository = "https://github.com/google/starlark-rust"
+readme = "README.md"
+keywords = ["starlark", "skylark", "bazel", "language", "interpreter"]
+categories = ["development-tools"]
+license = "Apache-2.0"
+
+[badges]
+travis-ci = { repository = "google/starlark-rust", branch = "master" }
+maintenance = { status = "passively-maintained" }
+
+[dependencies]
+codemap = "0.1.1"
+codemap-diagnostic = "0.1"
+getopts = "0.2"
+linefeed = "0.5.3"
+starlark = { path = "../starlark" }
+
+[lib]
+
+[[bin]]
+name = "starlark-repl"

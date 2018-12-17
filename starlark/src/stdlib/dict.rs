@@ -26,7 +26,7 @@ macro_rules! ok {
     };
 }
 
-starlark_module!{global =>
+starlark_module! {global =>
     /// [dict.clear](
     /// https://github.com/google/skylark/blob/3705afa472e466b8b061cce44b47c9ddc6db696d/doc/spec.md#dict·clear
     /// ): clear a dictionary
