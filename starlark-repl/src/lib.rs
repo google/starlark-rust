@@ -13,15 +13,19 @@
 // limitations under the License.
 
 //! Provide a Read-Eval-Print Loop (REPL)
-use codemap;
+extern crate codemap;
+extern crate codemap_diagnostic;
+extern crate linefeed;
+extern crate starlark;
+
 use codemap_diagnostic::{ColorConfig, Emitter};
-use environment::Environment;
-use eval::eval_lexer;
-use eval::simple::SimpleFileLoader;
 use linefeed::{Interface, ReadResult};
+use starlark::environment::Environment;
+use starlark::eval::eval_lexer;
+use starlark::eval::simple::SimpleFileLoader;
+use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
+use starlark::values::TypedValue;
 use std::sync::{Arc, Mutex};
-use syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
-use values::TypedValue;
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: Arc<Mutex<codemap::CodeMap>>,

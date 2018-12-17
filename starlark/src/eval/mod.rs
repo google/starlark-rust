@@ -846,7 +846,11 @@ pub fn eval_def(
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
-fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>, T3: FileLoader + 'static>(
+pub fn eval_lexer<
+    T1: Iterator<Item = LexerItem>,
+    T2: LexerIntoIter<T1>,
+    T3: FileLoader + 'static,
+>(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
@@ -915,7 +919,6 @@ pub fn eval_file<T: FileLoader + 'static>(
 }
 
 pub mod interactive;
-pub mod repl;
 pub mod simple;
 
 #[cfg(test)]

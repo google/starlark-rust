@@ -81,5 +81,4 @@ pub mod eval;
 pub mod stdlib;
 extern crate codemap;
 extern crate codemap_diagnostic;
-extern crate linefeed;
 extern crate linked_hash_map;

@@ -222,8 +222,7 @@ pub trait LexerIntoIter<T: Iterator<Item = LexerItem>>:
 }
 impl<T1: Iterator<Item = LexerItem>, T2: IntoIterator<Item = LexerItem, IntoIter = T1>>
     LexerIntoIter<T1> for T2
-{
-}
+{}
 
 /// An iterator over a string slice that convert it to a list of token, i.e. the lexer.
 #[derive(Debug)]
