@@ -182,7 +182,7 @@ fn rsplitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
     v
 }
 
-starlark_module!{global =>
+starlark_module! {global =>
     /// [string.elems](
     /// https://github.com/google/skylark/blob/3705afa472e466b8b061cce44b47c9ddc6db696d/doc/spec.md#string·elems
     /// ): returns an iterable of the bytes values of a string.
@@ -1450,17 +1450,15 @@ mod tests {
             .unwrap(),
             "x"
         );
-        assert!(
-            format_capture(
-                "{1",
-                &mut it,
-                &mut captured_by_index,
-                &mut captured_by_order,
-                &args,
-                &kwargs,
-            )
-            .is_err()
-        );
+        assert!(format_capture(
+            "{1",
+            &mut it,
+            &mut captured_by_index,
+            &mut captured_by_order,
+            &args,
+            &kwargs,
+        )
+        .is_err());
         captured_by_order = false;
         it = args.into_iter().unwrap();
         assert_eq!(
@@ -1475,17 +1473,15 @@ mod tests {
             .unwrap(),
             "2"
         );
-        assert!(
-            format_capture(
-                "{",
-                &mut it,
-                &mut captured_by_index,
-                &mut captured_by_order,
-                &args,
-                &kwargs,
-            )
-            .is_err()
-        );
+        assert!(format_capture(
+            "{",
+            &mut it,
+            &mut captured_by_index,
+            &mut captured_by_order,
+            &args,
+            &kwargs,
+        )
+        .is_err());
     }
 
     #[test]

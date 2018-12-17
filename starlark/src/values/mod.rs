@@ -350,11 +350,7 @@ impl PartialEq for ValueError {
             (
                 &ValueError::OperationNotSupported { op: ref x, .. },
                 &ValueError::OperationNotSupported { op: ref y, .. },
-            )
-                if x == y =>
-            {
-                true
-            }
+            ) if x == y => true,
             (&ValueError::IndexOutOfBound(x), &ValueError::IndexOutOfBound(y)) if x == y => true,
             _ => false,
         }

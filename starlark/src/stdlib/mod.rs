@@ -41,7 +41,7 @@ pub mod dict;
 pub mod list;
 pub mod string;
 
-starlark_module!{global_functions =>
+starlark_module! {global_functions =>
     /// fail: fail the execution
     ///
     /// Examples:
