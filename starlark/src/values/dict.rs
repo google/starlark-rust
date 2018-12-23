@@ -126,7 +126,7 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "dict" {
             let mut v1: Vec<Value> = self.into_iter()?.collect();
             let mut v2: Vec<Value> = other.into_iter()?.collect();

@@ -300,7 +300,7 @@ impl TypedValue for Tuple {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "tuple" {
             let mut iter1 = self.into_iter()?;
             let mut iter2 = other.into_iter()?;

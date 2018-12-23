@@ -465,7 +465,7 @@ pub trait TypedValue {
     ///       the trait needs to know the actual type of the value we compare.
     ///
     /// The extraneous recursion parameter is used to detect deep recursion.
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError>;
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError>;
 
     /// Perform a call on the object, only meaningfull for function object.
     ///
@@ -932,7 +932,7 @@ macro_rules! not_supported {
 /// A default implementation of the compare function, this can be used if the two types of
 /// value are differents or numeric. Custom types should implement their own comparison for the
 /// last case.
-pub fn default_compare(v1: &TypedValue, v2: &Value) -> Result<Ordering, ValueError> {
+pub fn default_compare(v1: &TypedValue, v2: &TypedValue) -> Result<Ordering, ValueError> {
     Ok(match (v1.get_type(), v2.get_type()) {
         ("bool", "bool") | ("bool", "int") | ("int", "bool") | ("int", "int") => {
             v1.to_int()?.cmp(&(v2.to_int()?))
@@ -945,7 +945,7 @@ pub fn default_compare(v1: &TypedValue, v2: &Value) -> Result<Ordering, ValueErr
 
 macro_rules! default_compare {
     () => {
-        fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
+        fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
     }
 }
 
@@ -1094,11 +1094,15 @@ impl Value {
         borrowed.get_hash()
     }
     pub fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+        self.compare_underlying(other.0.borrow().deref(), recursion)
+    }
+
+    pub fn compare_underlying(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         let borrowed = self.0.borrow();
         if recursion > MAX_RECURSION {
             return Err(ValueError::TooManyRecursionLevel);
         }
-        if other.same_as(borrowed.deref()) {
+        if ::std::ptr::eq(borrowed.deref(), other) {
             // Special case for recursive structure, stop if we are pointing to the same object.
             Ok(Ordering::Equal)
         } else {

@@ -252,7 +252,7 @@ impl TypedValue for Function {
     }
     not_supported!(get_hash);
 
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "function" {
             Ok(self.to_repr().cmp(&other.to_repr()))
         } else {
@@ -375,8 +375,8 @@ impl TypedValue for WrappedMethod {
     fn to_bool(&self) -> bool {
         true
     }
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
-        self.method.compare(other, recursion)
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
+        self.method.compare_underlying(other, recursion)
     }
 
     fn call(

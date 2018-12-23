@@ -107,7 +107,7 @@ impl TypedValue for List {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "list" {
             let mut iter1 = self.into_iter()?;
             let mut iter2 = other.into_iter()?;
