@@ -720,6 +720,7 @@ impl fmt::Debug for TypedValue {
     }
 }
 
+#[macro_export]
 macro_rules! any {
     () => {
         fn as_any(&self) -> &Any {
@@ -1791,5 +1792,57 @@ mod tests {
                                           // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
         assert_eq!(2, int_op!(5.percent(3)));
         assert_eq!(3, int_op!(7.div(2))); // 7.div(2) = 7 / 2 = 3
+    }
+
+    #[test]
+    fn can_implement_compare() {
+        #[derive(Debug, PartialEq, Eq, Ord, PartialOrd)]
+        struct WrappedNumber(u64);
+
+        /// Define the NoneType type
+        impl TypedValue for WrappedNumber {
+            immutable!();
+            any!();
+            fn to_str(&self) -> String {
+                format!("{:?}", self)
+            }
+            fn to_repr(&self) -> String {
+                self.to_str()
+            }
+            not_supported!(to_int);
+            fn get_type(&self) -> &'static str {
+                "WrappedNumber"
+            }
+            fn to_bool(&self) -> bool { false }
+            fn get_hash(&self) -> Result<u64, ValueError> {
+                Ok(self.0)
+            }
+            fn compare<'a>(&'a self, other: &TypedValue, _recursion: u32) -> Result<std::cmp::Ordering, ValueError> {
+                match other.get_type() {
+                    "WrappedNumber" => {
+                        let other = other.as_any().downcast_ref::<Self>().unwrap();
+                        Ok(std::cmp::Ord::cmp(self, other))
+                    },
+                    _ => default_compare(self, other),
+                }
+            }
+            not_supported!(binop);
+            not_supported!(container);
+            not_supported!(function);
+        }
+
+        let one = Value::new(WrappedNumber(1));
+        let another_one = Value::new(WrappedNumber(1));
+        let two = Value::new(WrappedNumber(2));
+        let not_wrapped_number: Value = 1.into();
+
+        use ::std::cmp::Ordering::*;
+
+        assert_eq!(one.compare(&one, 0), Ok(Equal));
+        assert_eq!(one.compare(&another_one, 0), Ok(Equal));
+        assert_eq!(one.compare(&two, 0), Ok(Less));
+        assert_eq!(two.compare(&one, 0), Ok(Greater));
+        assert_eq!(one.compare(&not_wrapped_number, 0), Ok(Greater));
+        assert_eq!(not_wrapped_number.compare(&one, 0), Ok(Less));
     }
 }
