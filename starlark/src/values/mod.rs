@@ -38,7 +38,7 @@
 //! /// Define the NoneType type
 //! impl TypedValue for Option<()> {
 //!     immutable!();
-//!     any!();  // Generally you don't want to imlement any_apply() yourself.
+//!     any!();  // Generally you don't want to implement as_any() and as_any_mut() yourself.
 //!     fn to_str(&self) -> String {
 //!         "None".to_owned()
 //!     }
@@ -410,9 +410,13 @@ pub trait TypedValue {
     /// Return true if the value is immutable.
     fn immutable(&self) -> bool;
 
-    /// Apply F on self converted to a mutable any. This allow for operation on the native type.
+    /// Convert to an Any. This allows for operation on the native type.
     /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
-    fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult;
+    fn as_any(&self) -> &Any;
+
+    /// Convert to a mutable Any. This allows for operation on the native type.
+    /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
+    fn as_any_mut(&mut self) -> &mut Any;
 
     /// Freeze, i.e. make the value immutable.
     fn freeze(&mut self);
@@ -718,8 +722,12 @@ impl fmt::Debug for TypedValue {
 
 macro_rules! any {
     () => {
-        fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
-            f(self)
+        fn as_any(&self) -> &Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut Any {
+            self
         }
     }
 }
@@ -1039,7 +1047,7 @@ macro_rules! define_iterable_mutability {
 impl Value {
     pub fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
         let mut borrowed = self.0.borrow_mut();
-        borrowed.any_apply(f)
+        f(borrowed.as_any_mut())
     }
 
     pub fn immutable(&self) -> bool {
