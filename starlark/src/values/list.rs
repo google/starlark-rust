@@ -49,7 +49,7 @@ impl List {
             Err(ValueError::IncorrectParameterType)
         } else {
             let mut v = v.clone();
-            v.downcast_apply(|x: &mut List| -> ValueResult {
+            v.downcast_apply_mut(|x: &mut List| -> ValueResult {
                 x.mutability.test()?;
                 f(&mut x.content)
             })

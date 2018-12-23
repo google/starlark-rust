@@ -37,8 +37,7 @@ impl Dictionary {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
         } else {
-            let mut v = v.clone();
-            v.downcast_apply(|x: &mut Dictionary| -> ValueResult { f(&x.content) })
+            v.downcast_apply(|x: &Dictionary| -> ValueResult { f(&x.content) })
         }
     }
 
@@ -50,7 +49,7 @@ impl Dictionary {
             Err(ValueError::IncorrectParameterType)
         } else {
             let mut v = v.clone();
-            v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
+            v.downcast_apply_mut(|x: &mut Dictionary| -> ValueResult {
                 x.mutability.test()?;
                 f(&mut x.content)
             })

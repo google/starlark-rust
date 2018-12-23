@@ -1045,7 +1045,12 @@ macro_rules! define_iterable_mutability {
 }
 
 impl Value {
-    pub fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
+    pub fn any_apply(&self, f: &Fn(&Any) -> ValueResult) -> ValueResult {
+        let borrowed = self.0.borrow();
+        f(borrowed.as_any())
+    }
+
+    pub fn any_apply_mut(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
         let mut borrowed = self.0.borrow_mut();
         f(borrowed.as_any_mut())
     }
@@ -1602,11 +1607,19 @@ impl TypedValue {
 
 impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
-    pub fn downcast_apply<T: Any, F>(&mut self, f: F) -> ValueResult
+    pub fn downcast_apply<T: Any, F>(&self, f: F) -> ValueResult
+        where
+            F: Fn(&T) -> ValueResult,
+    {
+        self.any_apply(&move |x| f(x.downcast_ref().unwrap()))
+    }
+
+    /// A convenient wrapper around any_apply_mut to actually operate on the underlying type
+    pub fn downcast_apply_mut<T: Any, F>(&mut self, f: F) -> ValueResult
     where
         F: Fn(&mut T) -> ValueResult,
     {
-        self.any_apply(&move |x| f(x.downcast_mut().unwrap()))
+        self.any_apply_mut(&move |x| f(x.downcast_mut().unwrap()))
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
