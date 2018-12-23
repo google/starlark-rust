@@ -739,7 +739,7 @@ starlark_module! {global_functions =>
                 idx += step;
             }
         }
-        Ok(tuple::Tuple::new(r.as_slice()))
+        Ok(Value::new(tuple::Tuple::new(r.as_slice())))
     }
 
     /// [repr](
@@ -971,7 +971,6 @@ pub mod tests {
     use codemap_diagnostic::Diagnostic;
     use eval::simple::eval;
     use std::sync;
-    use values::TypedValue;
 
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
         let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));

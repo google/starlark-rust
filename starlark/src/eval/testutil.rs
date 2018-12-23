@@ -18,7 +18,6 @@ use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use environment;
 use eval;
 use std::sync;
-use values::TypedValue;
 
 /// Execute a starlark snippet with an empty environment.
 pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {

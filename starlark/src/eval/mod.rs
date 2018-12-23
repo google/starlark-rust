@@ -350,7 +350,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
         match self {
             &TransformedExpr::Tuple(ref v, ..) => {
                 let r = eval_vector!(v, context);
-                Ok(tuple::Tuple::new(r.as_slice()))
+                Ok(Value::new(tuple::Tuple::new(r.as_slice())))
             }
             &TransformedExpr::List(ref v, ..) => {
                 let r = eval_vector!(v, context);
@@ -412,7 +412,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
         match self.node {
             Expr::Tuple(ref v) => {
                 let r = eval_vector!(v, context);
-                Ok(tuple::Tuple::new(r.as_slice()))
+                Ok(Value::new(tuple::Tuple::new(r.as_slice())))
             }
             Expr::Dot(ref e, ref s) => {
                 let left = e.eval(context)?;

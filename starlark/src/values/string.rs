@@ -325,7 +325,6 @@ impl TypedValue for String {
 #[cfg(test)]
 mod tests {
     use super::super::Value;
-    use super::*;
     use std::collections::HashMap;
 
     #[test]

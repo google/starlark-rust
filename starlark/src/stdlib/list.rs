@@ -52,9 +52,9 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     list.append(this, #el) {
-        let cloned_this = this.clone();
+        let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &|x| {
-            x.push(el.clone_for_container(&cloned_this)?);
+            x.push(el.clone()?);
             ok!(None)
         })
     }
@@ -109,9 +109,9 @@ starlark_module! {global =>
     /// ```
     list.extend(this, #other) {
         let this_cloned = this.clone();
+        let other_cloned: Result<Vec<_>, _>  = other.into_iter()?.map(|v| v.clone_for_container_value(&this_cloned)).collect();
         list::List::mutate(&this, &|x| {
-            let other : Result<Vec<_>, _> = other.into_iter()?.map(|v| v.clone_for_container(&this_cloned)).collect();
-            x.extend(other?);
+            x.extend(other_cloned.clone()?);
             ok!(None)
         })
     }
@@ -186,9 +186,9 @@ starlark_module! {global =>
     /// ```
     list.insert(this, #index, #el) {
         convert_indices!(this, index);
-        let cloned_this = this.clone();
-        list::List::mutate(&this, &|x| {
-            x.insert(index, el.clone_for_container(&cloned_this)?);
+        let el = el.clone_for_container_value(&this);
+        list::List::mutate(&this, &move |x| {
+            x.insert(index, el.clone()?);
             ok!(None)
         })
     }

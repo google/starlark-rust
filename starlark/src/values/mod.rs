@@ -115,7 +115,7 @@ const MAX_RECURSION: u32 = 200;
 const MAX_RECURSION: u32 = 3000;
 
 /// Error that can be returned by function from the `TypedValue` trait,
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ValueError {
     /// The operation is not supported for this type.
     OperationNotSupported {
@@ -361,7 +361,7 @@ impl PartialEq for ValueError {
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value(Rc<RefCell<TypedValue>>);
+pub struct Value(pub Rc<RefCell<TypedValue>>);
 
 pub type ValueResult = Result<Value, ValueError>;
 
@@ -375,6 +375,14 @@ impl Value {
     /// recursive insertion.
     pub fn clone_for_container(&self, other: &TypedValue) -> Result<Value, ValueError> {
         if self.is_descendant(other) {
+            Err(ValueError::UnsupportedRecursiveDataStructure)
+        } else {
+            Ok(self.clone())
+        }
+    }
+
+    pub fn clone_for_container_value(&self, other: &Value) -> Result<Value, ValueError> {
+        if self.is_descendant(other.0.borrow().deref()) {
             Err(ValueError::UnsupportedRecursiveDataStructure)
         } else {
             Ok(self.clone())
@@ -1028,51 +1036,51 @@ macro_rules! define_iterable_mutability {
     }
 }
 
-impl TypedValue for Value {
-    fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
+impl Value {
+    pub fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
         let mut borrowed = self.0.borrow_mut();
         borrowed.any_apply(f)
     }
 
-    fn immutable(&self) -> bool {
+    pub fn immutable(&self) -> bool {
         let borrowed = self.0.borrow();
         borrowed.immutable()
     }
-    fn freeze(&mut self) {
+    pub fn freeze(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.freeze()
     }
-    fn freeze_for_iteration(&mut self) {
+    pub fn freeze_for_iteration(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.freeze_for_iteration()
     }
-    fn unfreeze_for_iteration(&mut self) {
+    pub fn unfreeze_for_iteration(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.unfreeze_for_iteration()
     }
-    fn to_str(&self) -> String {
+    pub fn to_str(&self) -> String {
         self.0.borrow().to_str()
     }
-    fn to_repr(&self) -> String {
+    pub fn to_repr(&self) -> String {
         self.0.borrow().to_repr()
     }
-    fn get_type(&self) -> &'static str {
+    pub fn get_type(&self) -> &'static str {
         let borrowed = self.0.borrow();
         borrowed.get_type()
     }
-    fn to_bool(&self) -> bool {
+    pub fn to_bool(&self) -> bool {
         let borrowed = self.0.borrow();
         borrowed.to_bool()
     }
-    fn to_int(&self) -> Result<i64, ValueError> {
+    pub fn to_int(&self) -> Result<i64, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.to_int()
     }
-    fn get_hash(&self) -> Result<u64, ValueError> {
+    pub fn get_hash(&self) -> Result<u64, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.get_hash()
     }
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    pub fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
         let borrowed = self.0.borrow();
         if recursion > MAX_RECURSION {
             return Err(ValueError::TooManyRecursionLevel);
@@ -1085,7 +1093,7 @@ impl TypedValue for Value {
         }
     }
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
+    pub fn is_descendant(&self, other: &TypedValue) -> bool {
         if self.same_as(other) {
             return true;
         }
@@ -1098,7 +1106,7 @@ impl TypedValue for Value {
         }
     }
 
-    fn call(
+    pub fn call(
         &self,
         call_stack: &Vec<(String, String)>,
         env: Environment,
@@ -1110,15 +1118,15 @@ impl TypedValue for Value {
         let borrowed = self.0.borrow();
         borrowed.call(call_stack, env, positional, named, args, kwargs)
     }
-    fn at(&self, index: Value) -> ValueResult {
+    pub fn at(&self, index: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.at(index)
     }
-    fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
+    pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         let mut borrowed = self.0.borrow_mut();
         borrowed.set_at(index, new_value)
     }
-    fn slice(
+    pub fn slice(
         &self,
         start: Option<Value>,
         stop: Option<Value>,
@@ -1127,68 +1135,68 @@ impl TypedValue for Value {
         let borrowed = self.0.borrow_mut();
         borrowed.slice(start, stop, stride)
     }
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    pub fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         let borrowed = self.0.borrow();
         let v: Vec<Value> = borrowed.into_iter()?.map(|x| x.clone()).collect();
         Ok(Box::new(v.into_iter()))
     }
-    fn length(&self) -> Result<i64, ValueError> {
+    pub fn length(&self) -> Result<i64, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.length()
     }
-    fn get_attr(&self, attribute: &str) -> ValueResult {
+    pub fn get_attr(&self, attribute: &str) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.get_attr(attribute)
     }
-    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
+    pub fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.has_attr(attribute)
     }
-    fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
+    pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
         let mut borrowed = self.0.borrow_mut();
         borrowed.set_attr(attribute, new_value)
     }
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+    pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.dir_attr()
     }
-    fn is_in(&self, other: &Value) -> ValueResult {
+    pub fn is_in(&self, other: &Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.is_in(other)
     }
-    fn plus(&self) -> ValueResult {
+    pub fn plus(&self) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.plus()
     }
-    fn minus(&self) -> ValueResult {
+    pub fn minus(&self) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.minus()
     }
-    fn add(&self, other: Value) -> ValueResult {
+    pub fn add(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.add(other)
     }
-    fn sub(&self, other: Value) -> ValueResult {
+    pub fn sub(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.sub(other)
     }
-    fn mul(&self, other: Value) -> ValueResult {
+    pub fn mul(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.mul(other)
     }
-    fn percent(&self, other: Value) -> ValueResult {
+    pub fn percent(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.percent(other)
     }
-    fn div(&self, other: Value) -> ValueResult {
+    pub fn div(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.div(other)
     }
-    fn floor_div(&self, other: Value) -> ValueResult {
+    pub fn floor_div(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.floor_div(other)
     }
-    fn pipe(&self, other: Value) -> ValueResult {
+    pub fn pipe(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.pipe(other)
     }
