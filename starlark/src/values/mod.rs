@@ -1098,7 +1098,11 @@ impl Value {
         self.compare_underlying(other.0.borrow().deref(), recursion)
     }
 
-    pub fn compare_underlying(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
+    pub fn compare_underlying(
+        &self,
+        other: &TypedValue,
+        recursion: u32,
+    ) -> Result<Ordering, ValueError> {
         let borrowed = self.0.borrow();
         if recursion > MAX_RECURSION {
             return Err(ValueError::TooManyRecursionLevel);
@@ -1613,8 +1617,8 @@ impl TypedValue {
 impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
     pub fn downcast_apply<T: Any, F, Return>(&self, f: F) -> Return
-        where
-            F: Fn(&T) -> Return,
+    where
+        F: Fn(&T) -> Return,
     {
         self.any_apply(&move |x| f(x.downcast_ref().unwrap()))
     }
@@ -1813,16 +1817,22 @@ mod tests {
             fn get_type(&self) -> &'static str {
                 "WrappedNumber"
             }
-            fn to_bool(&self) -> bool { false }
+            fn to_bool(&self) -> bool {
+                false
+            }
             fn get_hash(&self) -> Result<u64, ValueError> {
                 Ok(self.0)
             }
-            fn compare<'a>(&'a self, other: &TypedValue, _recursion: u32) -> Result<std::cmp::Ordering, ValueError> {
+            fn compare<'a>(
+                &'a self,
+                other: &TypedValue,
+                _recursion: u32,
+            ) -> Result<std::cmp::Ordering, ValueError> {
                 match other.get_type() {
                     "WrappedNumber" => {
                         let other = other.as_any().downcast_ref::<Self>().unwrap();
                         Ok(std::cmp::Ord::cmp(self, other))
-                    },
+                    }
                     _ => default_compare(self, other),
                 }
             }
@@ -1836,7 +1846,7 @@ mod tests {
         let two = Value::new(WrappedNumber(2));
         let not_wrapped_number: Value = 1.into();
 
-        use ::std::cmp::Ordering::*;
+        use std::cmp::Ordering::*;
 
         assert_eq!(one.compare(&one, 0), Ok(Equal));
         assert_eq!(one.compare(&another_one, 0), Ok(Equal));
