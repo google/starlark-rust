@@ -49,7 +49,7 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "string" {
             Ok(self.cmp(&other.to_str()))
         } else {
@@ -325,7 +325,6 @@ impl TypedValue for String {
 #[cfg(test)]
 mod tests {
     use super::super::Value;
-    use super::*;
     use std::collections::HashMap;
 
     #[test]

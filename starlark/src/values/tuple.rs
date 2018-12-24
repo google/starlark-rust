@@ -56,14 +56,14 @@ pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &Vec<Value>) ->
 }
 
 impl Tuple {
-    pub fn new(values: &[Value]) -> Value {
+    pub fn new(values: &[Value]) -> Tuple {
         let mut result = Tuple {
             content: Vec::new(),
         };
         for x in values.iter() {
             result.content.push(x.clone());
         }
-        Value::new(result)
+        result
     }
 }
 
@@ -300,7 +300,7 @@ impl TypedValue for Tuple {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "tuple" {
             let mut iter1 = self.into_iter()?;
             let mut iter2 = other.into_iter()?;
@@ -354,12 +354,12 @@ impl TypedValue for Tuple {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        Ok(Tuple::new(&slice_vector(
+        Ok(Value::new(Tuple::new(&slice_vector(
             start,
             stop,
             stride,
             &self.content,
-        )))
+        ))))
     }
 
     fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {

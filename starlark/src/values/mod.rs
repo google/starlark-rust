@@ -38,7 +38,7 @@
 //! /// Define the NoneType type
 //! impl TypedValue for Option<()> {
 //!     immutable!();
-//!     any!();  // Generally you don't want to imlement any_apply() yourself.
+//!     any!();  // Generally you don't want to implement as_any() and as_any_mut() yourself.
 //!     fn to_str(&self) -> String {
 //!         "None".to_owned()
 //!     }
@@ -115,7 +115,7 @@ const MAX_RECURSION: u32 = 200;
 const MAX_RECURSION: u32 = 3000;
 
 /// Error that can be returned by function from the `TypedValue` trait,
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ValueError {
     /// The operation is not supported for this type.
     OperationNotSupported {
@@ -361,7 +361,7 @@ impl PartialEq for ValueError {
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value(Rc<RefCell<TypedValue>>);
+pub struct Value(pub Rc<RefCell<TypedValue>>);
 
 pub type ValueResult = Result<Value, ValueError>;
 
@@ -375,6 +375,14 @@ impl Value {
     /// recursive insertion.
     pub fn clone_for_container(&self, other: &TypedValue) -> Result<Value, ValueError> {
         if self.is_descendant(other) {
+            Err(ValueError::UnsupportedRecursiveDataStructure)
+        } else {
+            Ok(self.clone())
+        }
+    }
+
+    pub fn clone_for_container_value(&self, other: &Value) -> Result<Value, ValueError> {
+        if self.is_descendant(other.0.borrow().deref()) {
             Err(ValueError::UnsupportedRecursiveDataStructure)
         } else {
             Ok(self.clone())
@@ -402,9 +410,13 @@ pub trait TypedValue {
     /// Return true if the value is immutable.
     fn immutable(&self) -> bool;
 
-    /// Apply F on self converted to a mutable any. This allow for operation on the native type.
+    /// Convert to an Any. This allows for operation on the native type.
     /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
-    fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult;
+    fn as_any(&self) -> &Any;
+
+    /// Convert to a mutable Any. This allows for operation on the native type.
+    /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
+    fn as_any_mut(&mut self) -> &mut Any;
 
     /// Freeze, i.e. make the value immutable.
     fn freeze(&mut self);
@@ -453,7 +465,7 @@ pub trait TypedValue {
     ///       the trait needs to know the actual type of the value we compare.
     ///
     /// The extraneous recursion parameter is used to detect deep recursion.
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError>;
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError>;
 
     /// Perform a call on the object, only meaningfull for function object.
     ///
@@ -708,10 +720,15 @@ impl fmt::Debug for TypedValue {
     }
 }
 
+#[macro_export]
 macro_rules! any {
     () => {
-        fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
-            f(self)
+        fn as_any(&self) -> &Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut Any {
+            self
         }
     }
 }
@@ -916,7 +933,7 @@ macro_rules! not_supported {
 /// A default implementation of the compare function, this can be used if the two types of
 /// value are differents or numeric. Custom types should implement their own comparison for the
 /// last case.
-pub fn default_compare(v1: &TypedValue, v2: &Value) -> Result<Ordering, ValueError> {
+pub fn default_compare(v1: &TypedValue, v2: &TypedValue) -> Result<Ordering, ValueError> {
     Ok(match (v1.get_type(), v2.get_type()) {
         ("bool", "bool") | ("bool", "int") | ("int", "bool") | ("int", "int") => {
             v1.to_int()?.cmp(&(v2.to_int()?))
@@ -929,7 +946,7 @@ pub fn default_compare(v1: &TypedValue, v2: &Value) -> Result<Ordering, ValueErr
 
 macro_rules! default_compare {
     () => {
-        fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
+        fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
     }
 }
 
@@ -1028,56 +1045,69 @@ macro_rules! define_iterable_mutability {
     }
 }
 
-impl TypedValue for Value {
-    fn any_apply(&mut self, f: &Fn(&mut Any) -> ValueResult) -> ValueResult {
-        let mut borrowed = self.0.borrow_mut();
-        borrowed.any_apply(f)
+impl Value {
+    pub fn any_apply<Return>(&self, f: &Fn(&Any) -> Return) -> Return {
+        let borrowed = self.0.borrow();
+        f(borrowed.as_any())
     }
 
-    fn immutable(&self) -> bool {
+    pub fn any_apply_mut<Return>(&mut self, f: &Fn(&mut Any) -> Return) -> Return {
+        let mut borrowed = self.0.borrow_mut();
+        f(borrowed.as_any_mut())
+    }
+
+    pub fn immutable(&self) -> bool {
         let borrowed = self.0.borrow();
         borrowed.immutable()
     }
-    fn freeze(&mut self) {
+    pub fn freeze(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.freeze()
     }
-    fn freeze_for_iteration(&mut self) {
+    pub fn freeze_for_iteration(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.freeze_for_iteration()
     }
-    fn unfreeze_for_iteration(&mut self) {
+    pub fn unfreeze_for_iteration(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.unfreeze_for_iteration()
     }
-    fn to_str(&self) -> String {
+    pub fn to_str(&self) -> String {
         self.0.borrow().to_str()
     }
-    fn to_repr(&self) -> String {
+    pub fn to_repr(&self) -> String {
         self.0.borrow().to_repr()
     }
-    fn get_type(&self) -> &'static str {
+    pub fn get_type(&self) -> &'static str {
         let borrowed = self.0.borrow();
         borrowed.get_type()
     }
-    fn to_bool(&self) -> bool {
+    pub fn to_bool(&self) -> bool {
         let borrowed = self.0.borrow();
         borrowed.to_bool()
     }
-    fn to_int(&self) -> Result<i64, ValueError> {
+    pub fn to_int(&self) -> Result<i64, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.to_int()
     }
-    fn get_hash(&self) -> Result<u64, ValueError> {
+    pub fn get_hash(&self) -> Result<u64, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.get_hash()
     }
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    pub fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+        self.compare_underlying(other.0.borrow().deref(), recursion)
+    }
+
+    pub fn compare_underlying(
+        &self,
+        other: &TypedValue,
+        recursion: u32,
+    ) -> Result<Ordering, ValueError> {
         let borrowed = self.0.borrow();
         if recursion > MAX_RECURSION {
             return Err(ValueError::TooManyRecursionLevel);
         }
-        if other.same_as(borrowed.deref()) {
+        if ::std::ptr::eq(borrowed.deref(), other) {
             // Special case for recursive structure, stop if we are pointing to the same object.
             Ok(Ordering::Equal)
         } else {
@@ -1085,7 +1115,7 @@ impl TypedValue for Value {
         }
     }
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
+    pub fn is_descendant(&self, other: &TypedValue) -> bool {
         if self.same_as(other) {
             return true;
         }
@@ -1098,7 +1128,7 @@ impl TypedValue for Value {
         }
     }
 
-    fn call(
+    pub fn call(
         &self,
         call_stack: &Vec<(String, String)>,
         env: Environment,
@@ -1110,15 +1140,15 @@ impl TypedValue for Value {
         let borrowed = self.0.borrow();
         borrowed.call(call_stack, env, positional, named, args, kwargs)
     }
-    fn at(&self, index: Value) -> ValueResult {
+    pub fn at(&self, index: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.at(index)
     }
-    fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
+    pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         let mut borrowed = self.0.borrow_mut();
         borrowed.set_at(index, new_value)
     }
-    fn slice(
+    pub fn slice(
         &self,
         start: Option<Value>,
         stop: Option<Value>,
@@ -1127,68 +1157,68 @@ impl TypedValue for Value {
         let borrowed = self.0.borrow_mut();
         borrowed.slice(start, stop, stride)
     }
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    pub fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         let borrowed = self.0.borrow();
         let v: Vec<Value> = borrowed.into_iter()?.map(|x| x.clone()).collect();
         Ok(Box::new(v.into_iter()))
     }
-    fn length(&self) -> Result<i64, ValueError> {
+    pub fn length(&self) -> Result<i64, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.length()
     }
-    fn get_attr(&self, attribute: &str) -> ValueResult {
+    pub fn get_attr(&self, attribute: &str) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.get_attr(attribute)
     }
-    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
+    pub fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.has_attr(attribute)
     }
-    fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
+    pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
         let mut borrowed = self.0.borrow_mut();
         borrowed.set_attr(attribute, new_value)
     }
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+    pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.dir_attr()
     }
-    fn is_in(&self, other: &Value) -> ValueResult {
+    pub fn is_in(&self, other: &Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.is_in(other)
     }
-    fn plus(&self) -> ValueResult {
+    pub fn plus(&self) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.plus()
     }
-    fn minus(&self) -> ValueResult {
+    pub fn minus(&self) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.minus()
     }
-    fn add(&self, other: Value) -> ValueResult {
+    pub fn add(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.add(other)
     }
-    fn sub(&self, other: Value) -> ValueResult {
+    pub fn sub(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.sub(other)
     }
-    fn mul(&self, other: Value) -> ValueResult {
+    pub fn mul(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.mul(other)
     }
-    fn percent(&self, other: Value) -> ValueResult {
+    pub fn percent(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.percent(other)
     }
-    fn div(&self, other: Value) -> ValueResult {
+    pub fn div(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.div(other)
     }
-    fn floor_div(&self, other: Value) -> ValueResult {
+    pub fn floor_div(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.floor_div(other)
     }
-    fn pipe(&self, other: Value) -> ValueResult {
+    pub fn pipe(&self, other: Value) -> ValueResult {
         let borrowed = self.0.borrow();
         borrowed.pipe(other)
     }
@@ -1586,11 +1616,19 @@ impl TypedValue {
 
 impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
-    pub fn downcast_apply<T: Any, F>(&mut self, f: F) -> ValueResult
+    pub fn downcast_apply<T: Any, F, Return>(&self, f: F) -> Return
     where
-        F: Fn(&mut T) -> ValueResult,
+        F: Fn(&T) -> Return,
     {
-        self.any_apply(&move |x| f(x.downcast_mut().unwrap()))
+        self.any_apply(&move |x| f(x.downcast_ref().unwrap()))
+    }
+
+    /// A convenient wrapper around any_apply_mut to actually operate on the underlying type
+    pub fn downcast_apply_mut<T: Any, F, Return>(&mut self, f: F) -> Return
+    where
+        F: Fn(&mut T) -> Return,
+    {
+        self.any_apply_mut(&move |x| f(x.downcast_mut().unwrap()))
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
@@ -1758,5 +1796,63 @@ mod tests {
                                           // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
         assert_eq!(2, int_op!(5.percent(3)));
         assert_eq!(3, int_op!(7.div(2))); // 7.div(2) = 7 / 2 = 3
+    }
+
+    #[test]
+    fn can_implement_compare() {
+        #[derive(Debug, PartialEq, Eq, Ord, PartialOrd)]
+        struct WrappedNumber(u64);
+
+        /// Define the NoneType type
+        impl TypedValue for WrappedNumber {
+            immutable!();
+            any!();
+            fn to_str(&self) -> String {
+                format!("{:?}", self)
+            }
+            fn to_repr(&self) -> String {
+                self.to_str()
+            }
+            not_supported!(to_int);
+            fn get_type(&self) -> &'static str {
+                "WrappedNumber"
+            }
+            fn to_bool(&self) -> bool {
+                false
+            }
+            fn get_hash(&self) -> Result<u64, ValueError> {
+                Ok(self.0)
+            }
+            fn compare<'a>(
+                &'a self,
+                other: &TypedValue,
+                _recursion: u32,
+            ) -> Result<std::cmp::Ordering, ValueError> {
+                match other.get_type() {
+                    "WrappedNumber" => {
+                        let other = other.as_any().downcast_ref::<Self>().unwrap();
+                        Ok(std::cmp::Ord::cmp(self, other))
+                    }
+                    _ => default_compare(self, other),
+                }
+            }
+            not_supported!(binop);
+            not_supported!(container);
+            not_supported!(function);
+        }
+
+        let one = Value::new(WrappedNumber(1));
+        let another_one = Value::new(WrappedNumber(1));
+        let two = Value::new(WrappedNumber(2));
+        let not_wrapped_number: Value = 1.into();
+
+        use std::cmp::Ordering::*;
+
+        assert_eq!(one.compare(&one, 0), Ok(Equal));
+        assert_eq!(one.compare(&another_one, 0), Ok(Equal));
+        assert_eq!(one.compare(&two, 0), Ok(Less));
+        assert_eq!(two.compare(&one, 0), Ok(Greater));
+        assert_eq!(one.compare(&not_wrapped_number, 0), Ok(Greater));
+        assert_eq!(not_wrapped_number.compare(&one, 0), Ok(Less));
     }
 }

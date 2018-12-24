@@ -37,8 +37,7 @@ impl Dictionary {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
         } else {
-            let mut v = v.clone();
-            v.downcast_apply(|x: &mut Dictionary| -> ValueResult { f(&x.content) })
+            v.downcast_apply(|x: &Dictionary| -> ValueResult { f(&x.content) })
         }
     }
 
@@ -50,7 +49,7 @@ impl Dictionary {
             Err(ValueError::IncorrectParameterType)
         } else {
             let mut v = v.clone();
-            v.downcast_apply(|x: &mut Dictionary| -> ValueResult {
+            v.downcast_apply_mut(|x: &mut Dictionary| -> ValueResult {
                 x.mutability.test()?;
                 f(&mut x.content)
             })
@@ -127,7 +126,7 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "dict" {
             let mut v1: Vec<Value> = self.into_iter()?.collect();
             let mut v2: Vec<Value> = other.into_iter()?.collect();

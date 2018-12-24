@@ -49,7 +49,7 @@ impl List {
             Err(ValueError::IncorrectParameterType)
         } else {
             let mut v = v.clone();
-            v.downcast_apply(|x: &mut List| -> ValueResult {
+            v.downcast_apply_mut(|x: &mut List| -> ValueResult {
                 x.mutability.test()?;
                 f(&mut x.content)
             })
@@ -107,7 +107,7 @@ impl TypedValue for List {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "list" {
             let mut iter1 = self.into_iter()?;
             let mut iter2 = other.into_iter()?;

@@ -47,7 +47,6 @@ use starlark::environment::Environment;
 use starlark::eval::eval_lexer;
 use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
-use starlark::values::TypedValue;
 use std::sync::{Arc, Mutex};
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(

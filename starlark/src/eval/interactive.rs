@@ -18,7 +18,6 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Emitter};
 use environment::Environment;
 use std::sync::{Arc, Mutex};
-use values::*;
 
 /// Evaluate a string content, mutate the environment accordingly  and print
 /// the value of the last statement (if not `None`) or the error diagnostic.
