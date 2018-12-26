@@ -33,7 +33,10 @@ impl Dictionary {
         })
     }
 
-    pub fn apply<Return>(v: &Value, f: &Fn(&LinkedHashMap<Value, Value>) -> Result<Return, ValueError>) -> Result<Return, ValueError> {
+    pub fn apply<Return>(
+        v: &Value,
+        f: &Fn(&LinkedHashMap<Value, Value>) -> Result<Return, ValueError>,
+    ) -> Result<Return, ValueError> {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
         } else {
