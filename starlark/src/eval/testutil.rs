@@ -18,12 +18,13 @@ use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use environment;
 use eval;
 use std::sync;
+use syntax::dialect::Dialect;
 
 /// Execute a starlark snippet with an empty environment.
 pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    match eval::simple::eval(&map, "<test>", snippet, false, &mut env) {
+    match eval::simple::eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d.clone()]);
@@ -36,7 +37,7 @@ pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
 pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    Ok(eval::simple::eval(&map, "<test>", snippet, false, &mut env)?.to_bool())
+    Ok(eval::simple::eval(&map, "<test>", snippet, Dialect::Bzl, &mut env)?.to_bool())
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.

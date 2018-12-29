@@ -13,6 +13,7 @@
 // limitations under the License.
 
 //! Define simpler version of the evaluation function
+use super::Dialect;
 use super::{EvalException, FileLoader};
 use codemap::CodeMap;
 use codemap_diagnostic::Diagnostic;
@@ -60,7 +61,8 @@ impl FileLoader for SimpleFileLoader {
             Some(ref e) => e.child(path),
             None => Environment::new(path),
         };
-        if let Err(d) = super::eval_file(&self.codemap, path, false, &mut env, self.clone()) {
+        if let Err(d) = super::eval_file(&self.codemap, path, Dialect::Bzl, &mut env, self.clone())
+        {
             return Err(EvalException::DiagnosedError(d));
         }
         env.freeze();
@@ -82,16 +84,16 @@ impl FileLoader for SimpleFileLoader {
 /// * map: the codemap object used for diagnostics
 /// * path: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file
+/// * dialect: Starlark language dialect
 /// * env: the environment to mutate during the evaluation
 pub fn eval(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     content: &str,
-    build: bool,
+    dialect: Dialect,
     env: &mut Environment,
 ) -> Result<Value, Diagnostic> {
-    super::eval(map, path, content, build, env, SimpleFileLoader::new(map))
+    super::eval(map, path, content, dialect, env, SimpleFileLoader::new(map))
 }
 
 /// Evaluate a file, mutate the environment accordingly and return the evaluated value.
@@ -108,7 +110,7 @@ pub fn eval(
 pub fn eval_file(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
-    build: bool,
+    build: Dialect,
     env: &mut Environment,
 ) -> Result<Value, Diagnostic> {
     super::eval_file(map, path, build, env, SimpleFileLoader::new(map))

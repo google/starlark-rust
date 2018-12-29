@@ -27,6 +27,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use syntax::ast::*;
+use syntax::dialect::Dialect;
 use syntax::errors::SyntaxError;
 use syntax::lexer::{LexerIntoIter, LexerItem};
 use syntax::parser::{parse, parse_file, parse_lexer};
@@ -840,9 +841,7 @@ pub fn eval_def(
 /// * map: the codemap object used for diagnostics
 /// * filename: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate, for diagnostics
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
-///   More information about the difference can be found in [this module's
-///   documentation](index.html#build_file).
+/// * dialect: starlark syntax dialect
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
@@ -854,13 +853,13 @@ pub fn eval_lexer<
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
-    build: bool,
+    dialect: Dialect,
     lexer: T2,
     env: &mut Environment,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
-    match parse_lexer(map, filename, content, build, lexer)?.eval(&mut context) {
+    match parse_lexer(map, filename, content, dialect, lexer)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -882,7 +881,7 @@ pub fn eval<T: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     content: &str,
-    build: bool,
+    build: Dialect,
     env: &mut Environment,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
@@ -907,7 +906,7 @@ pub fn eval<T: FileLoader + 'static>(
 pub fn eval_file<T: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
-    build: bool,
+    build: Dialect,
     env: &mut Environment,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {

@@ -92,7 +92,7 @@ def assert_(cond, msg="assertion failed"):
   if not cond:
     fail(msg)
 "#,
-        false,
+        starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
     )
     .unwrap();
@@ -108,7 +108,7 @@ def assert_(cond, msg="assertion failed"):
             &map,
             &format!("{}<{}>", path, offset),
             &content,
-            false,
+            starlark::syntax::dialect::Dialect::Bzl,
             &mut prelude.child(&path),
         ) {
             Err(p) => {

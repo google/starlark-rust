@@ -15,6 +15,7 @@
 use super::StarlarkParser;
 use std::sync::{Arc, Mutex};
 use syntax::ast::Statement;
+use syntax::dialect::Dialect;
 use syntax::parser::parse_file;
 use syntax::errors::SyntaxError;
 use codemap;
@@ -204,7 +205,7 @@ fn smoke_test() {
         let path_entry = p.unwrap().path();
         let path = path_entry.to_str().unwrap();
         if path.ends_with(".bzl") {
-            if let Result::Err(err) = parse_file(&map, path, false) {
+            if let Result::Err(err) = parse_file(&map, path, Dialect::Bzl) {
                 diagnostics.push(err);
             }
         }

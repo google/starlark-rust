@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::ast::AstStatement;
+use super::dialect::Dialect;
 use super::errors::SyntaxError;
 use super::grammar::{BuildFileParser, StarlarkParser};
 use super::lexer::{Lexer, LexerError, LexerIntoIter, LexerItem, Token};
@@ -161,14 +162,14 @@ macro_rules! iotry {
 /// * codemap: the codemap object used for diagnostics
 /// * filename: the name of the file being parsed, for diagnostics
 /// * content: the content to parse
-/// * build: set to true if you want to parse a BUILD file or false to parse a .bzl file.
+/// * dialect: starlark language dialect
 /// * lexer: the lexer to use for parsing
 #[doc(hidden)]
 pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
-    build: bool,
+    dialect: Dialect,
     lexer: T2,
 ) -> Result<AstStatement, Diagnostic> {
     let filespan = {
@@ -178,10 +179,9 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             .span
     };
     match {
-        if build {
-            BuildFileParser::new().parse(content, filespan, lexer)
-        } else {
-            StarlarkParser::new().parse(content, filespan, lexer)
+        match dialect {
+            Dialect::Build => BuildFileParser::new().parse(content, filespan, lexer),
+            Dialect::Bzl => StarlarkParser::new().parse(content, filespan, lexer),
         }
     } {
         Result::Ok(v) => Result::Ok(v),
@@ -196,16 +196,16 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
 /// * codemap: the codemap object used for diagnostics
 /// * filename: the name of the file being parsed, for diagnostics
 /// * content: the content to parse
-/// * build: set to true if you want to parse a BUILD file or false to parse a .bzl file.
+/// * dialect: starlark language dialect.
 #[doc(hidden)]
 pub fn parse(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
-    build: bool,
+    dialect: Dialect,
 ) -> Result<AstStatement, Diagnostic> {
     let content2 = content.to_owned();
-    parse_lexer(map, filename, content, build, Lexer::new(&content2))
+    parse_lexer(map, filename, content, dialect, Lexer::new(&content2))
 }
 
 /// Parse a build file (if build is true) or a starlark file, reading the content from the file
@@ -215,7 +215,7 @@ pub fn parse(
 ///
 /// * codemap: the codemap object used for diagnostics
 /// * path: the path to the file to parse
-/// * build: set to true if you want to parse a BUILD file or false to parse a .bzl file.
+/// * dialect: starlark language dialect
 ///
 /// # Note
 ///
@@ -224,10 +224,10 @@ pub fn parse(
 pub fn parse_file(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
-    build: bool,
+    dialect: Dialect,
 ) -> Result<AstStatement, Diagnostic> {
     let mut content = String::new();
     let mut file = iotry!(File::open(path));
     iotry!(file.read_to_string(&mut content));
-    parse(map, path, &content, build)
+    parse(map, path, &content, dialect)
 }
