@@ -853,7 +853,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.lstrip(this) {
-        ok!(this.to_str().trim_left())
+        ok!(this.to_str().trim_start())
     }
 
     /// [string.partition](
@@ -1109,7 +1109,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.rstrip(this) {
-        ok!(this.to_str().trim_right())
+        ok!(this.to_str().trim_end())
     }
 
     /// [string.split](
