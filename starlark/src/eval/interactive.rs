@@ -18,6 +18,7 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Emitter};
 use environment::Environment;
 use std::sync::{Arc, Mutex};
+use syntax::dialect::Dialect;
 
 /// Evaluate a string content, mutate the environment accordingly  and print
 /// the value of the last statement (if not `None`) or the error diagnostic.
@@ -29,13 +30,11 @@ use std::sync::{Arc, Mutex};
 ///
 /// * path: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
-///   More information about the difference can be found in [the eval module's
-///   documentation](../index.html#build_file).
+/// * dialect: starlark language dialect
 /// * env: the environment to mutate during the evaluation
-pub fn eval(path: &str, content: &str, build: bool, env: &mut Environment) {
+pub fn eval(path: &str, content: &str, dialect: Dialect, env: &mut Environment) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    match super::simple::eval(&map, path, content, build, env) {
+    match super::simple::eval(&map, path, content, dialect, env) {
         Ok(v) => {
             if v.get_type() != "NoneType" {
                 println!("{}", v.to_repr())
@@ -54,13 +53,11 @@ pub fn eval(path: &str, content: &str, build: bool, env: &mut Environment) {
 /// # Arguments
 ///
 /// * path: the file to parse and evaluate
-/// * build: set to true if you want to evaluate a BUILD file or false to evaluate a .bzl file.
-///   More information about the difference can be found in [the eval module's
-///   documentation](../index.html#build_file).
+/// * dialect: Starlark language dialect
 /// * env: the environment to mutate during the evaluation
-pub fn eval_file(path: &str, build: bool, env: &mut Environment) {
+pub fn eval_file(path: &str, dialect: Dialect, env: &mut Environment) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    match super::simple::eval_file(&map, path, build, env) {
+    match super::simple::eval_file(&map, path, dialect, env) {
         Ok(v) => {
             if v.get_type() != "NoneType" {
                 println!("{}", v.to_repr())

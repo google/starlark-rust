@@ -21,6 +21,7 @@ extern crate starlark_repl;
 use getopts::Options;
 use starlark::eval::interactive::eval_file;
 use starlark::stdlib::global_environment;
+use starlark::syntax::dialect::Dialect;
 use starlark_repl::repl;
 use std::env;
 
@@ -70,12 +71,17 @@ fn main() {
                 let opt_repl = matches.opt_present("r");
                 let global = global_environment();
                 global.freeze();
+                let dialect = if build_file {
+                    Dialect::Build
+                } else {
+                    Dialect::Bzl
+                };
                 for i in matches.free.into_iter() {
-                    eval_file(&i, build_file, &mut global.child(&i));
+                    eval_file(&i, dialect, &mut global.child(&i));
                 }
                 if opt_repl {
                     println!("Welcome to Starlark REPL, press Ctrl+D to exit.");
-                    repl(&global, build_file);
+                    repl(&global, dialect);
                 }
             }
         }

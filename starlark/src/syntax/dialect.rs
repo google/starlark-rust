@@ -12,29 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The syntax module that handle lexing and parsing
-
-#[doc(hidden)]
-pub mod errors;
-
-#[cfg(test)]
-#[macro_use]
-mod testutil;
-
-#[doc(hidden)]
-pub mod ast;
-pub mod dialect;
-#[doc(hidden)]
-pub mod lexer;
-mod grammar {
-    include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
-    #[cfg(test)]
-    mod tests {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/syntax/grammar.tests.rs"
-        ));
-    }
+/// Starlark language dialect.
+#[derive(Copy, Debug, Clone)]
+pub enum Dialect {
+    // Build file dialect which is used to interpret Bazel's BUILD files
+    Build,
+    // Full Starlark language that is available in Bazel's .bzl files
+    Bzl,
 }
-#[doc(hidden)]
-pub mod parser;

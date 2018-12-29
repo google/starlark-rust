@@ -22,6 +22,7 @@ use std::error::Error;
 use std::sync;
 
 use environment::Environment;
+use syntax::dialect::Dialect;
 use values::dict::Dictionary;
 use values::*;
 
@@ -954,7 +955,7 @@ pub fn global_environment() -> Environment {
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = global_environment().freeze().child("test");
-    match eval(&map, "<test>", snippet, false, &mut env) {
+    match eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d.clone()]);
@@ -967,6 +968,7 @@ pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
 pub mod tests {
     use super::global_environment;
     use super::starlark_default;
+    use super::Dialect;
     use codemap::CodeMap;
     use codemap_diagnostic::Diagnostic;
     use eval::simple::eval;
@@ -975,7 +977,7 @@ pub mod tests {
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
         let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
         let mut env = global_environment().freeze().child("test");
-        match eval(&map, "<test>", snippet, false, &mut env) {
+        match eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
             Ok(v) => Ok(v.to_bool()),
             Err(d) => Err(d),
         }
