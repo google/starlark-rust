@@ -18,11 +18,11 @@ use std::str::FromStr;
 use values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
-pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &'static str = "UF00";
-pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE: &'static str = "UF01";
-pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE: &'static str = "UF02";
-pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE: &'static str = "UF03";
-pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE: &'static str = "UF04";
+pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &str = "UF00";
+pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE: &str = "UF01";
+pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE: &str = "UF02";
+pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE: &str = "UF03";
+pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE: &str = "UF04";
 
 macro_rules! ok {
     ($e:expr) => {

@@ -25,10 +25,10 @@ use std::str::CharIndices;
 
 // TODO: move that code in some common error code list?
 // CL prefix = Critical Lexing
-const LEX_ERROR_CODE: &'static str = "CL00";
-const INDENT_ERROR_CODE: &'static str = "CL01";
-const UNFINISHED_STRING_LITERAL_CODE: &'static str = "CL02";
-const INVALID_ESCAPE_SEQUENCE_CODE: &'static str = "CL03";
+const LEX_ERROR_CODE: &str = "CL00";
+const INDENT_ERROR_CODE: &str = "CL01";
+const UNFINISHED_STRING_LITERAL_CODE: &str = "CL02";
+const INVALID_ESCAPE_SEQUENCE_CODE: &str = "CL03";
 
 /// Errors that can be generated during lexing
 #[doc(hidden)]

@@ -90,21 +90,21 @@ use syntax::errors::SyntaxError;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
-pub const NOT_SUPPORTED_ERROR_CODE: &'static str = "CV00";
-pub const IMMUTABLE_ERROR_CODE: &'static str = "CV01";
-pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &'static str = "CV02";
-pub const OUT_OF_BOUND_ERROR_CODE: &'static str = "CV03";
-pub const NOT_HASHABLE_VALUE_ERROR_CODE: &'static str = "CV04";
-pub const KEY_NOT_FOUND_ERROR_CODE: &'static str = "CV05";
-pub const INTERPOLATION_FORMAT_ERROR_CODE: &'static str = "CV06";
-pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &'static str = "CV07";
-pub const DIVISION_BY_ZERO_ERROR_CODE: &'static str = "CV08";
-pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &'static str = "CV09";
-pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CV10";
-pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &'static str = "CV12";
-pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &'static str = "CV13";
-pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &'static str = "CV14";
-pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &'static str = "CV15";
+pub const NOT_SUPPORTED_ERROR_CODE: &str = "CV00";
+pub const IMMUTABLE_ERROR_CODE: &str = "CV01";
+pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &str = "CV02";
+pub const OUT_OF_BOUND_ERROR_CODE: &str = "CV03";
+pub const NOT_HASHABLE_VALUE_ERROR_CODE: &str = "CV04";
+pub const KEY_NOT_FOUND_ERROR_CODE: &str = "CV05";
+pub const INTERPOLATION_FORMAT_ERROR_CODE: &str = "CV06";
+pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &str = "CV07";
+pub const DIVISION_BY_ZERO_ERROR_CODE: &str = "CV08";
+pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &str = "CV09";
+pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &str = "CV10";
+pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &str = "CV12";
+pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &str = "CV13";
+pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &str = "CV14";
+pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &str = "CV15";
 
 // Maximum recursion level for comparison
 // TODO(dmarting): those are rather short, maybe make it configurable?

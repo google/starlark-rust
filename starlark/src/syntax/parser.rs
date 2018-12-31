@@ -28,11 +28,11 @@ extern crate lalrpop_util as lu;
 
 // TODO: move that code in some common error code list?
 // CP Prefix = Critical Parsing
-const INVALID_TOKEN_ERROR_CODE: &'static str = "CP00";
-const UNEXPECTED_TOKEN_ERROR_CODE: &'static str = "CP01";
-const EXTRA_TOKEN_ERROR_CODE: &'static str = "CP02";
-const RESERVED_KEYWORD_ERROR_CODE: &'static str = "CP03";
-const IO_ERROR_CODE: &'static str = "CP04";
+const INVALID_TOKEN_ERROR_CODE: &str = "CP00";
+const UNEXPECTED_TOKEN_ERROR_CODE: &str = "CP01";
+const EXTRA_TOKEN_ERROR_CODE: &str = "CP02";
+const RESERVED_KEYWORD_ERROR_CODE: &str = "CP03";
+const IO_ERROR_CODE: &str = "CP04";
 
 fn one_of(expected: &Vec<String>) -> String {
     let mut result = String::new();

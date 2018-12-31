@@ -17,8 +17,8 @@
 use values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
-pub const LIST_INDEX_FAILED_ERROR_CODE: &'static str = "UF10";
-pub const LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE: &'static str = "UF11";
+pub const LIST_INDEX_FAILED_ERROR_CODE: &str = "UF10";
+pub const LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE: &str = "UF11";
 
 macro_rules! ok {
     ($e:expr) => {

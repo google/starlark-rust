@@ -24,9 +24,9 @@ use values::*;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module
-const FROZEN_ENV_ERROR_CODE: &'static str = "CM00";
-const NOT_FOUND_ERROR_CODE: &'static str = "CM01";
-const CANNOT_IMPORT_ERROR_CODE: &'static str = "CE02";
+const FROZEN_ENV_ERROR_CODE: &str = "CM00";
+const NOT_FOUND_ERROR_CODE: &str = "CM01";
+const CANNOT_IMPORT_ERROR_CODE: &str = "CE02";
 
 #[derive(Debug)]
 #[doc(hidden)]

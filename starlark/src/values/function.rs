@@ -51,12 +51,12 @@ struct WrappedMethod {
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Function call
-const NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CF00";
-const WRONG_ARGS_IDENT_ERROR_CODE: &'static str = "CF01";
-const ARGS_NOT_ITERABLE_ERROR_CODE: &'static str = "CF02";
-const KWARGS_NOT_MAPPABLE_ERROR_CODE: &'static str = "CF03";
-// Not an error: const KWARGS_KEY_IDENT_ERROR_CODE: &'static str = "CF04";
-const EXTRA_PARAMETER_ERROR_CODE: &'static str = "CF05";
+const NOT_ENOUGH_PARAMS_ERROR_CODE: &str = "CF00";
+const WRONG_ARGS_IDENT_ERROR_CODE: &str = "CF01";
+const ARGS_NOT_ITERABLE_ERROR_CODE: &str = "CF02";
+const KWARGS_NOT_MAPPABLE_ERROR_CODE: &str = "CF03";
+// Not an error: const KWARGS_KEY_IDENT_ERROR_CODE: &str = "CF04";
+const EXTRA_PARAMETER_ERROR_CODE: &str = "CF05";
 
 #[derive(Debug, Clone)]
 pub enum FunctionError {

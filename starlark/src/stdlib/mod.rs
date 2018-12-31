@@ -27,14 +27,14 @@ use values::dict::Dictionary;
 use values::*;
 
 // Errors -- CR = Critical Runtime
-const CHR_NOT_UTF8_CODEPOINT_ERROR_CODE: &'static str = "CR00";
-const DICT_ITERABLE_NOT_PAIRS_ERROR_CODE: &'static str = "CR01";
-const ATTR_NAME_NOT_STRING_ERROR_CODE: &'static str = "CR02";
-const INT_CONVERSION_FAILED_ERROR_CODE: &'static str = "CR03";
-const ORD_EXPECT_ONE_CHAR_ERROR_CODE: &'static str = "CR04";
-const EMPTY_ITERABLE_ERROR_CODE: &'static str = "CR05";
-const NUL_RANGE_STEP_ERROR_CODE: &'static str = "CR06";
-const USER_FAILURE_ERROR_CODE: &'static str = "CR99";
+const CHR_NOT_UTF8_CODEPOINT_ERROR_CODE: &str = "CR00";
+const DICT_ITERABLE_NOT_PAIRS_ERROR_CODE: &str = "CR01";
+const ATTR_NAME_NOT_STRING_ERROR_CODE: &str = "CR02";
+const INT_CONVERSION_FAILED_ERROR_CODE: &str = "CR03";
+const ORD_EXPECT_ONE_CHAR_ERROR_CODE: &str = "CR04";
+const EMPTY_ITERABLE_ERROR_CODE: &str = "CR05";
+const NUL_RANGE_STEP_ERROR_CODE: &str = "CR06";
+const USER_FAILURE_ERROR_CODE: &str = "CR99";
 
 #[macro_use]
 pub mod macros;

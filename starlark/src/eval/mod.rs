@@ -47,17 +47,17 @@ macro_rules! eval_vector {
 // TODO: move that code in some common error code list?
 // CE prefix = Critical Evaluation
 #[doc(hidden)]
-pub const BREAK_ERROR_CODE: &'static str = "CE00";
+pub const BREAK_ERROR_CODE: &str = "CE00";
 #[doc(hidden)]
-pub const CONTINUE_ERROR_CODE: &'static str = "CE01";
+pub const CONTINUE_ERROR_CODE: &str = "CE01";
 #[doc(hidden)]
-pub const RETURN_ERROR_CODE: &'static str = "CE02";
+pub const RETURN_ERROR_CODE: &str = "CE02";
 #[doc(hidden)]
-pub const INCORRECT_LEFT_VALUE_ERROR_CODE: &'static str = "CE03";
+pub const INCORRECT_LEFT_VALUE_ERROR_CODE: &str = "CE03";
 #[doc(hidden)]
-pub const INCORRECT_UNPACK_ERROR_CODE: &'static str = "CE04";
+pub const INCORRECT_UNPACK_ERROR_CODE: &str = "CE04";
 #[doc(hidden)]
-pub const RECURSION_ERROR_CODE: &'static str = "CE05";
+pub const RECURSION_ERROR_CODE: &str = "CE05";
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
