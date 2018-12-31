@@ -180,21 +180,21 @@ impl Function {
 impl FunctionType {
     fn to_str(&self) -> String {
         match self {
-            &FunctionType::Native(ref name) => name.clone(),
-            &FunctionType::NativeMethod(ref function_type, ref name) => {
+            FunctionType::Native(ref name) => name.clone(),
+            FunctionType::NativeMethod(ref function_type, ref name) => {
                 format!("{}.{}", function_type, name)
             }
-            &FunctionType::Def(ref name, ..) => name.clone(),
+            FunctionType::Def(ref name, ..) => name.clone(),
         }
     }
 
     fn to_repr(&self) -> String {
         match self {
-            &FunctionType::Native(ref name) => format!("<native function {}>", name),
-            &FunctionType::NativeMethod(ref function_type, ref name) => {
+            FunctionType::Native(ref name) => format!("<native function {}>", name),
+            FunctionType::NativeMethod(ref function_type, ref name) => {
                 format!("<native method {}.{}>", function_type, name)
             }
-            &FunctionType::Def(ref name, ref module, ..) => {
+            FunctionType::Def(ref name, ref module, ..) => {
                 format!("<function {} from {}>", name, module)
             }
         }
@@ -206,12 +206,12 @@ fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String
         .iter()
         .map(|x| -> String {
             match x {
-                &FunctionParameter::Normal(ref name) => name.clone(),
-                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionParameter::Normal(ref name) => name.clone(),
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     format!("{} = {}", name, value.to_repr())
                 }
-                &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
-                &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
+                FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
+                FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
         })
         .collect();
@@ -223,12 +223,12 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
         .iter()
         .map(|x| -> String {
             match x {
-                &FunctionParameter::Normal(ref name) => name.clone(),
-                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionParameter::Normal(ref name) => name.clone(),
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     format!("{} = {}", name, value.to_repr())
                 }
-                &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
-                &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
+                FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
+                FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
         })
         .collect();
@@ -309,7 +309,7 @@ impl TypedValue for Function {
         // Now verify signature and transform in a value vector
         for parameter in self.signature.iter() {
             match parameter {
-                &FunctionParameter::Normal(ref name) => {
+                FunctionParameter::Normal(ref name) => {
                     if let Some(x) = args_iter.next() {
                         v.push(x)
                     } else {
@@ -325,7 +325,7 @@ impl TypedValue for Function {
                         }
                     }
                 }
-                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     if let Some(x) = args_iter.next() {
                         v.push(x)
                     } else {
@@ -336,13 +336,13 @@ impl TypedValue for Function {
                         }
                     }
                 }
-                &FunctionParameter::ArgsArray(..) => {
+                FunctionParameter::ArgsArray(..) => {
                     let argv: Vec<Value> = args_iter.clone().collect();
                     v.push(Value::from(argv));
                     // We do not use last so we keep ownership of the iterator
                     while args_iter.next().is_some() {}
                 }
-                &FunctionParameter::KWArgsDict(..) => {
+                FunctionParameter::KWArgsDict(..) => {
                     v.push(Value::from(kwargs_dict.clone()));
                     kwargs_dict.clear();
                 }

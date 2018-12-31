@@ -270,7 +270,7 @@ impl Statement {
         {
             let mut stage = 0;
             let mut argset = HashSet::new();
-            for ref arg in parameters.iter() {
+            for arg in parameters.iter() {
                 match arg.node {
                     Parameter::Normal(ref n) => {
                         if stage > 0 {
@@ -420,7 +420,7 @@ impl fmt::Display for Expr {
             Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
                 write!(f, "{}(", e.node)?;
                 let mut first = true;
-                for ref a in pos {
+                for a in pos {
                     if !first {
                         write!(f, ", ")?;
                     }
@@ -434,14 +434,14 @@ impl fmt::Display for Expr {
                     first = false;
                     write!(f, "{} = {}", k.node, v.node)?;
                 }
-                if let &Some(ref x) = args {
+                if let Some(ref x) = args {
                     if !first {
                         write!(f, ", ")?;
                     }
                     first = false;
                     write!(f, "*{}", x.node)?;
                 }
-                if let &Some(ref x) = kwargs {
+                if let Some(ref x) = kwargs {
                     if !first {
                         write!(f, ", ")?;
                     }
@@ -452,15 +452,15 @@ impl fmt::Display for Expr {
             Expr::ArrayIndirection(ref e, ref i) => write!(f, "{}[{}]", e.node, i.node),
             Expr::Slice(ref e, ref i1, ref i2, ref i3) => {
                 write!(f, "{}[]", e.node)?;
-                if let &Some(ref x) = i1 {
+                if let Some(ref x) = i1 {
                     write!(f, "{}:", x.node)?
                 } else {
                     write!(f, ":")?
                 }
-                if let &Some(ref x) = i2 {
+                if let Some(ref x) = i2 {
                     write!(f, "{}", x.node)?
                 }
-                if let &Some(ref x) = i3 {
+                if let Some(ref x) = i3 {
                     write!(f, ":{}", x.node)?
                 }
                 Ok(())

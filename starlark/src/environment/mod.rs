@@ -233,7 +233,7 @@ impl EnvironmentContent {
     pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
         match self.type_objs.get(obj.get_type()) {
             Some(ref d) => match d.get(id) {
-                Some(&ref v) => Some(v.clone()),
+                Some(v) => Some(v.clone()),
                 None => match self.parent {
                     Some(ref p) => p.get_type_value(obj, id),
                     None => None,

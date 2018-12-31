@@ -247,14 +247,14 @@ impl<T: FileLoader> Evaluate<T> for AstString {
 
 impl<T: FileLoader> Evaluate<T> for AstInt {
     fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
-        Ok(Value::new(self.node.clone()))
+        Ok(Value::new(self.node))
     }
 
     fn transform(
         &self,
         _context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
-        Ok(Box::new(self.clone()))
+        Ok(Box::new(*self))
     }
 
     fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
@@ -262,7 +262,7 @@ impl<T: FileLoader> Evaluate<T> for AstInt {
     }
 }
 
-fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
+fn eval_comprehension_clause<T: FileLoader + 'static>(
     context: &mut EvaluationContext<T>,
     e: &AstExpr,
     clauses: &[AstClause],
@@ -317,29 +317,28 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
         let ok = Ok(Value::new(None));
         match self {
-            &TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
-                let span = span.clone();
+            TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
                 let l = v.len() as i64;
-                let nvl = t!(new_value.length(), span span)?;
+                let nvl = t!(new_value.length(), span *span)?;
                 if nvl != l {
-                    Err(EvalException::IncorrectNumberOfValueToUnpack(span, l, nvl))
+                    Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
                 } else {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.into_iter(), span span)?;
+                    let mut it2 = t!(new_value.into_iter(), span *span)?;
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
                     ok
                 }
             }
-            &TransformedExpr::Dot(ref e, ref s, ref span) => {
+            TransformedExpr::Dot(ref e, ref s, ref span) => {
                 let span = span.clone();
                 t!(e.clone().set_attr(&s, new_value), span span)?;
                 ok
             }
-            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+            TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
                 let span = span.clone();
                 t!(e.clone().set_at(idx.clone(), new_value), span span)?;
                 ok
@@ -349,15 +348,15 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
 
     fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
         match self {
-            &TransformedExpr::Tuple(ref v, ..) => {
+            TransformedExpr::Tuple(ref v, ..) => {
                 let r = eval_vector!(v, context);
                 Ok(Value::new(tuple::Tuple::new(r.as_slice())))
             }
-            &TransformedExpr::List(ref v, ..) => {
+            TransformedExpr::List(ref v, ..) => {
                 let r = eval_vector!(v, context);
                 Ok(Value::from(r))
             }
-            &TransformedExpr::Dot(ref left, ref s, ref span) => {
+            TransformedExpr::Dot(ref left, ref s, ref span) => {
                 if let Some(v) = context.env.get_type_value(left, &s) {
                     if v.get_type() == "function" {
                         // Insert self so the method see the object it is acting on
@@ -369,7 +368,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                     t!(left.get_attr(&s), span span.clone())
                 }
             }
-            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+            TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
                 t!(e.at(idx.clone()), span span.clone())
             }
         }
@@ -434,12 +433,12 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 for &(ref k, ref v) in named.iter() {
                     nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
                 }
-                let nargs = if let &Some(ref x) = args {
+                let nargs = if let Some(ref x) = args {
                     Some(x.eval(context)?)
                 } else {
                     None
                 };
-                let nkwargs = if let &Some(ref x) = kwargs {
+                let nkwargs = if let Some(ref x) = kwargs {
                     Some(x.eval(context)?)
                 } else {
                     None
@@ -481,16 +480,16 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
             Expr::Slice(ref a, ref start, ref stop, ref stride) => {
                 let a = a.eval(context)?;
                 let start = match start {
-                    &Some(ref e) => Some(e.eval(context)?),
-                    &None => None,
+                    Some(ref e) => Some(e.eval(context)?),
+                    None => None,
                 };
                 let stop = match stop {
-                    &Some(ref e) => Some(e.eval(context)?),
-                    &None => None,
+                    Some(ref e) => Some(e.eval(context)?),
+                    None => None,
                 };
                 let stride = match stride {
-                    &Some(ref e) => Some(e.eval(context)?),
-                    &None => None,
+                    Some(ref e) => Some(e.eval(context)?),
+                    None => None,
                 };
                 t!(a.slice(start, stop, stride), self)
             }
@@ -745,7 +744,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
             ) => panic!("The parser returned an invalid for clause: {:?}", node),
             Statement::Def(ref name, ref params, ref stmts) => {
                 let mut p = Vec::new();
-                for ref x in params.iter() {
+                for x in params.iter() {
                     p.push(match x.node {
                         Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
                         Parameter::WithDefaultValue(ref n, ref v) => {
@@ -809,10 +808,10 @@ pub fn eval_def(
     let mut it2 = args.iter();
     for s in signature.iter() {
         match s {
-            &FunctionParameter::Normal(ref v)
-            | &FunctionParameter::WithDefaultValue(ref v, ..)
-            | &FunctionParameter::ArgsArray(ref v)
-            | &FunctionParameter::KWArgsDict(ref v) => {
+            FunctionParameter::Normal(ref v)
+            | FunctionParameter::WithDefaultValue(ref v, ..)
+            | FunctionParameter::ArgsArray(ref v)
+            | FunctionParameter::KWArgsDict(ref v) => {
                 match env.set(v, it2.next().unwrap().clone()) {
                     Err(x) => return Err(x.into()),
                     _ => (),

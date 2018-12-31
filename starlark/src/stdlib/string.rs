@@ -109,7 +109,7 @@ fn format_capture<T: Iterator<Item = Value>>(
             }
         } else {
             if let Some(x) = n.chars().find(|c| match c {
-                &'.' | &',' | &'[' | &']' => true,
+                '.' | ',' | '[' | ']' => true,
                 _ => false,
             }) {
                 starlark_err!(
