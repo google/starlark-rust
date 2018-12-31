@@ -37,6 +37,7 @@ impl<T: Into<Value> + Clone> From<Vec<T>> for List {
 }
 
 impl List {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Value {
         Value::new(List {
             mutability: IterableMutability::Mutable,

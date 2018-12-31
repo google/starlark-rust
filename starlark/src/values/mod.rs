@@ -1674,6 +1674,7 @@ macro_rules! from_X {
     ($x: ty, $y: tt, noT) => {
         impl From<$x> for Value {
             fn from(a: $x) -> Value {
+                #[allow(clippy::cast_lossless)]
                 Value::new(a as $y)
             }
         }

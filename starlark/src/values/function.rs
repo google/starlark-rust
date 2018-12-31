@@ -127,6 +127,7 @@ impl Into<ValueError> for FunctionError {
 }
 
 impl Function {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
         F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
@@ -154,6 +155,7 @@ impl Function {
         })
     }
 
+    #[allow(clippy::boxed_local)]
     pub fn new_def(
         name: String,
         module: String,
