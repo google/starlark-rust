@@ -34,7 +34,7 @@ const EXTRA_TOKEN_ERROR_CODE: &str = "CP02";
 const RESERVED_KEYWORD_ERROR_CODE: &str = "CP03";
 const IO_ERROR_CODE: &str = "CP04";
 
-fn one_of(expected: &Vec<String>) -> String {
+fn one_of(expected: &[String]) -> String {
     let mut result = String::new();
     for (i, e) in expected.iter().enumerate() {
         let sep = match i {

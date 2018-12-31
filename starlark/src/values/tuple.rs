@@ -25,7 +25,7 @@ pub struct Tuple {
 }
 
 #[doc(hidden)]
-pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &Vec<Value>) -> Vec<Value> {
+pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &[Value]) -> Vec<Value> {
     let (low, take, astride) = if stride < 0 {
         (stop + 1, start - stop, -stride)
     } else {

@@ -151,7 +151,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<(String, String)>,
+            __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::Value>
         ) -> $crate::values::ValueResult {
@@ -163,7 +163,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($rest:tt)*) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<(String, String)>,
+            __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::Value>
         ) -> $crate::values::ValueResult {
@@ -178,7 +178,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<(String, String)>,
+            __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::Value>
         ) -> $crate::values::ValueResult {
@@ -191,7 +191,7 @@ macro_rules! starlark_fun {
             $($rest:tt)*) => {
         $(#[$attr])*
         pub fn $fn(
-            __call_stack: &Vec<(String, String)>,
+            __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::Value>
         ) -> $crate::values::ValueResult {

@@ -38,7 +38,7 @@ pub enum FunctionType {
 }
 
 pub struct Function {
-    function: Box<Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult>,
+    function: Box<Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult>,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
@@ -126,7 +126,7 @@ impl Into<ValueError> for FunctionError {
 impl Function {
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -142,7 +142,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -201,7 +201,7 @@ impl FunctionType {
     }
 }
 
-fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> String {
+fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
@@ -218,7 +218,7 @@ fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> Str
     format!("{}({})", function_type.to_repr(), v.join(", "))
 }
 
-fn to_str(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> String {
+fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
@@ -266,7 +266,7 @@ impl TypedValue for Function {
 
     fn call(
         &self,
-        call_stack: &Vec<(String, String)>,
+        call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
@@ -385,7 +385,7 @@ impl TypedValue for WrappedMethod {
 
     fn call(
         &self,
-        call_stack: &Vec<(String, String)>,
+        call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,

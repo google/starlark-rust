@@ -798,8 +798,8 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
 /// A method for consumption by def funcitons
 #[doc(hidden)]
 pub fn eval_def(
-    call_stack: &Vec<(String, String)>,
-    signature: &Vec<FunctionParameter>,
+    call_stack: &[(String, String)],
+    signature: &[FunctionParameter],
     stmts: &AstStatement,
     env: Environment,
     args: Vec<Value>,
@@ -821,7 +821,7 @@ pub fn eval_def(
         }
     }
     let mut ctx = EvaluationContext {
-        call_stack: call_stack.clone(),
+        call_stack: call_stack.to_owned(),
         env,
         loader: (),
         map: map.clone(),

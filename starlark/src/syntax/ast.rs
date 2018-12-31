@@ -374,7 +374,7 @@ impl fmt::Display for AssignOp {
 
 fn comma_separated_fmt<I, F>(
     f: &mut fmt::Formatter,
-    v: &Vec<I>,
+    v: &[I],
     converter: F,
     for_tuple: bool,
 ) -> fmt::Result
