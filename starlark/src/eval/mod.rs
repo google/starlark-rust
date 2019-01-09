@@ -299,6 +299,152 @@ fn eval_comprehension_clause<T: FileLoader + 'static>(
     Ok(result)
 }
 
+fn eval_compare<T: FileLoader + 'static, F>(
+    this: &AstExpr,
+    left: &AstExpr,
+    right: &AstExpr,
+    cmp: F,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult
+where
+    F: Fn(Ordering) -> bool,
+{
+    let l = left.eval(context)?;
+    let r = right.eval(context)?;
+    Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
+}
+
+fn eval_slice<T: FileLoader + 'static>(
+    this: &AstExpr,
+    a: &AstExpr,
+    start: &Option<AstExpr>,
+    stop: &Option<AstExpr>,
+    stride: &Option<AstExpr>,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let a = a.eval(context)?;
+    let start = match start {
+        Some(ref e) => Some(e.eval(context)?),
+        None => None,
+    };
+    let stop = match stop {
+        Some(ref e) => Some(e.eval(context)?),
+        None => None,
+    };
+    let stride = match stride {
+        Some(ref e) => Some(e.eval(context)?),
+        None => None,
+    };
+    t!(a.slice(start, stop, stride), this)
+}
+
+fn eval_call<T: FileLoader + 'static>(
+    this: &AstExpr,
+    e: &AstExpr,
+    pos: &[AstExpr],
+    named: &[(AstString, AstExpr)],
+    args: &Option<AstExpr>,
+    kwargs: &Option<AstExpr>,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let npos = eval_vector!(pos, context);
+    let mut nnamed = HashMap::new();
+    for &(ref k, ref v) in named.iter() {
+        nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
+    }
+    let nargs = if let Some(ref x) = args {
+        Some(x.eval(context)?)
+    } else {
+        None
+    };
+    let nkwargs = if let Some(ref x) = kwargs {
+        Some(x.eval(context)?)
+    } else {
+        None
+    };
+    let f = e.eval(context)?;
+    let fname = f.to_repr();
+    let descr = f.to_str();
+    let mut new_stack = context.call_stack.clone();
+    if context.call_stack.iter().any(|x| x.0 == fname) {
+        Err(EvalException::Recursion(this.span, fname, new_stack))
+    } else {
+        let loc = { context.map.lock().unwrap().look_up_pos(this.span.low()) };
+        new_stack.push((
+            fname,
+            format!(
+                "call to {} at {}:{}",
+                descr,
+                loc.file.name(),
+                loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
+            ),
+        ));
+        t!(
+            e.eval(context,)?.call(
+                &new_stack,
+                context.env.clone(),
+                npos,
+                nnamed,
+                nargs,
+                nkwargs,
+            ),
+            this
+        )
+    }
+}
+
+fn eval_dot<T: FileLoader + 'static>(
+    this: &AstExpr,
+    e: &AstExpr,
+    s: &AstString,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let left = e.eval(context)?;
+    if let Some(v) = context.env.get_type_value(&left, &s.node) {
+        if v.get_type() == "function" {
+            // Insert self so the method see the object it is acting on
+            Ok(function::Function::new_self_call(left.clone(), v))
+        } else {
+            Ok(v)
+        }
+    } else {
+        t!(left.get_attr(&s.node), this)
+    }
+}
+
+fn eval_dict_comprehension<T: FileLoader + 'static>(
+    k: &AstExpr,
+    v: &AstExpr,
+    clauses: &[AstClause],
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let mut r = LinkedHashMap::new();
+    let tuple = Box::new(Spanned {
+        span: k.span.merge(v.span),
+        node: Expr::Tuple(vec![k.clone(), v.clone()]),
+    });
+    let mut context = context.child("dict_comprehension");
+    for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
+        let k = t!(e.at(Value::from(0)), tuple)?;
+        let v = t!(e.at(Value::from(1)), tuple)?;
+        r.insert(k, v);
+    }
+    Ok(Value::from(r))
+}
+
+fn eval_list_comprehension<T: FileLoader + 'static>(
+    e: &AstExpr,
+    clauses: &[AstClause],
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let mut r = Vec::new();
+    let mut context = context.child("list_comprehension");
+    for v in eval_comprehension_clause(&mut context, e, clauses)? {
+        r.push(v.clone());
+    }
+    Ok(Value::from(r))
+}
+
 enum TransformedExpr<T: FileLoader> {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
@@ -414,84 +560,16 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 let r = eval_vector!(v, context);
                 Ok(Value::new(tuple::Tuple::new(r.as_slice())))
             }
-            Expr::Dot(ref e, ref s) => {
-                let left = e.eval(context)?;
-                if let Some(v) = context.env.get_type_value(&left, &s.node) {
-                    if v.get_type() == "function" {
-                        // Insert self so the method see the object it is acting on
-                        Ok(function::Function::new_self_call(left.clone(), v))
-                    } else {
-                        Ok(v)
-                    }
-                } else {
-                    t!(left.get_attr(&s.node), self)
-                }
-            }
+            Expr::Dot(ref e, ref s) => eval_dot(self, e, s, context),
             Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
-                let npos = eval_vector!(pos, context);
-                let mut nnamed = HashMap::new();
-                for &(ref k, ref v) in named.iter() {
-                    nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
-                }
-                let nargs = if let Some(ref x) = args {
-                    Some(x.eval(context)?)
-                } else {
-                    None
-                };
-                let nkwargs = if let Some(ref x) = kwargs {
-                    Some(x.eval(context)?)
-                } else {
-                    None
-                };
-                let f = e.eval(context)?;
-                let fname = f.to_repr();
-                let descr = f.to_str();
-                let mut new_stack = context.call_stack.clone();
-                if context.call_stack.iter().any(|x| x.0 == fname) {
-                    Err(EvalException::Recursion(self.span, fname, new_stack))
-                } else {
-                    let loc = { context.map.lock().unwrap().look_up_pos(self.span.low()) };
-                    new_stack.push((
-                        fname,
-                        format!(
-                            "call to {} at {}:{}",
-                            descr,
-                            loc.file.name(),
-                            loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
-                        ),
-                    ));
-                    t!(
-                        e.eval(context,)?.call(
-                            &new_stack,
-                            context.env.clone(),
-                            npos,
-                            nnamed,
-                            nargs,
-                            nkwargs,
-                        ),
-                        self
-                    )
-                }
+                eval_call(self, e, pos, named, args, kwargs, context)
             }
             Expr::ArrayIndirection(ref e, ref idx) => {
                 let idx = idx.eval(context)?;
                 t!(e.eval(context)?.at(idx), self)
             }
             Expr::Slice(ref a, ref start, ref stop, ref stride) => {
-                let a = a.eval(context)?;
-                let start = match start {
-                    Some(ref e) => Some(e.eval(context)?),
-                    None => None,
-                };
-                let stop = match stop {
-                    Some(ref e) => Some(e.eval(context)?),
-                    None => None,
-                };
-                let stride = match stride {
-                    Some(ref e) => Some(e.eval(context)?),
-                    None => None,
-                };
-                t!(a.slice(start, stop, stride), self)
+                eval_slice(self, a, start, stop, stride, context)
             }
             Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
             Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
@@ -508,34 +586,22 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 Ok(if !l.to_bool() { l } else { r.eval(context)? })
             }
             Expr::Op(BinOp::EqualsTo, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Equal))
+                eval_compare(self, l, r, |x| x == Ordering::Equal, context)
             }
             Expr::Op(BinOp::Different, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Equal))
+                eval_compare(self, l, r, |x| x != Ordering::Equal, context)
             }
             Expr::Op(BinOp::LowerThan, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Less))
+                eval_compare(self, l, r, |x| x == Ordering::Less, context)
             }
             Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Greater))
+                eval_compare(self, l, r, |x| x == Ordering::Greater, context)
             }
             Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Greater))
+                eval_compare(self, l, r, |x| x != Ordering::Greater, context)
             }
             Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Less))
+                eval_compare(self, l, r, |x| x != Ordering::Less, context)
             }
             Expr::Op(BinOp::In, ref l, ref r) => {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)
@@ -583,26 +649,10 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 Ok(r)
             }
             Expr::ListComprehension(ref e, ref clauses) => {
-                let mut r = Vec::new();
-                let mut context = context.child("list_comprehension");
-                for v in eval_comprehension_clause(&mut context, e, clauses.as_slice())? {
-                    r.push(v.clone());
-                }
-                Ok(Value::from(r))
+                eval_list_comprehension(e, clauses, context)
             }
             Expr::DictComprehension((ref k, ref v), ref clauses) => {
-                let mut r = LinkedHashMap::new();
-                let tuple = Box::new(Spanned {
-                    span: k.span.merge(v.span),
-                    node: Expr::Tuple(vec![k.clone(), v.clone()]),
-                });
-                let mut context = context.child("dict_comprehension");
-                for e in eval_comprehension_clause(&mut context, &tuple, clauses.as_slice())? {
-                    let k = t!(e.at(Value::from(0)), tuple)?;
-                    let v = t!(e.at(Value::from(1)), tuple)?;
-                    r.insert(k, v);
-                }
-                Ok(Value::from(r))
+                eval_dict_comprehension(k, v, clauses, context)
             }
         }
     }
