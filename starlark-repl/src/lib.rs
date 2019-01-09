@@ -39,6 +39,7 @@
 extern crate codemap;
 extern crate codemap_diagnostic;
 extern crate linefeed;
+#[macro_use]
 extern crate starlark;
 
 use codemap_diagnostic::{ColorConfig, Emitter};
@@ -48,6 +49,7 @@ use starlark::eval::eval_lexer;
 use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
+use starlark::values::Value;
 use std::sync::{Arc, Mutex};
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
@@ -73,6 +75,19 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             }
         }
         Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
+    }
+}
+
+starlark_module! {print_function =>
+    /// print: print an object string representation to stderr.
+    ///
+    /// Examples:
+    /// ```python
+    /// print("some message")  # Will print "some message" to stderr
+    /// ```
+    print(msg) {
+        eprintln!("{}", msg.to_str());
+        Ok(Value::new(None))
     }
 }
 
