@@ -1290,7 +1290,7 @@ impl TypedValue for Option<()> {
     }
     // just took the result of hash(None) in macos python 2.7.10 interpreter.
     fn get_hash(&self) -> Result<u64, ValueError> {
-        Ok(9223380832852120682)
+        Ok(9_223_380_832_852_120_682)
     }
     default_compare!();
     not_supported!(binop);
