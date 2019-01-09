@@ -233,7 +233,7 @@ impl TypedValue for String {
                     }
                     other.at(Value::new(varname))?.clone()
                 } else {
-                    match other.into_iter() {
+                    match other.iter() {
                         Ok(..) => {
                             let val = other.at(Value::new(idx));
                             idx += 1;

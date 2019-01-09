@@ -430,7 +430,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.format(this, *args, **kwargs) {
-        let mut it = args.into_iter()?;
+        let mut it = args.iter()?;
         let this = this.to_str();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
@@ -797,7 +797,7 @@ starlark_module! {global =>
     string.join(this, #to_join) {
         let this = this.to_str();
         ok!(
-            to_join.into_iter()?.fold(
+            to_join.iter()?.fold(
                 Ok(String::new()),
                 |a, x| {
                     check_string!(x, join);
@@ -1375,7 +1375,7 @@ mod tests {
     fn test_format_capture() {
         let args = Value::from(vec!["1", "2", "3"]);
         let mut kwargs = dict::Dictionary::new();
-        let mut it = args.into_iter().unwrap();
+        let mut it = args.iter().unwrap();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
 
@@ -1452,7 +1452,7 @@ mod tests {
         )
         .is_err());
         captured_by_order = false;
-        it = args.into_iter().unwrap();
+        it = args.iter().unwrap();
         assert_eq!(
             format_capture(
                 "{1",

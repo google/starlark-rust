@@ -283,7 +283,7 @@ fn eval_comprehension_clause<T: FileLoader + 'static>(
             Clause::For(ref k, ref v) => {
                 let mut iterable = v.eval(context)?;
                 iterable.freeze_for_iteration();
-                for i in t!(iterable.into_iter(), c)? {
+                for i in t!(iterable.iter(), c)? {
                     k.set(context, i)?;
                     if tl.is_empty() {
                         result.push(e.eval(context)?);
@@ -326,7 +326,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.into_iter(), span *span)?;
+                    let mut it2 = t!(new_value.iter(), span *span)?;
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -621,7 +621,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.into_iter(), self)?;
+                    let mut it2 = t!(new_value.iter(), self)?;
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -720,7 +720,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 let mut iterable = e2.eval(context)?;
                 let mut result = Ok(Value::new(None));
                 iterable.freeze_for_iteration();
-                for v in t!(iterable.into_iter(), span * span)? {
+                for v in t!(iterable.iter(), span * span)? {
                     e1.set(context, v)?;
                     match st.eval(context) {
                         Err(EvalException::Break(..)) => break,

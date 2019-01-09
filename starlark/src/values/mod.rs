@@ -553,7 +553,7 @@ pub trait TypedValue {
 
     /// Returns an iterator over the value of this container if this value hold an iterable
     /// container.
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError>;
+    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError>;
 
     /// Returns the length of the value, if this value is a sequence.
     fn length(&self) -> Result<i64, ValueError>;
@@ -834,8 +834,8 @@ macro_rules! not_supported {
                 op: "[::]".to_owned(), left: self.get_type().to_owned(), right: None })
         }
     };
-    (into_iter) => {
-        fn into_iter(&self) -> Result<Box<Iterator<Item=Value>>, ValueError> {
+    (iter) => {
+        fn iter(&self) -> Result<Box<Iterator<Item=Value>>, ValueError> {
             Err(ValueError::TypeNotX {
                 object_type: self.get_type().to_owned(),
                 op: "iterable".to_owned()
@@ -847,7 +847,7 @@ macro_rules! not_supported {
         fn unfreeze_for_iteration(&mut self) {}
     };
     // Special type: iterable, sequence, indexable, container, function
-    (iterable) => { not_supported!(into_iter, freeze_for_iteration); };
+    (iterable) => { not_supported!(iter, freeze_for_iteration); };
     (sequence) => { not_supported!(length, is_in); };
     (set_indexable) => { not_supported!(set_at); };
     (indexable) => { not_supported!(slice, at, set_indexable); };
@@ -1157,9 +1157,9 @@ impl Value {
         let borrowed = self.0.borrow_mut();
         borrowed.slice(start, stop, stride)
     }
-    pub fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    pub fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         let borrowed = self.0.borrow();
-        let v: Vec<Value> = borrowed.into_iter()?.map(|x| x.clone()).collect();
+        let v: Vec<Value> = borrowed.iter()?.map(|x| x.clone()).collect();
         Ok(Box::new(v.into_iter()))
     }
     pub fn length(&self) -> Result<i64, ValueError> {

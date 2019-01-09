@@ -277,7 +277,7 @@ impl TypedValue for Function {
         let mut v = Vec::new();
         // Collect args
         let av: Vec<Value> = if let Some(x) = args {
-            match x.into_iter() {
+            match x.iter() {
                 Ok(y) => positional.into_iter().chain(y).collect(),
                 Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
             }
@@ -288,7 +288,7 @@ impl TypedValue for Function {
         // Collect kwargs
         let mut kwargs_dict = named.clone();
         if let Some(x) = kwargs {
-            match x.into_iter() {
+            match x.iter() {
                 Ok(y) => {
                     for n in y {
                         if n.get_type() == "string" {

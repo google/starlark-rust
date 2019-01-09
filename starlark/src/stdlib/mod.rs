@@ -86,7 +86,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     any(#x) {
-        for i in x.into_iter()? {
+        for i in x.iter()? {
             if i.to_bool() {
                 return Ok(Value::new(true));
             }
@@ -119,7 +119,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     all(x) {
-        for i in x.into_iter()? {
+        for i in x.iter()? {
             if !i.to_bool() {
                 return Ok(Value::new(false));
             }
@@ -233,14 +233,14 @@ starlark_module! {global_functions =>
         match a.get_type() {
             "NoneType" => (),
             "dict" => {
-                for k in a.into_iter()? {
+                for k in a.iter()? {
                     let v = a.at(k.clone())?;
                     map.set_at(k, v)?;
                 }
             },
             _ => {
-               for el in a.into_iter()? {
-                   match el.into_iter() {
+               for el in a.iter()? {
+                   match el.iter() {
                        Ok(mut it) => {
                             let first = it.next();
                             let second = it.next();
@@ -269,7 +269,7 @@ starlark_module! {global_functions =>
                }
            }
        }
-       for el in kwargs.into_iter()? {
+       for el in kwargs.iter()? {
            map.set_at(el.clone(), kwargs.at(el)?)?;
        }
        Ok(map)
@@ -322,7 +322,7 @@ starlark_module! {global_functions =>
         let v2 = offset.to_int()?;
         let v : Vec<Value> =
             it
-            .into_iter()?
+            .iter()?
             .enumerate()
             .map(|(k, v)| Value::from((Value::new(k as i64 + v2), v)))
             .collect();
@@ -526,7 +526,7 @@ starlark_module! {global_functions =>
     list(#a = None) {
         let mut l = Vec::new();
         if a.get_type() != "NoneType" {
-            for x in a.into_iter()? {
+            for x in a.iter()? {
                 l.push(x.clone())
             }
         }
@@ -561,7 +561,7 @@ starlark_module! {global_functions =>
         } else {
             args
         };
-        let mut it = args.into_iter()?;
+        let mut it = args.iter()?;
         let mut max = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -614,7 +614,7 @@ starlark_module! {global_functions =>
         } else {
             args
         };
-        let mut it = args.into_iter()?;
+        let mut it = args.iter()?;
         let mut min = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -779,7 +779,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     reversed(#a) {
-        let v : Vec<Value> = a.into_iter()?.collect();
+        let v : Vec<Value> = a.iter()?.collect();
         let v : Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
     }
@@ -812,7 +812,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     sorted(call_stack cs, env e, #x, key = None, reverse = false) {
-        let x = x.into_iter()?;
+        let x = x.iter()?;
         let mut it : Vec<(Value, Value)> = if key.get_type() == "NoneType" {
             x.map(|x| (x.clone(), x)).collect()
         } else {
@@ -868,7 +868,7 @@ starlark_module! {global_functions =>
     tuple(#a = None) {
         let mut l = Vec::new();
         if a.get_type() != "NoneType" {
-            for x in a.into_iter()? {
+            for x in a.iter()? {
                 l.push(x.clone())
             }
         }
@@ -915,10 +915,10 @@ starlark_module! {global_functions =>
     zip(*args) {
         let mut v = Vec::new();
 
-        for arg in args.into_iter()? {
+        for arg in args.iter()? {
             let first = v.is_empty();
             let mut idx = 0;
-            for e in arg.into_iter()? {
+            for e in arg.iter()? {
                 if first {
                     v.push(Value::from((e.clone(),)));
                     idx += 1;

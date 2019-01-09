@@ -302,8 +302,8 @@ impl TypedValue for Tuple {
 
     fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "tuple" {
-            let mut iter1 = self.into_iter()?;
-            let mut iter2 = other.into_iter()?;
+            let mut iter1 = self.iter()?;
+            let mut iter2 = other.iter()?;
             loop {
                 match (iter1.next(), iter2.next()) {
                     (None, None) => return Ok(Ordering::Equal),
@@ -362,8 +362,8 @@ impl TypedValue for Tuple {
         ))))
     }
 
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().map(|x| x.clone())))
+    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+        Ok(Box::new(self.content.iter().cloned()))
     }
 
     /// Concatenate `other` to the current value.
@@ -388,7 +388,7 @@ impl TypedValue for Tuple {
             for x in self.content.iter() {
                 result.content.push(x.clone());
             }
-            for x in other.into_iter()? {
+            for x in other.iter()? {
                 result.content.push(x.clone());
             }
             Ok(Value::new(result))

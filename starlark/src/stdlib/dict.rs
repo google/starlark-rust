@@ -133,7 +133,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.keys(this) {
-        let v : Vec<Value> = this.into_iter()?.collect();
+        let v : Vec<Value> = this.iter()?.collect();
         ok!(v)
     }
 
@@ -311,7 +311,7 @@ starlark_module! {global =>
     dict.update(this, #pairs=None, **kwargs) {
         match pairs.get_type() {
             "NoneType" => (),
-            "list" => for v in pairs.into_iter()? {
+            "list" => for v in pairs.iter()? {
                 if v.length()? != 2 {
                     starlark_err!(
                         INCORRECT_PARAMETER_TYPE_ERROR_CODE,
@@ -324,7 +324,7 @@ starlark_module! {global =>
                 }
                 this.set_at(v.at(Value::new(0))?, v.at(Value::new(1))?)?;
             },
-            "dict" => for k in pairs.into_iter()? {
+            "dict" => for k in pairs.iter()? {
                 this.set_at(k.clone(), pairs.at(k)?)?
             },
             x => starlark_err!(
@@ -340,7 +340,7 @@ starlark_module! {global =>
             )
         }
 
-        for k in kwargs.into_iter()? {
+        for k in kwargs.iter()? {
             this.set_at(k.clone(), kwargs.at(k)?)?
         }
         ok!(None)
