@@ -465,14 +465,14 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
         match self {
             TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
                 let l = v.len() as i64;
-                let nvl = t!(new_value.length(), span *span)?;
+                let nvl = t!(new_value.length(), span * span)?;
                 if nvl != l {
                     Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
                 } else {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.iter(), span *span)?;
+                    let mut it2 = t!(new_value.iter(), span * span)?;
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -480,13 +480,11 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                 }
             }
             TransformedExpr::Dot(ref e, ref s, ref span) => {
-                let span = span.clone();
-                t!(e.clone().set_attr(&s, new_value), span span)?;
+                t!(e.clone().set_attr(&s, new_value), span * span)?;
                 ok
             }
             TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
-                let span = span.clone();
-                t!(e.clone().set_at(idx.clone(), new_value), span span)?;
+                t!(e.clone().set_at(idx.clone(), new_value), span * span)?;
                 ok
             }
         }
