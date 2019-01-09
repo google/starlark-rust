@@ -55,7 +55,7 @@ starlark_module! {global_functions =>
             format!(
                 "fail(): {}{}",
                 msg.to_str(),
-                st.into_iter().rev().fold(String::new(), |a,s| format!("{}\n    {}", a, s.1))
+                st.iter().rev().fold(String::new(), |a,s| format!("{}\n    {}", a, s.1))
             ),
             msg.to_str()
         )
