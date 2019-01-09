@@ -109,7 +109,7 @@ pub fn repl(global_environment: &Environment, dialect: Dialect) {
     reader.set_prompt(">>> ").unwrap();
 
     while let Ok(ReadResult::Input(input)) = reader.read_line() {
-        if input.len() != 0 {
+        if !input.is_empty() {
             reader.set_prompt("... ").unwrap();
             n += 1;
             let input = input + "\n";
