@@ -860,9 +860,8 @@ pub fn eval_def(
             | FunctionParameter::WithDefaultValue(ref v, ..)
             | FunctionParameter::ArgsArray(ref v)
             | FunctionParameter::KWArgsDict(ref v) => {
-                match env.set(v, it2.next().unwrap().clone()) {
-                    Err(x) => return Err(x.into()),
-                    _ => (),
+                if let Err(x) = env.set(v, it2.next().unwrap().clone()) {
+                    return Err(x.into());
                 }
             }
         }

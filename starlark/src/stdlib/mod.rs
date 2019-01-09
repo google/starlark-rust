@@ -291,10 +291,11 @@ starlark_module! {global_functions =>
     /// # ))).unwrap());
     /// ```
     dir(env env, x) {
-        match x.dir_attr() {
-            Ok(v) => Ok(Value::from(env.list_type_value(&x).extend(v))),
-            _ => Ok(Value::from(env.list_type_value(&x))),
+        let mut result = env.list_type_value(&x);
+        if let Ok(v) = x.dir_attr() {
+            result.extend(v);
         }
+        Ok(Value::from(result))
     }
 
 
