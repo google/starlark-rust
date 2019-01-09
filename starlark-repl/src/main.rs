@@ -22,7 +22,7 @@ use getopts::Options;
 use starlark::eval::interactive::eval_file;
 use starlark::stdlib::global_environment;
 use starlark::syntax::dialect::Dialect;
-use starlark_repl::repl;
+use starlark_repl::{repl, print_function};
 use std::env;
 
 macro_rules! print_usage {
@@ -69,7 +69,7 @@ fn main() {
             } else {
                 let build_file = matches.opt_present("b");
                 let opt_repl = matches.opt_present("r");
-                let global = global_environment();
+                let global = print_function(global_environment());
                 global.freeze();
                 let dialect = if build_file {
                     Dialect::Build
