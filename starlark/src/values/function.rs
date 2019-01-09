@@ -37,8 +37,11 @@ pub enum FunctionType {
     Def(String, String),
 }
 
+pub type StarlarkFunctionPrototype =
+    Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult;
+
 pub struct Function {
-    function: Box<Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult>,
+    function: Box<StarlarkFunctionPrototype>,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
