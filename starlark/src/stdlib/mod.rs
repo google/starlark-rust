@@ -678,7 +678,7 @@ starlark_module! {global_functions =>
                 "Not a one character string".to_owned()
             )
         } else {
-            Ok(Value::new(u32::from(a.to_string().chars().next().unwrap()) as i64))
+            Ok(Value::new(i64::from(u32::from(a.to_string().chars().next().unwrap()))))
         }
     }
 

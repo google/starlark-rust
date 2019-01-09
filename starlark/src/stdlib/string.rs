@@ -263,7 +263,7 @@ starlark_module! {global =>
     /// ```
     string.codepoints(this) {
         // Note that we return a list here... Which is not equivalent to the go implementation.
-        let v : Vec<i64> = this.to_str().chars().map(|x| u32::from(x) as i64).collect();
+        let v : Vec<i64> = this.to_str().chars().map(|x| i64::from(u32::from(x))).collect();
         ok!(v)
     }
 
