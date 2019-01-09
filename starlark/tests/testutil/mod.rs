@@ -60,7 +60,7 @@ fn assert_diagnostic(
     };
     if !msg.to_lowercase().contains(&expected) {
         io::stderr()
-            .write(
+            .write_all(
                 &format!(
                     "Expected error '{}' at {}:{}, got {}\n",
                     expected, path, offset, msg,
@@ -123,7 +123,7 @@ def assert_(cond, msg="assertion failed"):
             _ => {
                 if !err.is_empty() {
                     io::stderr()
-                        .write(
+                        .write_all(
                             &format!(
                                 "Expected error '{}' at {}:{}, got success",
                                 err, path, offset,
