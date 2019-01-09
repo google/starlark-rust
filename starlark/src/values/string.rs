@@ -59,7 +59,7 @@ impl TypedValue for String {
 
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.len() as i64)? as usize;
-        Ok(Value::new(self.chars().skip(i).next().unwrap().to_string()))
+        Ok(Value::new(self.chars().nth(i).unwrap().to_string()))
     }
 
     fn length(&self) -> Result<i64, ValueError> {
