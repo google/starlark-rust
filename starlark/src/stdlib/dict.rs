@@ -48,7 +48,7 @@ starlark_module! {global =>
     /// ```
     dict.clear(this) {
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 x.clear();
                 ok!(None)
@@ -172,7 +172,7 @@ starlark_module! {global =>
         key.get_hash()?;  // ensure the key is hashable
         let key_error = format!("Key '{}' not found in '{}'", key.to_repr(), this.to_repr());
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 match x.remove(&key) {
                     Some(x) => Ok(x),
@@ -218,7 +218,7 @@ starlark_module! {global =>
     /// ```
     dict.popitem(this) {
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 match x.pop_front() {
                     Some(x) => ok!(x),
@@ -265,7 +265,7 @@ starlark_module! {global =>
         key.get_hash()?; // Ensure the key is hashable
         let cloned_default = default.clone_for_container_value(&this);
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 if let Some(r) = x.get(&key) {
                     return Ok(r.clone())
