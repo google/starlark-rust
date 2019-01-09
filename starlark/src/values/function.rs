@@ -312,28 +312,24 @@ impl TypedValue for Function {
                 FunctionParameter::Normal(ref name) => {
                     if let Some(x) = args_iter.next() {
                         v.push(x)
+                    } else if let Some(ref r) = kwargs_dict.remove(name) {
+                        v.push(r.clone());
                     } else {
-                        if let Some(ref r) = kwargs_dict.remove(name) {
-                            v.push(r.clone());
-                        } else {
-                            return Err(FunctionError::NotEnoughParameter {
-                                missing: name.to_string(),
-                                function_type: self.function_type.clone(),
-                                signature: self.signature.clone(),
-                            }
-                            .into());
+                        return Err(FunctionError::NotEnoughParameter {
+                            missing: name.to_string(),
+                            function_type: self.function_type.clone(),
+                            signature: self.signature.clone(),
                         }
+                        .into());
                     }
                 }
                 FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     if let Some(x) = args_iter.next() {
                         v.push(x)
+                    } else if let Some(ref r) = kwargs_dict.remove(name) {
+                        v.push(r.clone());
                     } else {
-                        if let Some(ref r) = kwargs_dict.remove(name) {
-                            v.push(r.clone());
-                        } else {
-                            v.push(value.clone());
-                        }
+                        v.push(value.clone());
                     }
                 }
                 FunctionParameter::ArgsArray(..) => {

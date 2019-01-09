@@ -254,12 +254,10 @@ impl EnvironmentContent {
                 r.push(k.clone());
             }
             r
+        } else if let Some(ref p) = self.parent {
+            p.list_type_value(obj)
         } else {
-            if let Some(ref p) = self.parent {
-                p.list_type_value(obj)
-            } else {
-                Vec::new()
-            }
+            Vec::new()
         }
     }
 

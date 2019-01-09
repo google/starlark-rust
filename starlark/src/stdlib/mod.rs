@@ -469,12 +469,10 @@ starlark_module! {global_functions =>
                 } else { s },
                 8 => if s.starts_with("0o") || s.starts_with("0O") {
                     s.get(2..).unwrap().to_string()
+                } else if s.starts_with("0") {
+                    s.get(1..).unwrap().to_string()
                 } else {
-                    if s.starts_with("0") {
-                        s.get(1..).unwrap().to_string()
-                    } else {
-                        s
-                    }
+                    s
                 },
                 2 => if s.starts_with("0b") || s.starts_with("0B") {
                     s.get(2..).unwrap().to_string()
@@ -924,11 +922,9 @@ starlark_module! {global_functions =>
                 if first {
                     v.push(Value::from((e.clone(),)));
                     idx += 1;
-                } else {
-                    if idx < v.len() {
-                        v[idx] = v[idx].add(Value::from((e.clone(),)))?;
-                        idx += 1;
-                    }
+                } else if idx < v.len() {
+                    v[idx] = v[idx].add(Value::from((e.clone(),)))?;
+                    idx += 1;
                 }
             }
             v.truncate(idx);

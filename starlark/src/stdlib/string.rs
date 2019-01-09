@@ -91,35 +91,33 @@ fn format_capture<T: Iterator<Item = Value>>(
                 )
             }
         }
-    } else {
-        if n.chars().all(|c| c.is_ascii_digit()) {
-            if *captured_by_order {
-                starlark_err!(
-                    FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE,
-                    concat!(
-                        "Cannot mix manual field specification and ",
-                        "automatic field numbering in format string"
-                    )
-                    .to_owned(),
-                    "Mixed manual and automatic field numbering".to_owned()
+    } else if n.chars().all(|c| c.is_ascii_digit()) {
+        if *captured_by_order {
+            starlark_err!(
+                FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE,
+                concat!(
+                    "Cannot mix manual field specification and ",
+                    "automatic field numbering in format string"
                 )
-            } else {
-                *captured_by_index = true;
-                return Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?));
-            }
+                .to_owned(),
+                "Mixed manual and automatic field numbering".to_owned()
+            )
         } else {
-            if let Some(x) = n.chars().find(|c| match c {
-                '.' | ',' | '[' | ']' => true,
-                _ => false,
-            }) {
-                starlark_err!(
-                    FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
-                    format!("Invalid character '{}' inside replacement field", x),
-                    format!("Invalid character '{}'", x)
-                )
-            }
-            return Ok(conv(kwargs.at(Value::from(n))?));
+            *captured_by_index = true;
+            return Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?));
         }
+    } else {
+        if let Some(x) = n.chars().find(|c| match c {
+            '.' | ',' | '[' | ']' => true,
+            _ => false,
+        }) {
+            starlark_err!(
+                FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
+                format!("Invalid character '{}' inside replacement field", x),
+                format!("Invalid character '{}'", x)
+            )
+        }
+        return Ok(conv(kwargs.at(Value::from(n))?));
     }
 }
 
@@ -133,18 +131,16 @@ fn splitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
     for c in s.chars() {
         if split >= maxsplit && !eat_ws {
             cur.push(c)
-        } else {
-            if c.is_whitespace() {
-                if !cur.is_empty() {
-                    v.push(cur);
-                    cur = String::new();
-                    split += 1;
-                    eat_ws = true;
-                }
-            } else {
-                eat_ws = false;
-                cur.push(c)
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                v.push(cur);
+                cur = String::new();
+                split += 1;
+                eat_ws = true;
             }
+        } else {
+            eat_ws = false;
+            cur.push(c)
         }
     }
     if !cur.is_empty() {
@@ -161,18 +157,16 @@ fn rsplitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
     for c in s.chars().rev() {
         if split >= maxsplit && !eat_ws {
             cur.push(c)
-        } else {
-            if c.is_whitespace() {
-                if !cur.is_empty() {
-                    v.push(cur.chars().rev().collect());
-                    cur = String::new();
-                    split += 1;
-                    eat_ws = true;
-                }
-            } else {
-                eat_ws = false;
-                cur.push(c)
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                v.push(cur.chars().rev().collect());
+                cur = String::new();
+                split += 1;
+                eat_ws = true;
             }
+        } else {
+            eat_ws = false;
+            cur.push(c)
         }
     }
     if !cur.is_empty() {
@@ -735,10 +729,8 @@ starlark_module! {global =>
                     if c.is_lowercase() {
                         ok!(false);
                     }
-                } else {
-                    if c.is_uppercase() {
-                        ok!(false);
-                    }
+                } else if c.is_uppercase() {
+                    ok!(false);
                 }
                 if c.is_alphabetic() {
                     result = true;

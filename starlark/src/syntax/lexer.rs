@@ -331,12 +331,10 @@ impl Lexer {
     fn replace_input(&mut self, input: &str) {
         self.offset = if let Some((p, _)) = self.peek() {
             p
+        } else if let Some((i, c)) = self.last_next {
+            i + (c.len_utf8() as u64)
         } else {
-            if let Some((i, c)) = self.last_next {
-                i + (c.len_utf8() as u64)
-            } else {
-                self.last_pos
-            }
+            self.last_pos
         };
         assert!(self.offset >= self.last_pos);
         self.input = input.to_owned();
@@ -418,12 +416,10 @@ impl Lexer {
     fn end_pos(&mut self) -> (u64, u64) {
         if let Some((end, ..)) = self.peek() {
             (self.last_pos, end)
+        } else if let Some((i, c)) = self.last_next {
+            (self.last_pos, i + (c.len_utf8() as u64))
         } else {
-            if let Some((i, c)) = self.last_next {
-                (self.last_pos, i + (c.len_utf8() as u64))
-            } else {
-                (self.last_pos, self.last_pos)
-            }
+            (self.last_pos, self.last_pos)
         }
     }
 
@@ -653,14 +649,10 @@ impl Lexer {
 
     fn consume_int_radix(&mut self, radix: u32) -> Option<<Self as Iterator>::Item> {
         let val = self.consume_int_r(radix);
-        if self.peek_char().is_alphanumeric() {
+        if self.peek_char().is_alphanumeric() || val.is_err() {
             self.invalid()
         } else {
-            if val.is_err() {
-                self.invalid()
-            } else {
-                self.end(Token::IntegerLiteral(val.unwrap()))
-            }
+            self.end(Token::IntegerLiteral(val.unwrap()))
         }
     }
 

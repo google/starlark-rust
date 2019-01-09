@@ -115,10 +115,8 @@ def assert_(cond, msg="assertion failed"):
                 if err.is_empty() {
                     Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
                     return false;
-                } else {
-                    if !assert_diagnostic(p, err, path, offset, &map) {
-                        return false;
-                    }
+                } else if !assert_diagnostic(p, err, path, offset, &map) {
+                    return false;
                 }
             }
             _ => {
