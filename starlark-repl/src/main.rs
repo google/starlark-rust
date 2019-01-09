@@ -22,7 +22,7 @@ use getopts::Options;
 use starlark::eval::interactive::eval_file;
 use starlark::stdlib::global_environment;
 use starlark::syntax::dialect::Dialect;
-use starlark_repl::{repl, print_function};
+use starlark_repl::{print_function, repl};
 use std::env;
 
 macro_rules! print_usage {

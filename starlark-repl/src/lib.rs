@@ -49,8 +49,8 @@ use starlark::eval::eval_lexer;
 use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
-use std::sync::{Arc, Mutex};
 use starlark::values::Value;
+use std::sync::{Arc, Mutex};
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: Arc<Mutex<codemap::CodeMap>>,
