@@ -38,7 +38,7 @@ pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &[Value]) -> Ve
         .iter()
         .skip(low as usize)
         .take(take as usize)
-        .map(|x| x.clone())
+        .cloned()
         .collect();
     if stride < 0 {
         v.reverse();

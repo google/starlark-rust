@@ -170,7 +170,7 @@ impl TypedValue for List {
     }
 
     fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().map(|x| x.clone())))
+        Ok(Box::new(self.content.iter().cloned()))
     }
 
     /// Concatenate `other` to the current value.

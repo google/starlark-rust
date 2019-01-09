@@ -1159,7 +1159,7 @@ impl Value {
     }
     pub fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         let borrowed = self.0.borrow();
-        let v: Vec<Value> = borrowed.iter()?.map(|x| x.clone()).collect();
+        let v: Vec<Value> = borrowed.iter()?.collect();
         Ok(Box::new(v.into_iter()))
     }
     pub fn length(&self) -> Result<i64, ValueError> {
