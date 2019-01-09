@@ -104,7 +104,7 @@ fn format_capture<T: Iterator<Item = Value>>(
             )
         } else {
             *captured_by_index = true;
-            return Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?));
+            Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?))
         }
     } else {
         if let Some(x) = n.chars().find(|c| match c {
@@ -117,7 +117,7 @@ fn format_capture<T: Iterator<Item = Value>>(
                 format!("Invalid character '{}'", x)
             )
         }
-        return Ok(conv(kwargs.at(Value::from(n))?));
+        Ok(conv(kwargs.at(Value::from(n))?))
     }
 }
 

@@ -853,131 +853,129 @@ impl Lexer {
         self.begin();
         match self.peek_char() {
             '\0' => None,
-            '\n' | '\r' | '\u{2028}' | '\u{2029}' => return self.consume_nl(),
-            '\'' | '"' => return self.consume_string(false),
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.consume_nl(),
+            '\'' | '"' => self.consume_string(false),
             'r' => {
                 self.pop();
                 let p = self.peek_char();
                 if p == '\'' || p == '"' {
-                    return self.consume_string(true);
+                    self.consume_string(true)
                 } else {
-                    return self.consume_identifier_queue("r");
+                    self.consume_identifier_queue("r")
                 }
             }
-            '0'...'9' => return self.consume_int(),
-            '_' => return self.consume_identifier(),
-            c if c.is_alphabetic() => return self.consume_identifier(),
-            ',' => return self.consume(Token::Comma),
-            ';' => return self.consume(Token::Semicolon),
-            ':' => return self.consume(Token::Colon),
+            '0'...'9' => self.consume_int(),
+            '_' => self.consume_identifier(),
+            c if c.is_alphabetic() => self.consume_identifier(),
+            ',' => self.consume(Token::Comma),
+            ';' => self.consume(Token::Semicolon),
+            ':' => self.consume(Token::Colon),
             '+' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::PlusEqual)
                 } else {
                     self.end(Token::Plus)
-                };
+                }
             }
             '-' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::MinusEqual)
                 } else {
                     self.end(Token::Minus)
-                };
+                }
             }
             '*' => {
                 self.pop();
                 match self.peek_char() {
-                    '=' => return self.consume(Token::StarEqual),
-                    '*' => return self.consume(Token::Doublestar),
-                    _ => return self.end(Token::Star),
+                    '=' => self.consume(Token::StarEqual),
+                    '*' => self.consume(Token::Doublestar),
+                    _ => self.end(Token::Star),
                 }
             }
             '/' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::SlashEqual)
-                } else {
-                    if self.peek_char() == '/' {
-                        self.pop();
-                        if self.peek_char() == '=' {
-                            self.consume(Token::DoubleSlashEqual)
-                        } else {
-                            self.end(Token::DoubleSlash)
-                        }
+                } else if self.peek_char() == '/' {
+                    self.pop();
+                    if self.peek_char() == '=' {
+                        self.consume(Token::DoubleSlashEqual)
                     } else {
-                        self.end(Token::Slash)
+                        self.end(Token::DoubleSlash)
                     }
-                };
+                } else {
+                    self.end(Token::Slash)
+                }
             }
             '%' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::PercentEqual)
                 } else {
                     self.end(Token::Percent)
-                };
+                }
             }
             '=' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::DoubleEqual)
                 } else {
                     self.end(Token::Equal)
-                };
+                }
             }
             '!' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::BangEqual)
                 } else {
                     self.invalid()
-                };
+                }
             }
             '<' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::LowerEqual)
                 } else {
                     self.end(Token::LowerThan)
-                };
+                }
             }
             '>' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::GreaterEqual)
                 } else {
                     self.end(Token::GreaterThan)
-                };
+                }
             }
-            '|' => return self.consume(Token::Pipe),
-            '.' => return self.consume(Token::Dot),
+            '|' => self.consume(Token::Pipe),
+            '.' => self.consume(Token::Dot),
             '[' => {
                 self.parentheses += 1;
-                return self.consume(Token::OpeningBracket);
+                self.consume(Token::OpeningBracket)
             }
             ']' => {
                 self.parentheses -= 1;
-                return self.consume(Token::ClosingBracket);
+                self.consume(Token::ClosingBracket)
             }
             '(' => {
                 self.parentheses += 1;
-                return self.consume(Token::OpeningParenthesis);
+                self.consume(Token::OpeningParenthesis)
             }
             ')' => {
                 self.parentheses -= 1;
-                return self.consume(Token::ClosingParenthesis);
+                self.consume(Token::ClosingParenthesis)
             }
             '{' => {
                 self.parentheses += 1;
-                return self.consume(Token::OpeningCurlyBracket);
+                self.consume(Token::OpeningCurlyBracket)
             }
             '}' => {
                 self.parentheses -= 1;
-                return self.consume(Token::ClosingCurlyBracket);
+                self.consume(Token::ClosingCurlyBracket)
             }
-            _ => return self.invalid(),
+            _ => self.invalid(),
         }
     }
 }

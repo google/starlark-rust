@@ -135,7 +135,7 @@ def assert_(cond, msg="assertion failed"):
             }
         }
     }
-    return true;
+    true
 }
 
 pub fn do_conformance_test(path: &str) {
