@@ -470,7 +470,7 @@ starlark_module! {global_functions =>
                 } else { s },
                 8 => if s.starts_with("0o") || s.starts_with("0O") {
                     s.get(2..).unwrap().to_string()
-                } else if s.starts_with("0") {
+                } else if s.starts_with('0') {
                     s.get(1..).unwrap().to_string()
                 } else {
                     s

@@ -209,7 +209,7 @@ impl TypedValue for String {
     /// # );
     /// ```
     fn percent(&self, other: Value) -> ValueResult {
-        let mut split_it = self.split("%");
+        let mut split_it = self.split('%');
         let mut res = String::new();
         let mut idx = 0;
         let mut len = 0;
