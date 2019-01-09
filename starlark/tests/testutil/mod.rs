@@ -100,7 +100,8 @@ def assert_(cond, msg="assertion failed"):
     for (offset, content) in read_input(path) {
         let err = if let Some(x) = content.find("###") {
             let err = content.get(x + 3..).unwrap().trim();
-            err.get(..err.find("\n").unwrap_or(err.len())).unwrap()
+            err.get(..err.find('\n').unwrap_or_else(|| err.len()))
+                .unwrap()
         } else {
             ""
         };

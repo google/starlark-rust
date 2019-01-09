@@ -1588,7 +1588,7 @@ impl TypedValue {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> Result<(i64, i64, i64), ValueError> {
-        let stride = stride.unwrap_or(Value::new(1));
+        let stride = stride.unwrap_or_else(|| Value::new(1));
         let stride = if stride.get_type() == "NoneType" {
             Ok(1)
         } else {
