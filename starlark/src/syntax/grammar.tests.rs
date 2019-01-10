@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::StarlarkParser;
+use syntax::grammar::StarlarkParser;
 use std::sync::{Arc, Mutex};
 use syntax::ast::Statement;
 use syntax::dialect::Dialect;
