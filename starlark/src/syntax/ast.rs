@@ -18,6 +18,7 @@ use super::lexer;
 use codemap::{Span, Spanned};
 use std::collections::HashSet;
 use std::fmt;
+use std::fmt::{Display, Formatter};
 extern crate lalrpop_util;
 
 // Boxed types used for storing information from the parsing will be used especially for the
@@ -334,87 +335,86 @@ impl Statement {
     }
 }
 
-impl fmt::Display for BinOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for BinOp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
-            BinOp::Or => write!(f, " or "),
-            BinOp::And => write!(f, " and "),
-            BinOp::EqualsTo => write!(f, " == "),
-            BinOp::Different => write!(f, " != "),
-            BinOp::LowerThan => write!(f, " < "),
-            BinOp::GreaterThan => write!(f, " > "),
-            BinOp::LowerOrEqual => write!(f, " <= "),
-            BinOp::GreaterOrEqual => write!(f, " >= "),
-            BinOp::In => write!(f, " in "),
-            BinOp::NotIn => write!(f, " not in "),
-            BinOp::Substraction => write!(f, " - "),
-            BinOp::Addition => write!(f, " + "),
-            BinOp::Multiplication => write!(f, " * "),
-            BinOp::Percent => write!(f, " % "),
-            BinOp::Division => write!(f, " / "),
-            BinOp::FloorDivision => write!(f, " // "),
-            BinOp::Pipe => write!(f, " | "),
+            BinOp::Or => f.write_str(" or "),
+            BinOp::And => f.write_str(" and "),
+            BinOp::EqualsTo => f.write_str(" == "),
+            BinOp::Different => f.write_str(" != "),
+            BinOp::LowerThan => f.write_str(" < "),
+            BinOp::GreaterThan => f.write_str(" > "),
+            BinOp::LowerOrEqual => f.write_str(" <= "),
+            BinOp::GreaterOrEqual => f.write_str(" >= "),
+            BinOp::In => f.write_str(" in "),
+            BinOp::NotIn => f.write_str(" not in "),
+            BinOp::Substraction => f.write_str(" - "),
+            BinOp::Addition => f.write_str(" + "),
+            BinOp::Multiplication => f.write_str(" * "),
+            BinOp::Percent => f.write_str(" % "),
+            BinOp::Division => f.write_str(" / "),
+            BinOp::FloorDivision => f.write_str(" // "),
+            BinOp::Pipe => f.write_str(" | "),
         }
     }
 }
 
-impl fmt::Display for AssignOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for AssignOp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
-            AssignOp::Assign => write!(f, " = "),
-            AssignOp::Increment => write!(f, " += "),
-            AssignOp::Decrement => write!(f, " += "),
-            AssignOp::Multiplier => write!(f, " *= "),
-            AssignOp::Divider => write!(f, " /= "),
-            AssignOp::FloorDivider => write!(f, " //= "),
-            AssignOp::Percent => write!(f, " %= "),
+            AssignOp::Assign => f.write_str(" = "),
+            AssignOp::Increment => f.write_str(" += "),
+            AssignOp::Decrement => f.write_str(" += "),
+            AssignOp::Multiplier => f.write_str(" *= "),
+            AssignOp::Divider => f.write_str(" /= "),
+            AssignOp::FloorDivider => f.write_str(" //= "),
+            AssignOp::Percent => f.write_str(" %= "),
         }
     }
 }
 
 fn comma_separated_fmt<I, F>(
-    f: &mut fmt::Formatter,
+    f: &mut Formatter,
     v: &[I],
     converter: F,
     for_tuple: bool,
 ) -> fmt::Result
 where
-    F: Fn(&I, &mut fmt::Formatter) -> fmt::Result,
+    F: Fn(&I, &mut Formatter) -> fmt::Result,
 {
     for (i, e) in v.iter().enumerate() {
-        let sep = if i == 0 { "" } else { ", " };
-        write!(f, "{}", sep)?;
+        f.write_str(if i == 0 { "" } else { ", " })?;
         converter(e, f)?;
     }
     if v.len() == 1 && for_tuple {
-        write!(f, ",")?;
+        f.write_str(",")?;
     }
     Ok(())
 }
 
-fn fmt_string_literal(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
-    write!(f, "\"")?;
+fn fmt_string_literal(f: &mut Formatter, s: &str) -> fmt::Result {
+    f.write_str("\"")?;
     for c in s.chars() {
         match c {
-            '\n' => write!(f, "\\n")?,
-            '\t' => write!(f, "\\t")?,
-            '\r' => write!(f, "\\r")?,
-            '\0' => write!(f, "\\0")?,
-            '"' => write!(f, "\\\"")?,
-            '\\' => write!(f, "\\\\")?,
-            x => write!(f, "{}", x)?,
+            '\n' => f.write_str("\\n")?,
+            '\t' => f.write_str("\\t")?,
+            '\r' => f.write_str("\\r")?,
+            '\0' => f.write_str("\\0")?,
+            '"' => f.write_str("\\\"")?,
+            '\\' => f.write_str("\\\\")?,
+            x => f.write_str(&x.to_string())?,
         }
     }
-    write!(f, "\"")
+    f.write_str("\"")
 }
 
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Expr {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Expr::Tuple(ref e) => {
-                write!(f, "(")?;
-                comma_separated_fmt(f, e, |x, f| write!(f, "{}", x.node), true)?;
-                write!(f, ")")
+                f.write_str("(")?;
+                comma_separated_fmt(f, e, |x, f| x.node.fmt(f), true)?;
+                f.write_str(")")
             }
             Expr::Dot(ref e, ref s) => write!(f, "{}.{}", e.node, s.node),
             Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
@@ -422,32 +422,32 @@ impl fmt::Display for Expr {
                 let mut first = true;
                 for a in pos {
                     if !first {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                     first = false;
-                    write!(f, "{}", a.node)?;
+                    a.node.fmt(f)?;
                 }
                 for &(ref k, ref v) in named {
                     if !first {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                     first = false;
                     write!(f, "{} = {}", k.node, v.node)?;
                 }
                 if let Some(ref x) = args {
                     if !first {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                     first = false;
                     write!(f, "*{}", x.node)?;
                 }
                 if let Some(ref x) = kwargs {
                     if !first {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                     write!(f, "**{}", x.node)?;
                 }
-                write!(f, ")")
+                f.write_str(")")
             }
             Expr::ArrayIndirection(ref e, ref i) => write!(f, "{}[{}]", e.node, i.node),
             Expr::Slice(ref e, ref i1, ref i2, ref i3) => {
@@ -455,18 +455,18 @@ impl fmt::Display for Expr {
                 if let Some(ref x) = i1 {
                     write!(f, "{}:", x.node)?
                 } else {
-                    write!(f, ":")?
+                    f.write_str(":")?
                 }
                 if let Some(ref x) = i2 {
-                    write!(f, "{}", x.node)?
+                    x.node.fmt(f)?
                 }
                 if let Some(ref x) = i3 {
                     write!(f, ":{}", x.node)?
                 }
                 Ok(())
             }
-            Expr::Identifier(ref s) => write!(f, "{}", s.node),
-            Expr::IntLiteral(ref i) => write!(f, "{}", i.node),
+            Expr::Identifier(ref s) => s.node.fmt(f),
+            Expr::IntLiteral(ref i) => i.node.fmt(f),
             Expr::Not(ref e) => write!(f, "(not {})", e.node),
             Expr::Minus(ref e) => write!(f, "-{}", e.node),
             Expr::Plus(ref e) => write!(f, "+{}", e.node),
@@ -475,34 +475,34 @@ impl fmt::Display for Expr {
                 write!(f, "({} if {} else {})", v1.node, cond.node, v2.node)
             }
             Expr::List(ref v) => {
-                write!(f, "[")?;
-                comma_separated_fmt(f, v, |x, f| write!(f, "{}", x.node), false)?;
-                write!(f, "]")
+                f.write_str("[")?;
+                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                f.write_str("]")
             }
             Expr::Dict(ref v) => {
-                write!(f, "{{")?;
+                f.write_str("{")?;
                 comma_separated_fmt(f, v, |x, f| write!(f, "{}: {}", x.0.node, x.1.node), false)?;
-                write!(f, "}}")
+                f.write_str("}")
             }
             Expr::ListComprehension(ref e, ref v) => {
                 write!(f, "[{}", e.node)?;
-                comma_separated_fmt(f, v, |x, f| write!(f, "{}", x.node), false)?;
-                write!(f, "]")
+                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                f.write_str("]")
             }
             Expr::DictComprehension((ref k, ref v), ref c) => {
                 write!(f, "{{{}: {}", k.node, v.node)?;
-                comma_separated_fmt(f, c, |x, f| write!(f, "{}", x.node), false)?;
-                write!(f, "}}")
+                comma_separated_fmt(f, c, |x, f| x.node.fmt(f), false)?;
+                f.write_str("}}")
             }
             Expr::StringLiteral(ref s) => fmt_string_literal(f, &s.node),
         }
     }
 }
 
-impl fmt::Display for Argument {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Argument {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
-            Argument::Positional(ref s) => write!(f, "{}", s.node),
+            Argument::Positional(ref s) => s.node.fmt(f),
             Argument::Named(ref s, ref e) => write!(f, "{} = {}", s.node, e.node),
             Argument::ArgsArray(ref s) => write!(f, "*{}", s.node),
             Argument::KWArgsDict(ref s) => write!(f, "**{}", s.node),
@@ -510,10 +510,10 @@ impl fmt::Display for Argument {
     }
 }
 
-impl fmt::Display for Parameter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Parameter {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
-            Parameter::Normal(ref s) => write!(f, "{}", s.node),
+            Parameter::Normal(ref s) => s.node.fmt(f),
             Parameter::WithDefaultValue(ref s, ref e) => write!(f, "{} = {}", s.node, e.node),
             Parameter::Args(ref s) => write!(f, "*{}", s.node),
             Parameter::KWArgs(ref s) => write!(f, "**{}", s.node),
@@ -521,8 +521,8 @@ impl fmt::Display for Parameter {
     }
 }
 
-impl fmt::Display for Clause {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Clause {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Clause::For(ref t, ref e) => write!(f, " for {} in {}", t.node, e.node),
             Clause::If(ref t) => write!(f, " if {}", t.node),
@@ -531,16 +531,16 @@ impl fmt::Display for Clause {
 }
 
 impl Statement {
-    fn fmt_with_tab(&self, f: &mut fmt::Formatter, tab: String) -> fmt::Result {
+    fn fmt_with_tab(&self, f: &mut Formatter, tab: String) -> fmt::Result {
         match *self {
-            Statement::Break => write!(f, "{}break\n", tab),
-            Statement::Continue => write!(f, "{}continue\n", tab),
-            Statement::Pass => write!(f, "{}pass\n", tab),
-            Statement::Return(Some(ref e)) => write!(f, "{}return {}\n", tab, e.node),
-            Statement::Return(None) => write!(f, "{}return\n", tab),
-            Statement::Expression(ref e) => write!(f, "{}{}\n", tab, e.node),
+            Statement::Break => writeln!(f, "{}break", tab),
+            Statement::Continue => writeln!(f, "{}continue", tab),
+            Statement::Pass => writeln!(f, "{}pass", tab),
+            Statement::Return(Some(ref e)) => writeln!(f, "{}return {}", tab, e.node),
+            Statement::Return(None) => writeln!(f, "{}return", tab),
+            Statement::Expression(ref e) => writeln!(f, "{}{}", tab, e.node),
             Statement::Assign(ref l, ref op, ref r) => {
-                write!(f, "{}{}{}{}\n", tab, l.node, op, r.node)
+                writeln!(f, "{}{}{}{}", tab, l.node, op, r.node)
             }
             Statement::Statements(ref v) => {
                 for s in v {
@@ -549,23 +549,23 @@ impl Statement {
                 Ok(())
             }
             Statement::If(ref cond, ref suite) => {
-                write!(f, "{}if {}:\n", tab, cond.node)?;
+                writeln!(f, "{}if {}:", tab, cond.node)?;
                 suite.node.fmt_with_tab(f, tab + "  ")
             }
             Statement::IfElse(ref cond, ref suite1, ref suite2) => {
-                write!(f, "{}if {}:\n", tab, cond.node)?;
+                writeln!(f, "{}if {}:", tab, cond.node)?;
                 suite1.node.fmt_with_tab(f, tab.clone() + "  ")?;
-                write!(f, "{}else:\n", tab)?;
+                writeln!(f, "{}else:", tab)?;
                 suite2.node.fmt_with_tab(f, tab + "  ")
             }
             Statement::For(ref clause, ref suite) => {
-                write!(f, "{}for {}:\n", tab, clause.node)?;
+                writeln!(f, "{}for {}:", tab, clause.node)?;
                 suite.node.fmt_with_tab(f, tab + "  ")
             }
             Statement::Def(ref name, ref params, ref suite) => {
                 write!(f, "{}def {}(", tab, name.node)?;
-                comma_separated_fmt(f, params, |x, f| write!(f, "{}", x.node), false)?;
-                write!(f, "):\n")?;
+                comma_separated_fmt(f, params, |x, f| x.node.fmt(f), false)?;
+                f.write_str("):\n")?;
                 suite.node.fmt_with_tab(f, tab + "  ")
             }
             Statement::Load(ref filename, ref v) => {
@@ -580,14 +580,14 @@ impl Statement {
                     },
                     false,
                 )?;
-                write!(f, ")\n")
+                f.write_str(")\n")
             }
         }
     }
 }
 
-impl fmt::Display for Statement {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Statement {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.fmt_with_tab(f, "".to_owned())
     }
 }
