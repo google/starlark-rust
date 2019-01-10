@@ -134,7 +134,7 @@ impl Function {
     {
         Value::new(Function {
             function: Box::new(f),
-            signature: signature,
+            signature,
             function_type: FunctionType::Native(name),
         })
     }
