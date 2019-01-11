@@ -1,6 +1,6 @@
 [package]
 name = "starlark-repl"
-version = "0.2.0"
+version = "0.3.0-pre"
 authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
 
 description = "A REPL for the implementation in Rust of the Starlark language."
@@ -21,7 +21,7 @@ codemap = "0.1.1"
 codemap-diagnostic = "0.1"
 getopts = "0.2"
 linefeed = "0.5.3"
-starlark = { version = "0.2", path = "../starlark" }
+starlark = { path = "../starlark" }
 
 [lib]
 

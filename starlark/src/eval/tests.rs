@@ -48,7 +48,7 @@ cyclic[1] = cyclic
 
 #[test]
 fn funcall_test() {
-    const F: &'static str = "
+    const F: &str = "
 def f1():
   return 1
 

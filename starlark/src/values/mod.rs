@@ -90,21 +90,21 @@ use syntax::errors::SyntaxError;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
-pub const NOT_SUPPORTED_ERROR_CODE: &'static str = "CV00";
-pub const IMMUTABLE_ERROR_CODE: &'static str = "CV01";
-pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &'static str = "CV02";
-pub const OUT_OF_BOUND_ERROR_CODE: &'static str = "CV03";
-pub const NOT_HASHABLE_VALUE_ERROR_CODE: &'static str = "CV04";
-pub const KEY_NOT_FOUND_ERROR_CODE: &'static str = "CV05";
-pub const INTERPOLATION_FORMAT_ERROR_CODE: &'static str = "CV06";
-pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &'static str = "CV07";
-pub const DIVISION_BY_ZERO_ERROR_CODE: &'static str = "CV08";
-pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &'static str = "CV09";
-pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CV10";
-pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &'static str = "CV12";
-pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &'static str = "CV13";
-pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &'static str = "CV14";
-pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &'static str = "CV15";
+pub const NOT_SUPPORTED_ERROR_CODE: &str = "CV00";
+pub const IMMUTABLE_ERROR_CODE: &str = "CV01";
+pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &str = "CV02";
+pub const OUT_OF_BOUND_ERROR_CODE: &str = "CV03";
+pub const NOT_HASHABLE_VALUE_ERROR_CODE: &str = "CV04";
+pub const KEY_NOT_FOUND_ERROR_CODE: &str = "CV05";
+pub const INTERPOLATION_FORMAT_ERROR_CODE: &str = "CV06";
+pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &str = "CV07";
+pub const DIVISION_BY_ZERO_ERROR_CODE: &str = "CV08";
+pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &str = "CV09";
+pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &str = "CV10";
+pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &str = "CV12";
+pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &str = "CV13";
+pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &str = "CV14";
+pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &str = "CV15";
 
 // Maximum recursion level for comparison
 // TODO(dmarting): those are rather short, maybe make it configurable?
@@ -483,7 +483,7 @@ pub trait TypedValue {
     /// * kwargs: if provided, the `**kwargs` argument.
     fn call(
         &self,
-        call_stack: &Vec<(String, String)>,
+        call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
@@ -553,7 +553,7 @@ pub trait TypedValue {
 
     /// Returns an iterator over the value of this container if this value hold an iterable
     /// container.
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError>;
+    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError>;
 
     /// Returns the length of the value, if this value is a sequence.
     fn length(&self) -> Result<i64, ValueError>;
@@ -760,7 +760,7 @@ macro_rules! not_supported {
         }
     };
     (call) => {
-        fn call(&self, _call_stack: &Vec<(String, String)>, _env: Environment,
+        fn call(&self, _call_stack: &[(String, String)], _env: Environment,
                 _positional: Vec<Value>, _named: HashMap<String, Value>,
                 _args: Option<Value>, _kwargs: Option<Value>) -> ValueResult {
             Err(ValueError::OperationNotSupported {
@@ -834,8 +834,8 @@ macro_rules! not_supported {
                 op: "[::]".to_owned(), left: self.get_type().to_owned(), right: None })
         }
     };
-    (into_iter) => {
-        fn into_iter(&self) -> Result<Box<Iterator<Item=Value>>, ValueError> {
+    (iter) => {
+        fn iter(&self) -> Result<Box<Iterator<Item=Value>>, ValueError> {
             Err(ValueError::TypeNotX {
                 object_type: self.get_type().to_owned(),
                 op: "iterable".to_owned()
@@ -847,7 +847,7 @@ macro_rules! not_supported {
         fn unfreeze_for_iteration(&mut self) {}
     };
     // Special type: iterable, sequence, indexable, container, function
-    (iterable) => { not_supported!(into_iter, freeze_for_iteration); };
+    (iterable) => { not_supported!(iter, freeze_for_iteration); };
     (sequence) => { not_supported!(length, is_in); };
     (set_indexable) => { not_supported!(set_at); };
     (indexable) => { not_supported!(slice, at, set_indexable); };
@@ -1130,7 +1130,7 @@ impl Value {
 
     pub fn call(
         &self,
-        call_stack: &Vec<(String, String)>,
+        call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
@@ -1157,9 +1157,9 @@ impl Value {
         let borrowed = self.0.borrow_mut();
         borrowed.slice(start, stop, stride)
     }
-    pub fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    pub fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         let borrowed = self.0.borrow();
-        let v: Vec<Value> = borrowed.into_iter()?.map(|x| x.clone()).collect();
+        let v: Vec<Value> = borrowed.iter()?.collect();
         Ok(Box::new(v.into_iter()))
     }
     pub fn length(&self) -> Result<i64, ValueError> {
@@ -1290,7 +1290,7 @@ impl TypedValue for Option<()> {
     }
     // just took the result of hash(None) in macos python 2.7.10 interpreter.
     fn get_hash(&self) -> Result<u64, ValueError> {
-        Ok(9223380832852120682)
+        Ok(9_223_380_832_852_120_682)
     }
     default_compare!();
     not_supported!(binop);
@@ -1588,7 +1588,7 @@ impl TypedValue {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> Result<(i64, i64, i64), ValueError> {
-        let stride = stride.unwrap_or(Value::new(1));
+        let stride = stride.unwrap_or_else(|| Value::new(1));
         let stride = if stride.get_type() == "NoneType" {
             Ok(1)
         } else {
@@ -1674,6 +1674,7 @@ macro_rules! from_X {
     ($x: ty, $y: tt, noT) => {
         impl From<$x> for Value {
             fn from(a: $x) -> Value {
+                #[allow(clippy::cast_lossless)]
                 Value::new(a as $y)
             }
         }

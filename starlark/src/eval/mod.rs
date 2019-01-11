@@ -47,17 +47,17 @@ macro_rules! eval_vector {
 // TODO: move that code in some common error code list?
 // CE prefix = Critical Evaluation
 #[doc(hidden)]
-pub const BREAK_ERROR_CODE: &'static str = "CE00";
+pub const BREAK_ERROR_CODE: &str = "CE00";
 #[doc(hidden)]
-pub const CONTINUE_ERROR_CODE: &'static str = "CE01";
+pub const CONTINUE_ERROR_CODE: &str = "CE01";
 #[doc(hidden)]
-pub const RETURN_ERROR_CODE: &'static str = "CE02";
+pub const RETURN_ERROR_CODE: &str = "CE02";
 #[doc(hidden)]
-pub const INCORRECT_LEFT_VALUE_ERROR_CODE: &'static str = "CE03";
+pub const INCORRECT_LEFT_VALUE_ERROR_CODE: &str = "CE03";
 #[doc(hidden)]
-pub const INCORRECT_UNPACK_ERROR_CODE: &'static str = "CE04";
+pub const INCORRECT_UNPACK_ERROR_CODE: &str = "CE04";
 #[doc(hidden)]
-pub const RECURSION_ERROR_CODE: &'static str = "CE05";
+pub const RECURSION_ERROR_CODE: &str = "CE05";
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -247,14 +247,14 @@ impl<T: FileLoader> Evaluate<T> for AstString {
 
 impl<T: FileLoader> Evaluate<T> for AstInt {
     fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
-        Ok(Value::new(self.node.clone()))
+        Ok(Value::new(self.node))
     }
 
     fn transform(
         &self,
         _context: &mut EvaluationContext<T>,
     ) -> Result<Box<Evaluate<T>>, EvalException> {
-        Ok(Box::new(self.clone()))
+        Ok(Box::new(*self))
     }
 
     fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
@@ -262,7 +262,7 @@ impl<T: FileLoader> Evaluate<T> for AstInt {
     }
 }
 
-fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
+fn eval_comprehension_clause<T: FileLoader + 'static>(
     context: &mut EvaluationContext<T>,
     e: &AstExpr,
     clauses: &[AstClause],
@@ -283,7 +283,7 @@ fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
             Clause::For(ref k, ref v) => {
                 let mut iterable = v.eval(context)?;
                 iterable.freeze_for_iteration();
-                for i in t!(iterable.into_iter(), c)? {
+                for i in t!(iterable.iter(), c)? {
                     k.set(context, i)?;
                     if tl.is_empty() {
                         result.push(e.eval(context)?);
@@ -297,6 +297,152 @@ fn eval_comprehension_clause<'a, T: FileLoader + 'static>(
         }
     }
     Ok(result)
+}
+
+fn eval_compare<T: FileLoader + 'static, F>(
+    this: &AstExpr,
+    left: &AstExpr,
+    right: &AstExpr,
+    cmp: F,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult
+where
+    F: Fn(Ordering) -> bool,
+{
+    let l = left.eval(context)?;
+    let r = right.eval(context)?;
+    Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
+}
+
+fn eval_slice<T: FileLoader + 'static>(
+    this: &AstExpr,
+    a: &AstExpr,
+    start: &Option<AstExpr>,
+    stop: &Option<AstExpr>,
+    stride: &Option<AstExpr>,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let a = a.eval(context)?;
+    let start = match start {
+        Some(ref e) => Some(e.eval(context)?),
+        None => None,
+    };
+    let stop = match stop {
+        Some(ref e) => Some(e.eval(context)?),
+        None => None,
+    };
+    let stride = match stride {
+        Some(ref e) => Some(e.eval(context)?),
+        None => None,
+    };
+    t!(a.slice(start, stop, stride), this)
+}
+
+fn eval_call<T: FileLoader + 'static>(
+    this: &AstExpr,
+    e: &AstExpr,
+    pos: &[AstExpr],
+    named: &[(AstString, AstExpr)],
+    args: &Option<AstExpr>,
+    kwargs: &Option<AstExpr>,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let npos = eval_vector!(pos, context);
+    let mut nnamed = HashMap::new();
+    for &(ref k, ref v) in named.iter() {
+        nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
+    }
+    let nargs = if let Some(ref x) = args {
+        Some(x.eval(context)?)
+    } else {
+        None
+    };
+    let nkwargs = if let Some(ref x) = kwargs {
+        Some(x.eval(context)?)
+    } else {
+        None
+    };
+    let f = e.eval(context)?;
+    let fname = f.to_repr();
+    let descr = f.to_str();
+    let mut new_stack = context.call_stack.clone();
+    if context.call_stack.iter().any(|x| x.0 == fname) {
+        Err(EvalException::Recursion(this.span, fname, new_stack))
+    } else {
+        let loc = { context.map.lock().unwrap().look_up_pos(this.span.low()) };
+        new_stack.push((
+            fname,
+            format!(
+                "call to {} at {}:{}",
+                descr,
+                loc.file.name(),
+                loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
+            ),
+        ));
+        t!(
+            e.eval(context,)?.call(
+                &new_stack,
+                context.env.clone(),
+                npos,
+                nnamed,
+                nargs,
+                nkwargs,
+            ),
+            this
+        )
+    }
+}
+
+fn eval_dot<T: FileLoader + 'static>(
+    this: &AstExpr,
+    e: &AstExpr,
+    s: &AstString,
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let left = e.eval(context)?;
+    if let Some(v) = context.env.get_type_value(&left, &s.node) {
+        if v.get_type() == "function" {
+            // Insert self so the method see the object it is acting on
+            Ok(function::Function::new_self_call(left.clone(), v))
+        } else {
+            Ok(v)
+        }
+    } else {
+        t!(left.get_attr(&s.node), this)
+    }
+}
+
+fn eval_dict_comprehension<T: FileLoader + 'static>(
+    k: &AstExpr,
+    v: &AstExpr,
+    clauses: &[AstClause],
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let mut r = LinkedHashMap::new();
+    let tuple = Box::new(Spanned {
+        span: k.span.merge(v.span),
+        node: Expr::Tuple(vec![k.clone(), v.clone()]),
+    });
+    let mut context = context.child("dict_comprehension");
+    for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
+        let k = t!(e.at(Value::from(0)), tuple)?;
+        let v = t!(e.at(Value::from(1)), tuple)?;
+        r.insert(k, v);
+    }
+    Ok(Value::from(r))
+}
+
+fn eval_list_comprehension<T: FileLoader + 'static>(
+    e: &AstExpr,
+    clauses: &[AstClause],
+    context: &mut EvaluationContext<T>,
+) -> EvalResult {
+    let mut r = Vec::new();
+    let mut context = context.child("list_comprehension");
+    for v in eval_comprehension_clause(&mut context, e, clauses)? {
+        r.push(v.clone());
+    }
+    Ok(Value::from(r))
 }
 
 enum TransformedExpr<T: FileLoader> {
@@ -317,31 +463,28 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
         let ok = Ok(Value::new(None));
         match self {
-            &TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
-                let span = span.clone();
+            TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
                 let l = v.len() as i64;
-                let nvl = t!(new_value.length(), span span)?;
+                let nvl = t!(new_value.length(), span * span)?;
                 if nvl != l {
-                    Err(EvalException::IncorrectNumberOfValueToUnpack(span, l, nvl))
+                    Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
                 } else {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.into_iter(), span span)?;
+                    let mut it2 = t!(new_value.iter(), span * span)?;
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
                     ok
                 }
             }
-            &TransformedExpr::Dot(ref e, ref s, ref span) => {
-                let span = span.clone();
-                t!(e.clone().set_attr(&s, new_value), span span)?;
+            TransformedExpr::Dot(ref e, ref s, ref span) => {
+                t!(e.clone().set_attr(&s, new_value), span * span)?;
                 ok
             }
-            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
-                let span = span.clone();
-                t!(e.clone().set_at(idx.clone(), new_value), span span)?;
+            TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+                t!(e.clone().set_at(idx.clone(), new_value), span * span)?;
                 ok
             }
         }
@@ -349,15 +492,15 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
 
     fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
         match self {
-            &TransformedExpr::Tuple(ref v, ..) => {
+            TransformedExpr::Tuple(ref v, ..) => {
                 let r = eval_vector!(v, context);
                 Ok(Value::new(tuple::Tuple::new(r.as_slice())))
             }
-            &TransformedExpr::List(ref v, ..) => {
+            TransformedExpr::List(ref v, ..) => {
                 let r = eval_vector!(v, context);
                 Ok(Value::from(r))
             }
-            &TransformedExpr::Dot(ref left, ref s, ref span) => {
+            TransformedExpr::Dot(ref left, ref s, ref span) => {
                 if let Some(v) = context.env.get_type_value(left, &s) {
                     if v.get_type() == "function" {
                         // Insert self so the method see the object it is acting on
@@ -369,7 +512,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                     t!(left.get_attr(&s), span span.clone())
                 }
             }
-            &TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+            TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
                 t!(e.at(idx.clone()), span span.clone())
             }
         }
@@ -415,84 +558,16 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 let r = eval_vector!(v, context);
                 Ok(Value::new(tuple::Tuple::new(r.as_slice())))
             }
-            Expr::Dot(ref e, ref s) => {
-                let left = e.eval(context)?;
-                if let Some(v) = context.env.get_type_value(&left, &s.node) {
-                    if v.get_type() == "function" {
-                        // Insert self so the method see the object it is acting on
-                        Ok(function::Function::new_self_call(left.clone(), v))
-                    } else {
-                        Ok(v)
-                    }
-                } else {
-                    t!(left.get_attr(&s.node), self)
-                }
-            }
+            Expr::Dot(ref e, ref s) => eval_dot(self, e, s, context),
             Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
-                let npos = eval_vector!(pos, context);
-                let mut nnamed = HashMap::new();
-                for &(ref k, ref v) in named.iter() {
-                    nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
-                }
-                let nargs = if let &Some(ref x) = args {
-                    Some(x.eval(context)?)
-                } else {
-                    None
-                };
-                let nkwargs = if let &Some(ref x) = kwargs {
-                    Some(x.eval(context)?)
-                } else {
-                    None
-                };
-                let f = e.eval(context)?;
-                let fname = f.to_repr();
-                let descr = f.to_str();
-                let mut new_stack = context.call_stack.clone();
-                if context.call_stack.iter().any(|x| x.0 == fname) {
-                    Err(EvalException::Recursion(self.span, fname, new_stack))
-                } else {
-                    let loc = { context.map.lock().unwrap().look_up_pos(self.span.low()) };
-                    new_stack.push((
-                        fname,
-                        format!(
-                            "call to {} at {}:{}",
-                            descr,
-                            loc.file.name(),
-                            loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
-                        ),
-                    ));
-                    t!(
-                        e.eval(context,)?.call(
-                            &new_stack,
-                            context.env.clone(),
-                            npos,
-                            nnamed,
-                            nargs,
-                            nkwargs,
-                        ),
-                        self
-                    )
-                }
+                eval_call(self, e, pos, named, args, kwargs, context)
             }
             Expr::ArrayIndirection(ref e, ref idx) => {
                 let idx = idx.eval(context)?;
                 t!(e.eval(context)?.at(idx), self)
             }
             Expr::Slice(ref a, ref start, ref stop, ref stride) => {
-                let a = a.eval(context)?;
-                let start = match start {
-                    &Some(ref e) => Some(e.eval(context)?),
-                    &None => None,
-                };
-                let stop = match stop {
-                    &Some(ref e) => Some(e.eval(context)?),
-                    &None => None,
-                };
-                let stride = match stride {
-                    &Some(ref e) => Some(e.eval(context)?),
-                    &None => None,
-                };
-                t!(a.slice(start, stop, stride), self)
+                eval_slice(self, a, start, stop, stride, context)
             }
             Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
             Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
@@ -509,34 +584,22 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 Ok(if !l.to_bool() { l } else { r.eval(context)? })
             }
             Expr::Op(BinOp::EqualsTo, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Equal))
+                eval_compare(self, l, r, |x| x == Ordering::Equal, context)
             }
             Expr::Op(BinOp::Different, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Equal))
+                eval_compare(self, l, r, |x| x != Ordering::Equal, context)
             }
             Expr::Op(BinOp::LowerThan, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Less))
+                eval_compare(self, l, r, |x| x == Ordering::Less, context)
             }
             Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? == Ordering::Greater))
+                eval_compare(self, l, r, |x| x == Ordering::Greater, context)
             }
             Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Greater))
+                eval_compare(self, l, r, |x| x != Ordering::Greater, context)
             }
             Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                Ok(Value::new(t!(l.compare(&r, 0), self)? != Ordering::Less))
+                eval_compare(self, l, r, |x| x != Ordering::Less, context)
             }
             Expr::Op(BinOp::In, ref l, ref r) => {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)
@@ -584,26 +647,10 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 Ok(r)
             }
             Expr::ListComprehension(ref e, ref clauses) => {
-                let mut r = Vec::new();
-                let mut context = context.child("list_comprehension");
-                for v in eval_comprehension_clause(&mut context, e, clauses.as_slice())? {
-                    r.push(v.clone());
-                }
-                Ok(Value::from(r))
+                eval_list_comprehension(e, clauses, context)
             }
             Expr::DictComprehension((ref k, ref v), ref clauses) => {
-                let mut r = LinkedHashMap::new();
-                let tuple = Box::new(Spanned {
-                    span: k.span.merge(v.span),
-                    node: Expr::Tuple(vec![k.clone(), v.clone()]),
-                });
-                let mut context = context.child("dict_comprehension");
-                for e in eval_comprehension_clause(&mut context, &tuple, clauses.as_slice())? {
-                    let k = t!(e.at(Value::from(0)), tuple)?;
-                    let v = t!(e.at(Value::from(1)), tuple)?;
-                    r.insert(k, v);
-                }
-                Ok(Value::from(r))
+                eval_dict_comprehension(k, v, clauses, context)
             }
         }
     }
@@ -622,7 +669,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.into_iter(), self)?;
+                    let mut it2 = t!(new_value.iter(), self)?;
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -721,7 +768,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 let mut iterable = e2.eval(context)?;
                 let mut result = Ok(Value::new(None));
                 iterable.freeze_for_iteration();
-                for v in t!(iterable.into_iter(), span * span)? {
+                for v in t!(iterable.iter(), span * span)? {
                     e1.set(context, v)?;
                     match st.eval(context) {
                         Err(EvalException::Break(..)) => break,
@@ -745,7 +792,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
             ) => panic!("The parser returned an invalid for clause: {:?}", node),
             Statement::Def(ref name, ref params, ref stmts) => {
                 let mut p = Vec::new();
-                for ref x in params.iter() {
+                for x in params.iter() {
                     p.push(match x.node {
                         Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
                         Parameter::WithDefaultValue(ref n, ref v) => {
@@ -798,8 +845,8 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
 /// A method for consumption by def funcitons
 #[doc(hidden)]
 pub fn eval_def(
-    call_stack: &Vec<(String, String)>,
-    signature: &Vec<FunctionParameter>,
+    call_stack: &[(String, String)],
+    signature: &[FunctionParameter],
     stmts: &AstStatement,
     env: Environment,
     args: Vec<Value>,
@@ -809,19 +856,18 @@ pub fn eval_def(
     let mut it2 = args.iter();
     for s in signature.iter() {
         match s {
-            &FunctionParameter::Normal(ref v)
-            | &FunctionParameter::WithDefaultValue(ref v, ..)
-            | &FunctionParameter::ArgsArray(ref v)
-            | &FunctionParameter::KWArgsDict(ref v) => {
-                match env.set(v, it2.next().unwrap().clone()) {
-                    Err(x) => return Err(x.into()),
-                    _ => (),
+            FunctionParameter::Normal(ref v)
+            | FunctionParameter::WithDefaultValue(ref v, ..)
+            | FunctionParameter::ArgsArray(ref v)
+            | FunctionParameter::KWArgsDict(ref v) => {
+                if let Err(x) = env.set(v, it2.next().unwrap().clone()) {
+                    return Err(x.into());
                 }
             }
         }
     }
     let mut ctx = EvaluationContext {
-        call_stack: call_stack.clone(),
+        call_stack: call_stack.to_owned(),
         env,
         loader: (),
         map: map.clone(),

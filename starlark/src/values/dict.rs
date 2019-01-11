@@ -26,6 +26,7 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Value {
         Value::new(Dictionary {
             mutability: IterableMutability::Mutable,
@@ -131,8 +132,8 @@ impl TypedValue for Dictionary {
 
     fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "dict" {
-            let mut v1: Vec<Value> = self.into_iter()?.collect();
-            let mut v2: Vec<Value> = other.into_iter()?.collect();
+            let mut v1: Vec<Value> = self.iter()?.collect();
+            let mut v2: Vec<Value> = other.iter()?.collect();
             // We sort the keys because the dictionary preserve insertion order but ordering does
             // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
             v1.sort();
@@ -188,7 +189,7 @@ impl TypedValue for Dictionary {
         })
     }
 
-    fn into_iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
         Ok(Box::new(self.content.iter().map(|x| x.0.clone())))
     }
 
@@ -216,7 +217,7 @@ impl TypedValue for Dictionary {
             for (k, v) in self.content.iter() {
                 result.content.insert(k.clone(), v.clone());
             }
-            for k in other.into_iter()? {
+            for k in other.iter()? {
                 result.content.insert(k.clone(), other.at(k)?.clone());
             }
             Ok(Value::new(result))

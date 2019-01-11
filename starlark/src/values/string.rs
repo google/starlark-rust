@@ -59,7 +59,7 @@ impl TypedValue for String {
 
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.len() as i64)? as usize;
-        Ok(Value::new(self.chars().skip(i).next().unwrap().to_string()))
+        Ok(Value::new(self.chars().nth(i).unwrap().to_string()))
     }
 
     fn length(&self) -> Result<i64, ValueError> {
@@ -209,7 +209,7 @@ impl TypedValue for String {
     /// # );
     /// ```
     fn percent(&self, other: Value) -> ValueResult {
-        let mut split_it = self.split("%");
+        let mut split_it = self.split('%');
         let mut res = String::new();
         let mut idx = 0;
         let mut len = 0;
@@ -233,7 +233,7 @@ impl TypedValue for String {
                     }
                     other.at(Value::new(varname))?.clone()
                 } else {
-                    match other.into_iter() {
+                    match other.iter() {
                         Ok(..) => {
                             let val = other.at(Value::new(idx));
                             idx += 1;

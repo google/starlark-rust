@@ -27,14 +27,14 @@ use values::dict::Dictionary;
 use values::*;
 
 // Errors -- CR = Critical Runtime
-const CHR_NOT_UTF8_CODEPOINT_ERROR_CODE: &'static str = "CR00";
-const DICT_ITERABLE_NOT_PAIRS_ERROR_CODE: &'static str = "CR01";
-const ATTR_NAME_NOT_STRING_ERROR_CODE: &'static str = "CR02";
-const INT_CONVERSION_FAILED_ERROR_CODE: &'static str = "CR03";
-const ORD_EXPECT_ONE_CHAR_ERROR_CODE: &'static str = "CR04";
-const EMPTY_ITERABLE_ERROR_CODE: &'static str = "CR05";
-const NUL_RANGE_STEP_ERROR_CODE: &'static str = "CR06";
-const USER_FAILURE_ERROR_CODE: &'static str = "CR99";
+const CHR_NOT_UTF8_CODEPOINT_ERROR_CODE: &str = "CR00";
+const DICT_ITERABLE_NOT_PAIRS_ERROR_CODE: &str = "CR01";
+const ATTR_NAME_NOT_STRING_ERROR_CODE: &str = "CR02";
+const INT_CONVERSION_FAILED_ERROR_CODE: &str = "CR03";
+const ORD_EXPECT_ONE_CHAR_ERROR_CODE: &str = "CR04";
+const EMPTY_ITERABLE_ERROR_CODE: &str = "CR05";
+const NUL_RANGE_STEP_ERROR_CODE: &str = "CR06";
+const USER_FAILURE_ERROR_CODE: &str = "CR99";
 
 #[macro_use]
 pub mod macros;
@@ -55,7 +55,7 @@ starlark_module! {global_functions =>
             format!(
                 "fail(): {}{}",
                 msg.to_str(),
-                st.into_iter().rev().fold(String::new(), |a,s| format!("{}\n    {}", a, s.1))
+                st.iter().rev().fold(String::new(), |a,s| format!("{}\n    {}", a, s.1))
             ),
             msg.to_str()
         )
@@ -86,7 +86,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     any(#x) {
-        for i in x.into_iter()? {
+        for i in x.iter()? {
             if i.to_bool() {
                 return Ok(Value::new(true));
             }
@@ -119,7 +119,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     all(x) {
-        for i in x.into_iter()? {
+        for i in x.iter()? {
             if !i.to_bool() {
                 return Ok(Value::new(false));
             }
@@ -233,14 +233,14 @@ starlark_module! {global_functions =>
         match a.get_type() {
             "NoneType" => (),
             "dict" => {
-                for k in a.into_iter()? {
+                for k in a.iter()? {
                     let v = a.at(k.clone())?;
                     map.set_at(k, v)?;
                 }
             },
             _ => {
-               for el in a.into_iter()? {
-                   match el.into_iter() {
+               for el in a.iter()? {
+                   match el.iter() {
                        Ok(mut it) => {
                             let first = it.next();
                             let second = it.next();
@@ -269,7 +269,7 @@ starlark_module! {global_functions =>
                }
            }
        }
-       for el in kwargs.into_iter()? {
+       for el in kwargs.iter()? {
            map.set_at(el.clone(), kwargs.at(el)?)?;
        }
        Ok(map)
@@ -291,10 +291,11 @@ starlark_module! {global_functions =>
     /// # ))).unwrap());
     /// ```
     dir(env env, x) {
-        match x.dir_attr() {
-            Ok(v) => Ok(Value::from(env.list_type_value(&x).extend(v))),
-            _ => Ok(Value::from(env.list_type_value(&x))),
+        let mut result = env.list_type_value(&x);
+        if let Ok(v) = x.dir_attr() {
+            result.extend(v);
         }
+        Ok(Value::from(result))
     }
 
 
@@ -322,7 +323,7 @@ starlark_module! {global_functions =>
         let v2 = offset.to_int()?;
         let v : Vec<Value> =
             it
-            .into_iter()?
+            .iter()?
             .enumerate()
             .map(|(k, v)| Value::from((Value::new(k as i64 + v2), v)))
             .collect();
@@ -469,12 +470,10 @@ starlark_module! {global_functions =>
                 } else { s },
                 8 => if s.starts_with("0o") || s.starts_with("0O") {
                     s.get(2..).unwrap().to_string()
+                } else if s.starts_with('0') {
+                    s.get(1..).unwrap().to_string()
                 } else {
-                    if s.starts_with("0") {
-                        s.get(1..).unwrap().to_string()
-                    } else {
-                        s
-                    }
+                    s
                 },
                 2 => if s.starts_with("0b") || s.starts_with("0B") {
                     s.get(2..).unwrap().to_string()
@@ -528,7 +527,7 @@ starlark_module! {global_functions =>
     list(#a = None) {
         let mut l = Vec::new();
         if a.get_type() != "NoneType" {
-            for x in a.into_iter()? {
+            for x in a.iter()? {
                 l.push(x.clone())
             }
         }
@@ -563,7 +562,7 @@ starlark_module! {global_functions =>
         } else {
             args
         };
-        let mut it = args.into_iter()?;
+        let mut it = args.iter()?;
         let mut max = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -616,7 +615,7 @@ starlark_module! {global_functions =>
         } else {
             args
         };
-        let mut it = args.into_iter()?;
+        let mut it = args.iter()?;
         let mut min = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -679,7 +678,7 @@ starlark_module! {global_functions =>
                 "Not a one character string".to_owned()
             )
         } else {
-            Ok(Value::new(u32::from(a.to_string().chars().next().unwrap()) as i64))
+            Ok(Value::new(i64::from(u32::from(a.to_string().chars().next().unwrap()))))
         }
     }
 
@@ -781,7 +780,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     reversed(#a) {
-        let v : Vec<Value> = a.into_iter()?.collect();
+        let v : Vec<Value> = a.iter()?.collect();
         let v : Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
     }
@@ -814,7 +813,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     sorted(call_stack cs, env e, #x, key = None, reverse = false) {
-        let x = x.into_iter()?;
+        let x = x.iter()?;
         let mut it : Vec<(Value, Value)> = if key.get_type() == "NoneType" {
             x.map(|x| (x.clone(), x)).collect()
         } else {
@@ -870,7 +869,7 @@ starlark_module! {global_functions =>
     tuple(#a = None) {
         let mut l = Vec::new();
         if a.get_type() != "NoneType" {
-            for x in a.into_iter()? {
+            for x in a.iter()? {
                 l.push(x.clone())
             }
         }
@@ -917,18 +916,16 @@ starlark_module! {global_functions =>
     zip(*args) {
         let mut v = Vec::new();
 
-        for arg in args.into_iter()? {
+        for arg in args.iter()? {
             let first = v.is_empty();
             let mut idx = 0;
-            for e in arg.into_iter()? {
+            for e in arg.iter()? {
                 if first {
                     v.push(Value::from((e.clone(),)));
                     idx += 1;
-                } else {
-                    if idx < v.len() {
-                        v[idx] = v[idx].add(Value::from((e.clone(),)))?;
-                        idx += 1;
-                    }
+                } else if idx < v.len() {
+                    v[idx] = v[idx].add(Value::from((e.clone(),)))?;
+                    idx += 1;
                 }
             }
             v.truncate(idx);

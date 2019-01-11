@@ -60,7 +60,7 @@ fn assert_diagnostic(
     };
     if !msg.to_lowercase().contains(&expected) {
         io::stderr()
-            .write(
+            .write_all(
                 &format!(
                     "Expected error '{}' at {}:{}, got {}\n",
                     expected, path, offset, msg,
@@ -100,7 +100,8 @@ def assert_(cond, msg="assertion failed"):
     for (offset, content) in read_input(path) {
         let err = if let Some(x) = content.find("###") {
             let err = content.get(x + 3..).unwrap().trim();
-            err.get(..err.find("\n").unwrap_or(err.len())).unwrap()
+            err.get(..err.find('\n').unwrap_or_else(|| err.len()))
+                .unwrap()
         } else {
             ""
         };
@@ -115,16 +116,14 @@ def assert_(cond, msg="assertion failed"):
                 if err.is_empty() {
                     Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
                     return false;
-                } else {
-                    if !assert_diagnostic(p, err, path, offset, &map) {
-                        return false;
-                    }
+                } else if !assert_diagnostic(p, err, path, offset, &map) {
+                    return false;
                 }
             }
             _ => {
                 if !err.is_empty() {
                     io::stderr()
-                        .write(
+                        .write_all(
                             &format!(
                                 "Expected error '{}' at {}:{}, got success",
                                 err, path, offset,
@@ -137,7 +136,7 @@ def assert_(cond, msg="assertion failed"):
             }
         }
     }
-    return true;
+    true
 }
 
 pub fn do_conformance_test(path: &str) {

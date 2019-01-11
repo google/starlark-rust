@@ -11,6 +11,9 @@ matrix:
   - name: "Rust: format"
     env: ACTION=format
     rust: nightly
+  - name: "Rust: clippy"
+    env: ACTION=clippy
+    rust: nightly
   - name: "Rust: doc"
     env: ACTION=doc
     rust: stable

@@ -25,10 +25,10 @@ use std::str::CharIndices;
 
 // TODO: move that code in some common error code list?
 // CL prefix = Critical Lexing
-const LEX_ERROR_CODE: &'static str = "CL00";
-const INDENT_ERROR_CODE: &'static str = "CL01";
-const UNFINISHED_STRING_LITERAL_CODE: &'static str = "CL02";
-const INVALID_ESCAPE_SEQUENCE_CODE: &'static str = "CL03";
+const LEX_ERROR_CODE: &str = "CL00";
+const INDENT_ERROR_CODE: &str = "CL01";
+const UNFINISHED_STRING_LITERAL_CODE: &str = "CL02";
+const INVALID_ESCAPE_SEQUENCE_CODE: &str = "CL03";
 
 /// Errors that can be generated during lexing
 #[doc(hidden)]
@@ -156,59 +156,59 @@ pub enum Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Token::Indent => write!(f, "new indentation block"),
-            &Token::Dedent => write!(f, "end of indentation block"),
-            &Token::Newline => write!(f, "new line"),
-            &Token::And => write!(f, "keyword 'and'"),
-            &Token::Else => write!(f, "keyword 'else'"),
-            &Token::Load => write!(f, "keyword 'load'"),
-            &Token::Break => write!(f, "keyword 'break'"),
-            &Token::For => write!(f, "keyword 'for'"),
-            &Token::Not => write!(f, "keyword 'not'"),
-            &Token::NotIn => write!(f, "keyword 'not in'"),
-            &Token::Continue => write!(f, "keyword 'continue'"),
-            &Token::If => write!(f, "keyword 'if'"),
-            &Token::Or => write!(f, "keyword 'or'"),
-            &Token::Def => write!(f, "keyword 'def'"),
-            &Token::In => write!(f, "keyword 'in'"),
-            &Token::Pass => write!(f, "keyword 'pass'"),
-            &Token::Elif => write!(f, "keyword 'elif'"),
-            &Token::Return => write!(f, "keyword 'return'"),
-            &Token::Comma => write!(f, "symbol ','"),
-            &Token::Semicolon => write!(f, "symbol ';'"),
-            &Token::Colon => write!(f, "symbol ':'"),
-            &Token::PlusEqual => write!(f, "symbol '+='"),
-            &Token::MinusEqual => write!(f, "symbol '-='"),
-            &Token::StarEqual => write!(f, "symbol '*='"),
-            &Token::SlashEqual => write!(f, "symbol '/='"),
-            &Token::DoubleSlashEqual => write!(f, "symbol '//='"),
-            &Token::PercentEqual => write!(f, "symbol '%='"),
-            &Token::DoubleEqual => write!(f, "symbol '=='"),
-            &Token::BangEqual => write!(f, "symbol '!='"),
-            &Token::LowerEqual => write!(f, "symbol '<='"),
-            &Token::GreaterEqual => write!(f, "symbol '>='"),
-            &Token::Doublestar => write!(f, "symbol '**'"),
-            &Token::Equal => write!(f, "symbol '='"),
-            &Token::LowerThan => write!(f, "symbol '<'"),
-            &Token::GreaterThan => write!(f, "symbol '>'"),
-            &Token::Minus => write!(f, "symbol '-'"),
-            &Token::Plus => write!(f, "symbol '+'"),
-            &Token::Star => write!(f, "symbol '*'"),
-            &Token::Percent => write!(f, "symbol '%'"),
-            &Token::Slash => write!(f, "symbol '/'"),
-            &Token::DoubleSlash => write!(f, "symbol '//'"),
-            &Token::Dot => write!(f, "symbol '.'"),
-            &Token::Pipe => write!(f, "symbol '|'"),
-            &Token::OpeningBracket => write!(f, "symbol '['"),
-            &Token::OpeningCurlyBracket => write!(f, "symbol '{{'"),
-            &Token::OpeningParenthesis => write!(f, "symbol '('"),
-            &Token::ClosingBracket => write!(f, "symbol ']'"),
-            &Token::ClosingCurlyBracket => write!(f, "symbol '}}'"),
-            &Token::ClosingParenthesis => write!(f, "symbol ')'"),
-            &Token::Reserved(ref s) => write!(f, "reserved keyword '{}'", s),
-            &Token::Identifier(ref s) => write!(f, "identifier '{}'", s),
-            &Token::IntegerLiteral(ref i) => write!(f, "integer literal '{}'", i),
-            &Token::StringLiteral(ref s) => write!(f, "string literal '{}'", s),
+            Token::Indent => write!(f, "new indentation block"),
+            Token::Dedent => write!(f, "end of indentation block"),
+            Token::Newline => write!(f, "new line"),
+            Token::And => write!(f, "keyword 'and'"),
+            Token::Else => write!(f, "keyword 'else'"),
+            Token::Load => write!(f, "keyword 'load'"),
+            Token::Break => write!(f, "keyword 'break'"),
+            Token::For => write!(f, "keyword 'for'"),
+            Token::Not => write!(f, "keyword 'not'"),
+            Token::NotIn => write!(f, "keyword 'not in'"),
+            Token::Continue => write!(f, "keyword 'continue'"),
+            Token::If => write!(f, "keyword 'if'"),
+            Token::Or => write!(f, "keyword 'or'"),
+            Token::Def => write!(f, "keyword 'def'"),
+            Token::In => write!(f, "keyword 'in'"),
+            Token::Pass => write!(f, "keyword 'pass'"),
+            Token::Elif => write!(f, "keyword 'elif'"),
+            Token::Return => write!(f, "keyword 'return'"),
+            Token::Comma => write!(f, "symbol ','"),
+            Token::Semicolon => write!(f, "symbol ';'"),
+            Token::Colon => write!(f, "symbol ':'"),
+            Token::PlusEqual => write!(f, "symbol '+='"),
+            Token::MinusEqual => write!(f, "symbol '-='"),
+            Token::StarEqual => write!(f, "symbol '*='"),
+            Token::SlashEqual => write!(f, "symbol '/='"),
+            Token::DoubleSlashEqual => write!(f, "symbol '//='"),
+            Token::PercentEqual => write!(f, "symbol '%='"),
+            Token::DoubleEqual => write!(f, "symbol '=='"),
+            Token::BangEqual => write!(f, "symbol '!='"),
+            Token::LowerEqual => write!(f, "symbol '<='"),
+            Token::GreaterEqual => write!(f, "symbol '>='"),
+            Token::Doublestar => write!(f, "symbol '**'"),
+            Token::Equal => write!(f, "symbol '='"),
+            Token::LowerThan => write!(f, "symbol '<'"),
+            Token::GreaterThan => write!(f, "symbol '>'"),
+            Token::Minus => write!(f, "symbol '-'"),
+            Token::Plus => write!(f, "symbol '+'"),
+            Token::Star => write!(f, "symbol '*'"),
+            Token::Percent => write!(f, "symbol '%'"),
+            Token::Slash => write!(f, "symbol '/'"),
+            Token::DoubleSlash => write!(f, "symbol '//'"),
+            Token::Dot => write!(f, "symbol '.'"),
+            Token::Pipe => write!(f, "symbol '|'"),
+            Token::OpeningBracket => write!(f, "symbol '['"),
+            Token::OpeningCurlyBracket => write!(f, "symbol '{{'"),
+            Token::OpeningParenthesis => write!(f, "symbol '('"),
+            Token::ClosingBracket => write!(f, "symbol ']'"),
+            Token::ClosingCurlyBracket => write!(f, "symbol '}}'"),
+            Token::ClosingParenthesis => write!(f, "symbol ')'"),
+            Token::Reserved(ref s) => write!(f, "reserved keyword '{}'", s),
+            Token::Identifier(ref s) => write!(f, "identifier '{}'", s),
+            Token::IntegerLiteral(ref i) => write!(f, "integer literal '{}'", i),
+            Token::StringLiteral(ref s) => write!(f, "string literal '{}'", s),
         }
     }
 }
@@ -331,12 +331,10 @@ impl Lexer {
     fn replace_input(&mut self, input: &str) {
         self.offset = if let Some((p, _)) = self.peek() {
             p
+        } else if let Some((i, c)) = self.last_next {
+            i + (c.len_utf8() as u64)
         } else {
-            if let Some((i, c)) = self.last_next {
-                i + (c.len_utf8() as u64)
-            } else {
-                self.last_pos
-            }
+            self.last_pos
         };
         assert!(self.offset >= self.last_pos);
         self.input = input.to_owned();
@@ -418,12 +416,10 @@ impl Lexer {
     fn end_pos(&mut self) -> (u64, u64) {
         if let Some((end, ..)) = self.peek() {
             (self.last_pos, end)
+        } else if let Some((i, c)) = self.last_next {
+            (self.last_pos, i + (c.len_utf8() as u64))
         } else {
-            if let Some((i, c)) = self.last_next {
-                (self.last_pos, i + (c.len_utf8() as u64))
-            } else {
-                (self.last_pos, self.last_pos)
-            }
+            (self.last_pos, self.last_pos)
         }
     }
 
@@ -653,14 +649,10 @@ impl Lexer {
 
     fn consume_int_radix(&mut self, radix: u32) -> Option<<Self as Iterator>::Item> {
         let val = self.consume_int_r(radix);
-        if self.peek_char().is_alphanumeric() {
+        if self.peek_char().is_alphanumeric() || val.is_err() {
             self.invalid()
         } else {
-            if val.is_err() {
-                self.invalid()
-            } else {
-                self.end(Token::IntegerLiteral(val.unwrap()))
-            }
+            self.end(Token::IntegerLiteral(val.unwrap()))
         }
     }
 
@@ -861,131 +853,129 @@ impl Lexer {
         self.begin();
         match self.peek_char() {
             '\0' => None,
-            '\n' | '\r' | '\u{2028}' | '\u{2029}' => return self.consume_nl(),
-            '\'' | '"' => return self.consume_string(false),
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.consume_nl(),
+            '\'' | '"' => self.consume_string(false),
             'r' => {
                 self.pop();
                 let p = self.peek_char();
                 if p == '\'' || p == '"' {
-                    return self.consume_string(true);
+                    self.consume_string(true)
                 } else {
-                    return self.consume_identifier_queue("r");
+                    self.consume_identifier_queue("r")
                 }
             }
-            '0'...'9' => return self.consume_int(),
-            '_' => return self.consume_identifier(),
-            c if c.is_alphabetic() => return self.consume_identifier(),
-            ',' => return self.consume(Token::Comma),
-            ';' => return self.consume(Token::Semicolon),
-            ':' => return self.consume(Token::Colon),
+            '0'...'9' => self.consume_int(),
+            '_' => self.consume_identifier(),
+            c if c.is_alphabetic() => self.consume_identifier(),
+            ',' => self.consume(Token::Comma),
+            ';' => self.consume(Token::Semicolon),
+            ':' => self.consume(Token::Colon),
             '+' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::PlusEqual)
                 } else {
                     self.end(Token::Plus)
-                };
+                }
             }
             '-' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::MinusEqual)
                 } else {
                     self.end(Token::Minus)
-                };
+                }
             }
             '*' => {
                 self.pop();
                 match self.peek_char() {
-                    '=' => return self.consume(Token::StarEqual),
-                    '*' => return self.consume(Token::Doublestar),
-                    _ => return self.end(Token::Star),
+                    '=' => self.consume(Token::StarEqual),
+                    '*' => self.consume(Token::Doublestar),
+                    _ => self.end(Token::Star),
                 }
             }
             '/' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::SlashEqual)
-                } else {
-                    if self.peek_char() == '/' {
-                        self.pop();
-                        if self.peek_char() == '=' {
-                            self.consume(Token::DoubleSlashEqual)
-                        } else {
-                            self.end(Token::DoubleSlash)
-                        }
+                } else if self.peek_char() == '/' {
+                    self.pop();
+                    if self.peek_char() == '=' {
+                        self.consume(Token::DoubleSlashEqual)
                     } else {
-                        self.end(Token::Slash)
+                        self.end(Token::DoubleSlash)
                     }
-                };
+                } else {
+                    self.end(Token::Slash)
+                }
             }
             '%' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::PercentEqual)
                 } else {
                     self.end(Token::Percent)
-                };
+                }
             }
             '=' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::DoubleEqual)
                 } else {
                     self.end(Token::Equal)
-                };
+                }
             }
             '!' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::BangEqual)
                 } else {
                     self.invalid()
-                };
+                }
             }
             '<' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::LowerEqual)
                 } else {
                     self.end(Token::LowerThan)
-                };
+                }
             }
             '>' => {
                 self.pop();
-                return if self.peek_char() == '=' {
+                if self.peek_char() == '=' {
                     self.consume(Token::GreaterEqual)
                 } else {
                     self.end(Token::GreaterThan)
-                };
+                }
             }
-            '|' => return self.consume(Token::Pipe),
-            '.' => return self.consume(Token::Dot),
+            '|' => self.consume(Token::Pipe),
+            '.' => self.consume(Token::Dot),
             '[' => {
                 self.parentheses += 1;
-                return self.consume(Token::OpeningBracket);
+                self.consume(Token::OpeningBracket)
             }
             ']' => {
                 self.parentheses -= 1;
-                return self.consume(Token::ClosingBracket);
+                self.consume(Token::ClosingBracket)
             }
             '(' => {
                 self.parentheses += 1;
-                return self.consume(Token::OpeningParenthesis);
+                self.consume(Token::OpeningParenthesis)
             }
             ')' => {
                 self.parentheses -= 1;
-                return self.consume(Token::ClosingParenthesis);
+                self.consume(Token::ClosingParenthesis)
             }
             '{' => {
                 self.parentheses += 1;
-                return self.consume(Token::OpeningCurlyBracket);
+                self.consume(Token::OpeningCurlyBracket)
             }
             '}' => {
                 self.parentheses -= 1;
-                return self.consume(Token::ClosingCurlyBracket);
+                self.consume(Token::ClosingCurlyBracket)
             }
-            _ => return self.invalid(),
+            _ => self.invalid(),
         }
     }
 }
@@ -1072,8 +1062,8 @@ mod tests {
             collect_result(s)
                 .iter()
                 .filter_map(|v| match v {
-                    &Token::IntegerLiteral(r) => Some(r),
-                    &Token::Newline => None,
+                    Token::IntegerLiteral(r) => Some(*r),
+                    Token::Newline => None,
                     _ => panic!("{:?} is not a integer literal", v),
                 })
                 .collect()

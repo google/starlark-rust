@@ -37,8 +37,11 @@ pub enum FunctionType {
     Def(String, String),
 }
 
+pub type StarlarkFunctionPrototype =
+    Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult;
+
 pub struct Function {
-    function: Box<Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult>,
+    function: Box<StarlarkFunctionPrototype>,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
@@ -51,12 +54,12 @@ struct WrappedMethod {
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Function call
-const NOT_ENOUGH_PARAMS_ERROR_CODE: &'static str = "CF00";
-const WRONG_ARGS_IDENT_ERROR_CODE: &'static str = "CF01";
-const ARGS_NOT_ITERABLE_ERROR_CODE: &'static str = "CF02";
-const KWARGS_NOT_MAPPABLE_ERROR_CODE: &'static str = "CF03";
-// Not an error: const KWARGS_KEY_IDENT_ERROR_CODE: &'static str = "CF04";
-const EXTRA_PARAMETER_ERROR_CODE: &'static str = "CF05";
+const NOT_ENOUGH_PARAMS_ERROR_CODE: &str = "CF00";
+const WRONG_ARGS_IDENT_ERROR_CODE: &str = "CF01";
+const ARGS_NOT_ITERABLE_ERROR_CODE: &str = "CF02";
+const KWARGS_NOT_MAPPABLE_ERROR_CODE: &str = "CF03";
+// Not an error: const KWARGS_KEY_IDENT_ERROR_CODE: &str = "CF04";
+const EXTRA_PARAMETER_ERROR_CODE: &str = "CF05";
 
 #[derive(Debug, Clone)]
 pub enum FunctionError {
@@ -97,7 +100,7 @@ impl Into<RuntimeError> for FunctionError {
                     signature,
                 } => format!(
                     "Missing parameter {} for call to {}",
-                    missing.trim_start_matches("$"),
+                    missing.trim_start_matches('$'),
                     repr(&function_type, &signature)
                 ),
                 FunctionError::ArgsValueIsNotString => {
@@ -124,13 +127,14 @@ impl Into<ValueError> for FunctionError {
 }
 
 impl Function {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
-            signature: signature,
+            signature,
             function_type: FunctionType::Native(name),
         })
     }
@@ -142,7 +146,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&Vec<(String, String)>, Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -151,6 +155,7 @@ impl Function {
         })
     }
 
+    #[allow(clippy::boxed_local)]
     pub fn new_def(
         name: String,
         module: String,
@@ -180,55 +185,55 @@ impl Function {
 impl FunctionType {
     fn to_str(&self) -> String {
         match self {
-            &FunctionType::Native(ref name) => name.clone(),
-            &FunctionType::NativeMethod(ref function_type, ref name) => {
+            FunctionType::Native(ref name) => name.clone(),
+            FunctionType::NativeMethod(ref function_type, ref name) => {
                 format!("{}.{}", function_type, name)
             }
-            &FunctionType::Def(ref name, ..) => name.clone(),
+            FunctionType::Def(ref name, ..) => name.clone(),
         }
     }
 
     fn to_repr(&self) -> String {
         match self {
-            &FunctionType::Native(ref name) => format!("<native function {}>", name),
-            &FunctionType::NativeMethod(ref function_type, ref name) => {
+            FunctionType::Native(ref name) => format!("<native function {}>", name),
+            FunctionType::NativeMethod(ref function_type, ref name) => {
                 format!("<native method {}.{}>", function_type, name)
             }
-            &FunctionType::Def(ref name, ref module, ..) => {
+            FunctionType::Def(ref name, ref module, ..) => {
                 format!("<function {} from {}>", name, module)
             }
         }
     }
 }
 
-fn repr(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> String {
+fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
             match x {
-                &FunctionParameter::Normal(ref name) => name.clone(),
-                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionParameter::Normal(ref name) => name.clone(),
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     format!("{} = {}", name, value.to_repr())
                 }
-                &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
-                &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
+                FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
+                FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
         })
         .collect();
     format!("{}({})", function_type.to_repr(), v.join(", "))
 }
 
-fn to_str(function_type: &FunctionType, signature: &Vec<FunctionParameter>) -> String {
+fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
             match x {
-                &FunctionParameter::Normal(ref name) => name.clone(),
-                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionParameter::Normal(ref name) => name.clone(),
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     format!("{} = {}", name, value.to_repr())
                 }
-                &FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
-                &FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
+                FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
+                FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
             }
         })
         .collect();
@@ -266,7 +271,7 @@ impl TypedValue for Function {
 
     fn call(
         &self,
-        call_stack: &Vec<(String, String)>,
+        call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,
@@ -277,7 +282,7 @@ impl TypedValue for Function {
         let mut v = Vec::new();
         // Collect args
         let av: Vec<Value> = if let Some(x) = args {
-            match x.into_iter() {
+            match x.iter() {
                 Ok(y) => positional.into_iter().chain(y).collect(),
                 Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
             }
@@ -288,7 +293,7 @@ impl TypedValue for Function {
         // Collect kwargs
         let mut kwargs_dict = named.clone();
         if let Some(x) = kwargs {
-            match x.into_iter() {
+            match x.iter() {
                 Ok(y) => {
                     for n in y {
                         if n.get_type() == "string" {
@@ -309,40 +314,36 @@ impl TypedValue for Function {
         // Now verify signature and transform in a value vector
         for parameter in self.signature.iter() {
             match parameter {
-                &FunctionParameter::Normal(ref name) => {
+                FunctionParameter::Normal(ref name) => {
                     if let Some(x) = args_iter.next() {
                         v.push(x)
+                    } else if let Some(ref r) = kwargs_dict.remove(name) {
+                        v.push(r.clone());
                     } else {
-                        if let Some(ref r) = kwargs_dict.remove(name) {
-                            v.push(r.clone());
-                        } else {
-                            return Err(FunctionError::NotEnoughParameter {
-                                missing: name.to_string(),
-                                function_type: self.function_type.clone(),
-                                signature: self.signature.clone(),
-                            }
-                            .into());
+                        return Err(FunctionError::NotEnoughParameter {
+                            missing: name.to_string(),
+                            function_type: self.function_type.clone(),
+                            signature: self.signature.clone(),
                         }
+                        .into());
                     }
                 }
-                &FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     if let Some(x) = args_iter.next() {
                         v.push(x)
+                    } else if let Some(ref r) = kwargs_dict.remove(name) {
+                        v.push(r.clone());
                     } else {
-                        if let Some(ref r) = kwargs_dict.remove(name) {
-                            v.push(r.clone());
-                        } else {
-                            v.push(value.clone());
-                        }
+                        v.push(value.clone());
                     }
                 }
-                &FunctionParameter::ArgsArray(..) => {
+                FunctionParameter::ArgsArray(..) => {
                     let argv: Vec<Value> = args_iter.clone().collect();
                     v.push(Value::from(argv));
                     // We do not use last so we keep ownership of the iterator
                     while args_iter.next().is_some() {}
                 }
-                &FunctionParameter::KWArgsDict(..) => {
+                FunctionParameter::KWArgsDict(..) => {
                     v.push(Value::from(kwargs_dict.clone()));
                     kwargs_dict.clear();
                 }
@@ -385,7 +386,7 @@ impl TypedValue for WrappedMethod {
 
     fn call(
         &self,
-        call_stack: &Vec<(String, String)>,
+        call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
         named: HashMap<String, Value>,

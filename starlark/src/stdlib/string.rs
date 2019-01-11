@@ -18,11 +18,11 @@ use std::str::FromStr;
 use values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
-pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &'static str = "UF00";
-pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE: &'static str = "UF01";
-pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE: &'static str = "UF02";
-pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE: &'static str = "UF03";
-pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE: &'static str = "UF04";
+pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &str = "UF00";
+pub const FORMAT_STRING_UNMATCHED_BRACKET_ERROR_CODE: &str = "UF01";
+pub const FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE: &str = "UF02";
+pub const FORMAT_STRING_INVALID_SPECIFIER_ERROR_CODE: &str = "UF03";
+pub const FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE: &str = "UF04";
 
 macro_rules! ok {
     ($e:expr) => {
@@ -91,35 +91,33 @@ fn format_capture<T: Iterator<Item = Value>>(
                 )
             }
         }
-    } else {
-        if n.chars().all(|c| c.is_ascii_digit()) {
-            if *captured_by_order {
-                starlark_err!(
-                    FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE,
-                    concat!(
-                        "Cannot mix manual field specification and ",
-                        "automatic field numbering in format string"
-                    )
-                    .to_owned(),
-                    "Mixed manual and automatic field numbering".to_owned()
+    } else if n.chars().all(|c| c.is_ascii_digit()) {
+        if *captured_by_order {
+            starlark_err!(
+                FORMAT_STRING_ORDER_INDEX_MIX_ERROR_CODE,
+                concat!(
+                    "Cannot mix manual field specification and ",
+                    "automatic field numbering in format string"
                 )
-            } else {
-                *captured_by_index = true;
-                return Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?));
-            }
+                .to_owned(),
+                "Mixed manual and automatic field numbering".to_owned()
+            )
         } else {
-            if let Some(x) = n.chars().find(|c| match c {
-                &'.' | &',' | &'[' | &']' => true,
-                _ => false,
-            }) {
-                starlark_err!(
-                    FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
-                    format!("Invalid character '{}' inside replacement field", x),
-                    format!("Invalid character '{}'", x)
-                )
-            }
-            return Ok(conv(kwargs.at(Value::from(n))?));
+            *captured_by_index = true;
+            Ok(conv(args.at(Value::from(i64::from_str(n).unwrap()))?))
         }
+    } else {
+        if let Some(x) = n.chars().find(|c| match c {
+            '.' | ',' | '[' | ']' => true,
+            _ => false,
+        }) {
+            starlark_err!(
+                FORMAT_STRING_INVALID_CHARACTER_ERROR_CODE,
+                format!("Invalid character '{}' inside replacement field", x),
+                format!("Invalid character '{}'", x)
+            )
+        }
+        Ok(conv(kwargs.at(Value::from(n))?))
     }
 }
 
@@ -133,18 +131,16 @@ fn splitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
     for c in s.chars() {
         if split >= maxsplit && !eat_ws {
             cur.push(c)
-        } else {
-            if c.is_whitespace() {
-                if !cur.is_empty() {
-                    v.push(cur);
-                    cur = String::new();
-                    split += 1;
-                    eat_ws = true;
-                }
-            } else {
-                eat_ws = false;
-                cur.push(c)
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                v.push(cur);
+                cur = String::new();
+                split += 1;
+                eat_ws = true;
             }
+        } else {
+            eat_ws = false;
+            cur.push(c)
         }
     }
     if !cur.is_empty() {
@@ -161,18 +157,16 @@ fn rsplitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
     for c in s.chars().rev() {
         if split >= maxsplit && !eat_ws {
             cur.push(c)
-        } else {
-            if c.is_whitespace() {
-                if !cur.is_empty() {
-                    v.push(cur.chars().rev().collect());
-                    cur = String::new();
-                    split += 1;
-                    eat_ws = true;
-                }
-            } else {
-                eat_ws = false;
-                cur.push(c)
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                v.push(cur.chars().rev().collect());
+                cur = String::new();
+                split += 1;
+                eat_ws = true;
             }
+        } else {
+            eat_ws = false;
+            cur.push(c)
         }
     }
     if !cur.is_empty() {
@@ -269,7 +263,7 @@ starlark_module! {global =>
     /// ```
     string.codepoints(this) {
         // Note that we return a list here... Which is not equivalent to the go implementation.
-        let v : Vec<i64> = this.to_str().chars().map(|x| u32::from(x) as i64).collect();
+        let v : Vec<i64> = this.to_str().chars().map(|x| i64::from(u32::from(x))).collect();
         ok!(v)
     }
 
@@ -436,7 +430,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.format(this, *args, **kwargs) {
-        let mut it = args.into_iter()?;
+        let mut it = args.iter()?;
         let this = this.to_str();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
@@ -735,10 +729,8 @@ starlark_module! {global =>
                     if c.is_lowercase() {
                         ok!(false);
                     }
-                } else {
-                    if c.is_uppercase() {
-                        ok!(false);
-                    }
+                } else if c.is_uppercase() {
+                    ok!(false);
                 }
                 if c.is_alphabetic() {
                     result = true;
@@ -805,7 +797,7 @@ starlark_module! {global =>
     string.join(this, #to_join) {
         let this = this.to_str();
         ok!(
-            to_join.into_iter()?.fold(
+            to_join.iter()?.fold(
                 Ok(String::new()),
                 |a, x| {
                     check_string!(x, join);
@@ -1383,7 +1375,7 @@ mod tests {
     fn test_format_capture() {
         let args = Value::from(vec!["1", "2", "3"]);
         let mut kwargs = dict::Dictionary::new();
-        let mut it = args.into_iter().unwrap();
+        let mut it = args.iter().unwrap();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
 
@@ -1460,7 +1452,7 @@ mod tests {
         )
         .is_err());
         captured_by_order = false;
-        it = args.into_iter().unwrap();
+        it = args.iter().unwrap();
         assert_eq!(
             format_capture(
                 "{1",

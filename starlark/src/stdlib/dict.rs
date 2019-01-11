@@ -17,8 +17,8 @@
 use linked_hash_map::LinkedHashMap;
 use values::*;
 
-pub const DICT_KEY_NOT_FOUND_ERROR_CODE: &'static str = "UF20";
-pub const POP_ON_EMPTY_DICT_ERROR_CODE: &'static str = "UF21";
+pub const DICT_KEY_NOT_FOUND_ERROR_CODE: &str = "UF20";
+pub const POP_ON_EMPTY_DICT_ERROR_CODE: &str = "UF21";
 
 macro_rules! ok {
     ($e:expr) => {
@@ -48,7 +48,7 @@ starlark_module! {global =>
     /// ```
     dict.clear(this) {
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 x.clear();
                 ok!(None)
@@ -133,7 +133,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.keys(this) {
-        let v : Vec<Value> = this.into_iter()?.collect();
+        let v : Vec<Value> = this.iter()?.collect();
         ok!(v)
     }
 
@@ -172,7 +172,7 @@ starlark_module! {global =>
         key.get_hash()?;  // ensure the key is hashable
         let key_error = format!("Key '{}' not found in '{}'", key.to_repr(), this.to_repr());
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 match x.remove(&key) {
                     Some(x) => Ok(x),
@@ -218,7 +218,7 @@ starlark_module! {global =>
     /// ```
     dict.popitem(this) {
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 match x.pop_front() {
                     Some(x) => ok!(x),
@@ -265,7 +265,7 @@ starlark_module! {global =>
         key.get_hash()?; // Ensure the key is hashable
         let cloned_default = default.clone_for_container_value(&this);
         dict::Dictionary::mutate(
-            &mut this,
+            &this,
             &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
                 if let Some(r) = x.get(&key) {
                     return Ok(r.clone())
@@ -311,7 +311,7 @@ starlark_module! {global =>
     dict.update(this, #pairs=None, **kwargs) {
         match pairs.get_type() {
             "NoneType" => (),
-            "list" => for v in pairs.into_iter()? {
+            "list" => for v in pairs.iter()? {
                 if v.length()? != 2 {
                     starlark_err!(
                         INCORRECT_PARAMETER_TYPE_ERROR_CODE,
@@ -324,7 +324,7 @@ starlark_module! {global =>
                 }
                 this.set_at(v.at(Value::new(0))?, v.at(Value::new(1))?)?;
             },
-            "dict" => for k in pairs.into_iter()? {
+            "dict" => for k in pairs.iter()? {
                 this.set_at(k.clone(), pairs.at(k)?)?
             },
             x => starlark_err!(
@@ -340,7 +340,7 @@ starlark_module! {global =>
             )
         }
 
-        for k in kwargs.into_iter()? {
+        for k in kwargs.iter()? {
             this.set_at(k.clone(), kwargs.at(k)?)?
         }
         ok!(None)

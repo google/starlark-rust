@@ -24,9 +24,9 @@ use values::*;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module
-const FROZEN_ENV_ERROR_CODE: &'static str = "CM00";
-const NOT_FOUND_ERROR_CODE: &'static str = "CM01";
-const CANNOT_IMPORT_ERROR_CODE: &'static str = "CE02";
+const FROZEN_ENV_ERROR_CODE: &str = "CM00";
+const NOT_FOUND_ERROR_CODE: &str = "CM01";
+const CANNOT_IMPORT_ERROR_CODE: &str = "CE02";
 
 #[derive(Debug)]
 #[doc(hidden)]
@@ -207,7 +207,7 @@ impl EnvironmentContent {
     /// Get the value of the variable `name`
     pub fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         if self.variables.contains_key(name) {
-            Ok(self.variables.get(name).unwrap().clone())
+            Ok(self.variables[name].clone())
         } else {
             match self.parent {
                 Some(ref p) => p.get(name),
@@ -233,7 +233,7 @@ impl EnvironmentContent {
     pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
         match self.type_objs.get(obj.get_type()) {
             Some(ref d) => match d.get(id) {
-                Some(&ref v) => Some(v.clone()),
+                Some(v) => Some(v.clone()),
                 None => match self.parent {
                     Some(ref p) => p.get_type_value(obj, id),
                     None => None,
@@ -254,12 +254,10 @@ impl EnvironmentContent {
                 r.push(k.clone());
             }
             r
+        } else if let Some(ref p) = self.parent {
+            p.list_type_value(obj)
         } else {
-            if let Some(ref p) = self.parent {
-                p.list_type_value(obj)
-            } else {
-                Vec::new()
-            }
+            Vec::new()
         }
     }
 
