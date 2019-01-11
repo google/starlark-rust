@@ -100,7 +100,7 @@ impl Into<RuntimeError> for FunctionError {
                     signature,
                 } => format!(
                     "Missing parameter {} for call to {}",
-                    missing.trim_start_matches("$"),
+                    missing.trim_start_matches('$'),
                     repr(&function_type, &signature)
                 ),
                 FunctionError::ArgsValueIsNotString => {
