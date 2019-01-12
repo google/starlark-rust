@@ -60,7 +60,12 @@ fn main() {
     );
     opts.optflag("h", "help", "Show the usage of this program.");
     opts.optflag("r", "repl", "Run a REPL after files have been parsed.");
-    opts.optopt("c", "command", "Starlark command to run after files have been parsed.", "expr");
+    opts.optopt(
+        "c",
+        "command",
+        "Starlark command to run after files have been parsed.",
+        "expr",
+    );
     match opts.parse(&args[1..]) {
         Err(e) => {
             print_usage!(program, opts, "\n{}\n", e);
@@ -93,7 +98,12 @@ fn main() {
                     repl(&global, dialect);
                 }
                 if let Some(command) = command {
-                    eval("[command flag]", &command, dialect, &mut global.child("[command flag]"));
+                    eval(
+                        "[command flag]",
+                        &command,
+                        dialect,
+                        &mut global.child("[command flag]"),
+                    );
                 }
             }
         }
