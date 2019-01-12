@@ -20,8 +20,9 @@ use environment::Environment;
 use std::sync::{Arc, Mutex};
 use syntax::dialect::Dialect;
 
-/// Evaluate a string content, mutate the environment accordingly  and print
-/// the value of the last statement (if not `None`) or the error diagnostic.
+/// Evaluate a string content, mutate the environment accordingly and print
+/// the value of the last statement (if not `None`) or the error diagnostic. Returns true if
+/// the execution succeeded, false if there were errors.
 ///
 /// # Arguments
 ///
@@ -32,20 +33,25 @@ use syntax::dialect::Dialect;
 /// * content: the content to evaluate
 /// * dialect: starlark language dialect
 /// * env: the environment to mutate during the evaluation
-pub fn eval(path: &str, content: &str, dialect: Dialect, env: &mut Environment) {
+pub fn eval(path: &str, content: &str, dialect: Dialect, env: &mut Environment) -> bool {
     let map = Arc::new(Mutex::new(CodeMap::new()));
     match super::simple::eval(&map, path, content, dialect, env) {
         Ok(v) => {
             if v.get_type() != "NoneType" {
                 println!("{}", v.to_repr())
-            }
+            };
+            true
         }
-        Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
+        Err(p) => {
+            Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
+            false
+        }
     }
 }
 
 /// Evaluate a file, mutate the environment accordingly and print
-/// the value of the last statement (if not `None`) or the error diagnostic.
+/// the value of the last statement (if not `None`) or the error diagnostic. Returns true if
+/// the execution succeeded, false if there were errors.
 ///
 /// __This version uses the [SimpleFileLoader](SimpleFileLoader.struct.html) implementation for
 /// the file loader__
@@ -55,14 +61,18 @@ pub fn eval(path: &str, content: &str, dialect: Dialect, env: &mut Environment) 
 /// * path: the file to parse and evaluate
 /// * dialect: Starlark language dialect
 /// * env: the environment to mutate during the evaluation
-pub fn eval_file(path: &str, dialect: Dialect, env: &mut Environment) {
+pub fn eval_file(path: &str, dialect: Dialect, env: &mut Environment) -> bool {
     let map = Arc::new(Mutex::new(CodeMap::new()));
     match super::simple::eval_file(&map, path, dialect, env) {
         Ok(v) => {
             if v.get_type() != "NoneType" {
                 println!("{}", v.to_repr())
-            }
+            };
+            true
         }
-        Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
+        Err(p) => {
+            Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
+            false
+        }
     }
 }
