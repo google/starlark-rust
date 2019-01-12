@@ -15,13 +15,26 @@
 //! Defines very basic versions of the evaluation functions that are suitable for interactive use:
 //! they output diagnostic to stderr and the result value to stdout.
 use codemap::CodeMap;
-use codemap_diagnostic::{ColorConfig, Emitter};
+use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use environment::Environment;
 use std::sync::{Arc, Mutex};
 use syntax::dialect::Dialect;
+use values::Value;
 
-/// Evaluate a string content, mutate the environment accordingly  and print
-/// the value of the last statement (if not `None`) or the error diagnostic.
+pub struct EvalError {
+    codemap: Arc<Mutex<CodeMap>>,
+    diagnostic: Diagnostic,
+}
+
+impl EvalError {
+    pub fn write_to_stderr(self) {
+        Emitter::stderr(ColorConfig::Always, Some(&self.codemap.lock().unwrap()))
+            .emit(&[self.diagnostic])
+    }
+}
+
+/// Evaluate a string content, mutate the environment accordingly, and return the value of the last
+/// statement, or a printable error.
 ///
 /// # Arguments
 ///
@@ -32,20 +45,18 @@ use syntax::dialect::Dialect;
 /// * content: the content to evaluate
 /// * dialect: starlark language dialect
 /// * env: the environment to mutate during the evaluation
-pub fn eval(path: &str, content: &str, dialect: Dialect, env: &mut Environment) {
+pub fn eval(
+    path: &str,
+    content: &str,
+    dialect: Dialect,
+    env: &mut Environment,
+) -> Result<Option<Value>, EvalError> {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    match super::simple::eval(&map, path, content, dialect, env) {
-        Ok(v) => {
-            if v.get_type() != "NoneType" {
-                println!("{}", v.to_repr())
-            }
-        }
-        Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
-    }
+    transform_result(super::simple::eval(&map, path, content, dialect, env), map)
 }
 
-/// Evaluate a file, mutate the environment accordingly and print
-/// the value of the last statement (if not `None`) or the error diagnostic.
+/// Evaluate a file, mutate the environment accordingly, and return the value of the last
+/// statement, or a printable error.
 ///
 /// __This version uses the [SimpleFileLoader](SimpleFileLoader.struct.html) implementation for
 /// the file loader__
@@ -55,14 +66,25 @@ pub fn eval(path: &str, content: &str, dialect: Dialect, env: &mut Environment) 
 /// * path: the file to parse and evaluate
 /// * dialect: Starlark language dialect
 /// * env: the environment to mutate during the evaluation
-pub fn eval_file(path: &str, dialect: Dialect, env: &mut Environment) {
+pub fn eval_file(
+    path: &str,
+    dialect: Dialect,
+    env: &mut Environment,
+) -> Result<Option<Value>, EvalError> {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    match super::simple::eval_file(&map, path, dialect, env) {
-        Ok(v) => {
-            if v.get_type() != "NoneType" {
-                println!("{}", v.to_repr())
-            }
-        }
-        Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
+    transform_result(super::simple::eval_file(&map, path, dialect, env), map)
+}
+
+fn transform_result(
+    result: Result<Value, Diagnostic>,
+    codemap: Arc<Mutex<CodeMap>>,
+) -> Result<Option<Value>, EvalError> {
+    match result {
+        Ok(ref v) if v.get_type() == "NoneType" => Ok(None),
+        Ok(v) => Ok(Some(v)),
+        Err(diagnostic) => Err(EvalError {
+            codemap,
+            diagnostic,
+        }),
     }
 }

@@ -19,12 +19,16 @@ extern crate starlark;
 extern crate starlark_repl;
 
 use getopts::Options;
-use starlark::eval::interactive::{eval, eval_file};
+use starlark::eval::interactive::{eval, eval_file, EvalError};
 use starlark::stdlib::global_environment;
 use starlark::syntax::dialect::Dialect;
+use starlark::values::Value;
 use starlark_repl::{print_function, repl};
 use std::env;
 use std::process::exit;
+
+const EXIT_CODE_USAGE: i32 = 1;
+const EXIT_CODE_FAILURE: i32 = 2;
 
 macro_rules! print_usage {
     ($program: expr, $opts: expr) => (
@@ -80,7 +84,7 @@ fn main() {
 
                 if opt_repl && command.is_some() {
                     eprintln!("Cannot pass both -r and -c");
-                    exit(1);
+                    exit(EXIT_CODE_USAGE);
                 }
 
                 let global = print_function(global_environment());
@@ -91,21 +95,32 @@ fn main() {
                     Dialect::Bzl
                 };
                 for i in matches.free.into_iter() {
-                    eval_file(&i, dialect, &mut global.child(&i));
+                    maybe_print_or_exit(eval_file(&i, dialect, &mut global.child(&i)));
                 }
                 if opt_repl {
                     println!("Welcome to Starlark REPL, press Ctrl+D to exit.");
                     repl(&global, dialect);
                 }
                 if let Some(command) = command {
-                    eval(
+                    maybe_print_or_exit(eval(
                         "[command flag]",
                         &command,
                         dialect,
                         &mut global.child("[command flag]"),
-                    );
+                    ));
                 }
             }
         }
+    }
+}
+
+fn maybe_print_or_exit(result: Result<Option<Value>, EvalError>) {
+    match result {
+        Ok(Some(value)) => println!("{}", value.to_repr()),
+        Err(err) => {
+            err.write_to_stderr();
+            exit(EXIT_CODE_FAILURE);
+        }
+        Ok(None) => {}
     }
 }
