@@ -23,6 +23,11 @@ getopts = "0.2"
 linefeed = "0.5.3"
 starlark = { path = "../starlark" }
 
+[dev-dependencies]
+assert_cmd = "0.10.2"
+# 3.0.5 bumps rand to 0.6 which causes problems with other deps.
+tempfile = ">=3, <3.0.5"
+
 [lib]
 
 [[bin]]
