@@ -6,6 +6,10 @@ use predicates::str::contains;
 use std::io::Write;
 use std::process::Command;
 
+// Copied from starlark::environment - not currently public because of uncertainty around how to
+// expose it.
+const NOT_FOUND_ERROR_CODE: &str = "CM01";
+
 #[test]
 fn outputs_last_command_value() {
     Command::main_binary()
@@ -43,7 +47,7 @@ fn error_in_command() {
         .arg("x")
         .assert()
         .code(2)
-        .stderr(contains("Variable 'x' not found"));
+        .stderr(contains(NOT_FOUND_ERROR_CODE));
 }
 
 #[test]
@@ -55,7 +59,7 @@ fn error_in_file() {
         .arg(f.path())
         .assert()
         .code(2)
-        .stderr(contains("Variable 'x' not found"));
+        .stderr(contains(NOT_FOUND_ERROR_CODE));
 }
 
 #[test]
@@ -69,7 +73,7 @@ fn files_environments_are_isolated() {
         .arg(f2.path())
         .assert()
         .code(2)
-        .stderr(contains("Variable 'x' not found"));
+        .stderr(contains(NOT_FOUND_ERROR_CODE));
 }
 
 fn make_file(content: &str) -> tempfile::NamedTempFile {
