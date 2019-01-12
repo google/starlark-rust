@@ -1,6 +1,8 @@
 extern crate assert_cmd;
+extern crate predicates;
 
 use assert_cmd::prelude::*;
+use predicates::str::contains;
 use std::io::Write;
 use std::process::Command;
 
@@ -31,6 +33,43 @@ fn outputs_last_file_values() {
         .assert()
         .success()
         .stdout("0\n\"Hello\"\n");
+}
+
+#[test]
+fn error_in_command() {
+    Command::main_binary()
+        .unwrap()
+        .arg("-c")
+        .arg("x")
+        .assert()
+        .code(2)
+        .stderr(contains("Variable 'x' not found"));
+}
+
+#[test]
+fn error_in_file() {
+    let f = make_file("x");
+
+    Command::main_binary()
+        .unwrap()
+        .arg(f.path())
+        .assert()
+        .code(2)
+        .stderr(contains("Variable 'x' not found"));
+}
+
+#[test]
+fn files_environments_are_isolated() {
+    let f1 = make_file("x = 1");
+    let f2 = make_file("x");
+
+    Command::main_binary()
+        .unwrap()
+        .arg(f1.path())
+        .arg(f2.path())
+        .assert()
+        .code(2)
+        .stderr(contains("Variable 'x' not found"));
 }
 
 fn make_file(content: &str) -> tempfile::NamedTempFile {
