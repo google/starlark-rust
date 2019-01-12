@@ -19,11 +19,12 @@ extern crate starlark;
 extern crate starlark_repl;
 
 use getopts::Options;
-use starlark::eval::interactive::eval_file;
+use starlark::eval::interactive::{eval, eval_file};
 use starlark::stdlib::global_environment;
 use starlark::syntax::dialect::Dialect;
 use starlark_repl::{print_function, repl};
 use std::env;
+use std::process::exit;
 
 macro_rules! print_usage {
     ($program: expr, $opts: expr) => (
@@ -59,6 +60,12 @@ fn main() {
     );
     opts.optflag("h", "help", "Show the usage of this program.");
     opts.optflag("r", "repl", "Run a REPL after files have been parsed.");
+    opts.optopt(
+        "c",
+        "command",
+        "Starlark command to run after files have been parsed.",
+        "expr",
+    );
     match opts.parse(&args[1..]) {
         Err(e) => {
             print_usage!(program, opts, "\n{}\n", e);
@@ -69,6 +76,13 @@ fn main() {
             } else {
                 let build_file = matches.opt_present("b");
                 let opt_repl = matches.opt_present("r");
+                let command = matches.opt_str("c");
+
+                if opt_repl && command.is_some() {
+                    eprintln!("Cannot pass both -r and -c");
+                    exit(1);
+                }
+
                 let global = print_function(global_environment());
                 global.freeze();
                 let dialect = if build_file {
@@ -82,6 +96,14 @@ fn main() {
                 if opt_repl {
                     println!("Welcome to Starlark REPL, press Ctrl+D to exit.");
                     repl(&global, dialect);
+                }
+                if let Some(command) = command {
+                    eval(
+                        "[command flag]",
+                        &command,
+                        dialect,
+                        &mut global.child("[command flag]"),
+                    );
                 }
             }
         }
