@@ -3,3 +3,6 @@
 
 # https://github.com/google/starlark-rust/issues#44: whitespace isn't required between some tokens
 assert_eq(6or(), 6)
+# 6burgle still generates a parse error.
+6burgle  ### [CP01]
+---
