@@ -649,7 +649,7 @@ impl Lexer {
 
     fn consume_int_radix(&mut self, radix: u32) -> Option<<Self as Iterator>::Item> {
         let val = self.consume_int_r(radix);
-        if self.peek_char().is_alphanumeric() || val.is_err() {
+        if val.is_err() {
             self.invalid()
         } else {
             self.end(Token::IntegerLiteral(val.unwrap()))
@@ -1192,6 +1192,37 @@ mod tests {
         );
     }
 
+    // Regression test for https://github.com/google/starlark-rust/issues/44.
+    #[test]
+    fn test_number_collated_with_keywords_or_identifier() {
+        let r =
+            collect_result("1and 2else 3load 4break 5for 6not 7not  in 8continue 10identifier11");
+        assert_eq!(
+            &[
+                Token::IntegerLiteral(1),
+                Token::And,
+                Token::IntegerLiteral(2),
+                Token::Else,
+                Token::IntegerLiteral(3),
+                Token::Load,
+                Token::IntegerLiteral(4),
+                Token::Break,
+                Token::IntegerLiteral(5),
+                Token::For,
+                Token::IntegerLiteral(6),
+                Token::Not,
+                Token::IntegerLiteral(7),
+                Token::NotIn,
+                Token::IntegerLiteral(8),
+                Token::Continue,
+                Token::IntegerLiteral(10),
+                Token::Identifier("identifier11".to_owned()),
+                Token::Newline,
+            ],
+            &r[..]
+        );
+    }
+
     #[test]
     fn test_reserved() {
         let r = collect_result(
@@ -1251,8 +1282,6 @@ mod tests {
             ],
             &r[..]
         );
-
-        assert!(super::Lexer::new("12a").next().unwrap().is_err());
     }
 
     #[test]

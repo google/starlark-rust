@@ -1,0 +1,5 @@
+# This file contains the list of example reported by https://github.com/josharian
+# as part of his fuzzing of starlark-rust
+
+# https://github.com/google/starlark-rust/issues#44: whitespace isn't required between some tokens
+assert_eq(6 or (), 6)

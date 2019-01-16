@@ -159,6 +159,19 @@ fn test_return() {
     assert_eq!(unwrap_parse!("def fn(): return"), "def fn():\n  return\n");
 }
 
+// Regression test for https://github.com/google/starlark-rust/issues/44.
+#[test]
+fn test_optional_whitespace() {
+    assert_eq!(
+        unwrap_parse!("6 or()"),
+        "(6 or ())\n"
+    );
+    assert_eq!(
+        unwrap_parse!("6or()"),
+        "(6 or ())\n"
+    );
+}
+
 #[test]
 fn test_fncall_span() {
     let content = r#"def fn(a):
