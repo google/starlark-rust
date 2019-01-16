@@ -56,7 +56,8 @@ fn assert_diagnostic(
         d.message.clone()
     } else {
         let label = d.spans[0].label.clone();
-        format!("{} ({})", d.message, label.unwrap())
+        let error_code = d.code.clone().unwrap_or_else(|| "".to_owned());
+        format!("[{}] {} ({})", error_code, d.message, label.unwrap())
     };
     if !msg.to_lowercase().contains(&expected) {
         io::stderr()
