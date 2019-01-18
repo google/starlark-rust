@@ -16,10 +16,10 @@
 //! they output diagnostic to stderr and the result value to stdout.
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
-use environment::Environment;
+use crate::environment::Environment;
 use std::sync::{Arc, Mutex};
-use syntax::dialect::Dialect;
-use values::Value;
+use crate::syntax::dialect::Dialect;
+use crate::values::Value;
 
 pub struct EvalError {
     codemap: Arc<Mutex<CodeMap>>,

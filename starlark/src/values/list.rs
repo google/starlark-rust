@@ -15,7 +15,7 @@
 //! Define the list type of Starlark
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
-use values::*;
+use crate::values::*;
 
 pub struct List {
     mutability: IterableMutability,

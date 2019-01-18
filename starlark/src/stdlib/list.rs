@@ -14,7 +14,7 @@
 
 //! Methods for the `list` type.
 
-use values::*;
+use crate::values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const LIST_INDEX_FAILED_ERROR_CODE: &str = "UF10";

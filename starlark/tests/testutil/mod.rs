@@ -22,10 +22,10 @@ use std::io::prelude::*;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use testutil::codemap::CodeMap;
-use testutil::codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
-use testutil::starlark::eval::simple::eval;
-use testutil::starlark::stdlib::global_environment;
+use crate::testutil::codemap::CodeMap;
+use crate::testutil::codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use crate::testutil::starlark::eval::simple::eval;
+use crate::testutil::starlark::stdlib::global_environment;
 
 /// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
 fn read_input(path: &str) -> Vec<(usize, String)> {

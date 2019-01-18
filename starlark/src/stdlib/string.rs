@@ -15,7 +15,7 @@
 //! Methods for the `string` type.
 
 use std::str::FromStr;
-use values::*;
+use crate::values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &str = "UF00";
@@ -1361,7 +1361,7 @@ mod tests {
     use super::super::starlark_default;
     use super::super::tests::starlark_default_fail;
     use super::*;
-    use values::dict;
+    use crate::values::dict;
 
     macro_rules! starlark_ok {
         ($($t:expr),+) => (starlark_ok_fn!(starlark_default, $($t),+))

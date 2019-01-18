@@ -21,18 +21,18 @@
 //! The BUILD dialect does not allow `def` statements.
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
-use environment::Environment;
+use crate::environment::Environment;
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use syntax::ast::*;
-use syntax::dialect::Dialect;
-use syntax::errors::SyntaxError;
-use syntax::lexer::{LexerIntoIter, LexerItem};
-use syntax::parser::{parse, parse_file, parse_lexer};
-use values::function::FunctionParameter;
-use values::*;
+use crate::syntax::ast::*;
+use crate::syntax::dialect::Dialect;
+use crate::syntax::errors::SyntaxError;
+use crate::syntax::lexer::{LexerIntoIter, LexerItem};
+use crate::syntax::parser::{parse, parse_file, parse_lexer};
+use crate::values::function::FunctionParameter;
+use crate::values::*;
 
 macro_rules! eval_vector {
     ($v:expr, $ctx:expr) => {{

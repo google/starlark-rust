@@ -15,10 +15,10 @@
 //! Function as a TypedValue
 use super::*;
 use codemap::CodeMap;
-use environment::Environment;
-use eval::eval_def;
+use crate::environment::Environment;
+use crate::eval::eval_def;
 use std::sync::{Arc, Mutex};
-use syntax::ast::AstStatement;
+use crate::syntax::ast::AstStatement;
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]

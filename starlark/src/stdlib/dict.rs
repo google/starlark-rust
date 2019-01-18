@@ -15,7 +15,7 @@
 //! Methods for the `dict` type.
 
 use linked_hash_map::LinkedHashMap;
-use values::*;
+use crate::values::*;
 
 pub const DICT_KEY_NOT_FOUND_ERROR_CODE: &str = "UF20";
 pub const POP_ON_EMPTY_DICT_ERROR_CODE: &str = "UF21";

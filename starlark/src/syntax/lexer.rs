@@ -990,7 +990,7 @@ mod tests {
     use std::io::Read;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
-    use syntax::errors::SyntaxError;
+    use crate::syntax::errors::SyntaxError;
 
     fn collect_result_buffered(s: Vec<&'static str>) -> Vec<Token> {
         let codemap = Arc::new(Mutex::new(codemap::CodeMap::new()));

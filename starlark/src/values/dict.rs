@@ -17,7 +17,7 @@ use linked_hash_map::LinkedHashMap; // To preserve insertion order
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use values::*;
+use crate::values::*;
 
 /// The Dictionary type
 pub struct Dictionary {

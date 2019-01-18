@@ -20,7 +20,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use values::*;
+use crate::values::*;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module

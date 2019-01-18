@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use eval::testutil;
-use eval::RECURSION_ERROR_CODE;
+use crate::eval::testutil;
+use crate::eval::RECURSION_ERROR_CODE;
 
 #[test]
 fn arithmetic_test() {
