@@ -19,7 +19,7 @@ use codemap::{Span, Spanned};
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-extern crate lalrpop_util;
+use lalrpop_util;
 
 // Boxed types used for storing information from the parsing will be used especially for the
 // location of the AST item
@@ -336,7 +336,7 @@ impl Statement {
 }
 
 impl Display for BinOp {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             BinOp::Or => f.write_str(" or "),
             BinOp::And => f.write_str(" and "),
@@ -360,7 +360,7 @@ impl Display for BinOp {
 }
 
 impl Display for AssignOp {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             AssignOp::Assign => f.write_str(" = "),
             AssignOp::Increment => f.write_str(" += "),
@@ -374,13 +374,13 @@ impl Display for AssignOp {
 }
 
 fn comma_separated_fmt<I, F>(
-    f: &mut Formatter,
+    f: &mut Formatter<'_>,
     v: &[I],
     converter: F,
     for_tuple: bool,
 ) -> fmt::Result
 where
-    F: Fn(&I, &mut Formatter) -> fmt::Result,
+    F: Fn(&I, &mut Formatter<'_>) -> fmt::Result,
 {
     for (i, e) in v.iter().enumerate() {
         f.write_str(if i == 0 { "" } else { ", " })?;
@@ -392,7 +392,7 @@ where
     Ok(())
 }
 
-fn fmt_string_literal(f: &mut Formatter, s: &str) -> fmt::Result {
+fn fmt_string_literal(f: &mut Formatter<'_>, s: &str) -> fmt::Result {
     f.write_str("\"")?;
     for c in s.chars() {
         match c {
@@ -409,7 +409,7 @@ fn fmt_string_literal(f: &mut Formatter, s: &str) -> fmt::Result {
 }
 
 impl Display for Expr {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             Expr::Tuple(ref e) => {
                 f.write_str("(")?;
@@ -500,7 +500,7 @@ impl Display for Expr {
 }
 
 impl Display for Argument {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             Argument::Positional(ref s) => s.node.fmt(f),
             Argument::Named(ref s, ref e) => write!(f, "{} = {}", s.node, e.node),
@@ -511,7 +511,7 @@ impl Display for Argument {
 }
 
 impl Display for Parameter {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             Parameter::Normal(ref s) => s.node.fmt(f),
             Parameter::WithDefaultValue(ref s, ref e) => write!(f, "{} = {}", s.node, e.node),
@@ -522,7 +522,7 @@ impl Display for Parameter {
 }
 
 impl Display for Clause {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
             Clause::For(ref t, ref e) => write!(f, " for {} in {}", t.node, e.node),
             Clause::If(ref t) => write!(f, " if {}", t.node),
@@ -531,7 +531,7 @@ impl Display for Clause {
 }
 
 impl Statement {
-    fn fmt_with_tab(&self, f: &mut Formatter, tab: String) -> fmt::Result {
+    fn fmt_with_tab(&self, f: &mut Formatter<'_>, tab: String) -> fmt::Result {
         match *self {
             Statement::Break => writeln!(f, "{}break", tab),
             Statement::Continue => writeln!(f, "{}continue", tab),
@@ -587,7 +587,7 @@ impl Statement {
 }
 
 impl Display for Statement {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.fmt_with_tab(f, "".to_owned())
     }
 }

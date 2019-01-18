@@ -36,7 +36,7 @@ impl Dictionary {
 
     pub fn apply<Return>(
         v: &Value,
-        f: &Fn(&LinkedHashMap<Value, Value>) -> Result<Return, ValueError>,
+        f: &dyn Fn(&LinkedHashMap<Value, Value>) -> Result<Return, ValueError>,
     ) -> Result<Return, ValueError> {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
@@ -47,7 +47,7 @@ impl Dictionary {
 
     pub fn mutate(
         v: &Value,
-        f: &Fn(&mut LinkedHashMap<Value, Value>) -> ValueResult,
+        f: &dyn Fn(&mut LinkedHashMap<Value, Value>) -> ValueResult,
     ) -> ValueResult {
         if v.get_type() != "dict" {
             Err(ValueError::IncorrectParameterType)
@@ -130,7 +130,7 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "dict" {
             let mut v1: Vec<Value> = self.iter()?.collect();
             let mut v2: Vec<Value> = other.iter()?.collect();
@@ -183,13 +183,13 @@ impl TypedValue for Dictionary {
         Ok(Value::new(self.content.contains_key(other)))
     }
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
+    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
         self.content.iter().any(|(k, v)| {
             k.same_as(other) || v.same_as(other) || k.is_descendant(other) || v.is_descendant(other)
         })
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
         Ok(Box::new(self.content.iter().map(|x| x.0.clone())))
     }
 

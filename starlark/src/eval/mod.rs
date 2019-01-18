@@ -222,7 +222,7 @@ trait Evaluate<T: FileLoader> {
     fn transform(
         &self,
         context: &mut EvaluationContext<T>,
-    ) -> Result<Box<Evaluate<T>>, EvalException>;
+    ) -> Result<Box<dyn Evaluate<T>>, EvalException>;
 
     // Perform an assignment on the LHS represented by this AST element
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult;
@@ -236,7 +236,7 @@ impl<T: FileLoader> Evaluate<T> for AstString {
     fn transform(
         &self,
         _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<Evaluate<T>>, EvalException> {
+    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
         Ok(Box::new(self.clone()))
     }
 
@@ -253,7 +253,7 @@ impl<T: FileLoader> Evaluate<T> for AstInt {
     fn transform(
         &self,
         _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<Evaluate<T>>, EvalException> {
+    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
         Ok(Box::new(*self))
     }
 
@@ -448,15 +448,15 @@ fn eval_list_comprehension<T: FileLoader + 'static>(
 enum TransformedExpr<T: FileLoader> {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
-    List(Vec<Box<Evaluate<T>>>, Span),
-    Tuple(Vec<Box<Evaluate<T>>>, Span),
+    List(Vec<Box<dyn Evaluate<T>>>, Span),
+    Tuple(Vec<Box<dyn Evaluate<T>>>, Span),
 }
 
 impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     fn transform(
         &self,
         _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<Evaluate<T>>, EvalException> {
+    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
         panic!("Transform should not be called on an already transformed object");
     }
 
@@ -523,7 +523,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
     fn transform(
         &self,
         context: &mut EvaluationContext<T>,
-    ) -> Result<Box<Evaluate<T>>, EvalException> {
+    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
         match self.node {
             Expr::Dot(ref e, ref s) => Ok(Box::new(TransformedExpr::Dot(
                 e.eval(context)?,
@@ -833,7 +833,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
     fn transform(
         &self,
         _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<Evaluate<T>>, EvalException> {
+    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
         Ok(Box::new(self.clone()))
     }
 

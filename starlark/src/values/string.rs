@@ -49,7 +49,7 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "string" {
             Ok(self.cmp(&other.to_str()))
         } else {
@@ -74,7 +74,7 @@ impl TypedValue for String {
         }
     }
 
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
+    fn is_descendant(&self, _other: &dyn TypedValue) -> bool {
         false
     }
 

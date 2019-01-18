@@ -13,19 +13,16 @@
 // limitations under the License.
 
 //! Utility to test the conformance tests from other implementation of Starlark
-extern crate codemap;
-extern crate codemap_diagnostic;
-extern crate starlark;
 
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use crate::testutil::codemap::CodeMap;
-use crate::testutil::codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
-use crate::testutil::starlark::eval::simple::eval;
-use crate::testutil::starlark::stdlib::global_environment;
+use codemap::CodeMap;
+use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use starlark::eval::simple::eval;
+use starlark::stdlib::global_environment;
 
 /// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
 fn read_input(path: &str) -> Vec<(usize, String)> {

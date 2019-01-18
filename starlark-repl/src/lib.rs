@@ -36,9 +36,9 @@
 //!     -h, --help          Show the usage of this program.
 //!     -r, --repl          Run a REPL after files have been parsed.
 //! ```
-extern crate codemap;
-extern crate codemap_diagnostic;
-extern crate linefeed;
+use codemap;
+
+
 #[macro_use]
 extern crate starlark;
 

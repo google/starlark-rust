@@ -53,7 +53,7 @@ fn format_capture<T: Iterator<Item = Value>>(
     };
     let conv_s = |x: Value| x.to_str();
     let conv_r = |x: Value| x.to_repr();
-    let conv: &Fn(Value) -> String = match conv {
+    let conv: &dyn Fn(Value) -> String = match conv {
         "s" => &conv_s,
         "r" => &conv_r,
         c => starlark_err!(
