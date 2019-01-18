@@ -128,7 +128,7 @@ starlark_module! {global =>
     /// added to it, then if the index is outside the range `[0:len(L)]`, the
     /// nearest value within that range is used; see [Indexing](#indexing).
     ///
-    /// `insert` fails if `x` is not found in L, or if `start` or `end`
+    /// `index` fails if `x` is not found in L, or if `start` or `end`
     /// is not a valid index (`int` or `None`).
     ///
     /// Examples:
@@ -200,7 +200,7 @@ starlark_module! {global =>
     /// `L.pop([index])` removes and returns the last element of the list L, or,
     /// if the optional index is provided, at that index.
     ///
-    /// `insert` fails if the index is negative or not less than the length of
+    /// `pop` fails if the index is negative or not less than the length of
     /// the list, of if the list is frozen or has active iterators.
     ///
     /// Examples:
