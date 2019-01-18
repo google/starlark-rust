@@ -1,5 +1,6 @@
 [package]
 name = "starlark-repl"
+edition = "2018"
 version = "0.3.0-pre"
 authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
 
