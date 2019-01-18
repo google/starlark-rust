@@ -84,7 +84,7 @@ pub struct Environment {
 struct EnvironmentContent {
     /// A name for this environment, used mainly for debugging.
     name_: String,
-    /// Wether the environment is frozen or not.
+    /// Whether the environment is frozen or not.
     frozen: bool,
     /// Super environment that represent a higher scope than the current one
     parent: Option<Environment>,
