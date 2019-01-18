@@ -15,12 +15,12 @@
 //! Define simpler version of the evaluation function
 use super::Dialect;
 use super::{EvalException, FileLoader};
+use crate::environment::Environment;
+use crate::values::*;
 use codemap::CodeMap;
 use codemap_diagnostic::Diagnostic;
-use crate::environment::Environment;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::values::*;
 
 /// A simple FileLoader that load file from disk and cache the result in a hashmap.
 #[derive(Clone)]

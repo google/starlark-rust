@@ -16,10 +16,10 @@
 
 use super::lexer;
 use codemap::{Span, Spanned};
+use lalrpop_util;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use lalrpop_util;
 
 // Boxed types used for storing information from the parsing will be used especially for the
 // location of the AST item

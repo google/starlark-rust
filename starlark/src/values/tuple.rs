@@ -13,11 +13,11 @@
 // limitations under the License.
 
 //! Define the tuple type for Starlark.
+use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
-use crate::values::*;
 
 /// A starlark tuple
 pub struct Tuple {

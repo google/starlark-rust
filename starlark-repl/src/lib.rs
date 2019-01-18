@@ -38,7 +38,6 @@
 //! ```
 use codemap;
 
-
 #[macro_use]
 extern crate starlark;
 

@@ -13,11 +13,11 @@
 // limitations under the License.
 
 //! Module define the Starlark type Dictionary
+use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use crate::values::*;
 
 /// The Dictionary type
 pub struct Dictionary {

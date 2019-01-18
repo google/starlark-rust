@@ -13,11 +13,11 @@
 // limitations under the License.
 
 //! Define the string type for Starlark.
+use crate::values::*;
 use std;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
-use crate::values::*;
 
 impl TypedValue for String {
     immutable!();

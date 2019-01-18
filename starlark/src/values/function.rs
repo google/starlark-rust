@@ -14,11 +14,11 @@
 
 //! Function as a TypedValue
 use super::*;
-use codemap::CodeMap;
 use crate::environment::Environment;
 use crate::eval::eval_def;
-use std::sync::{Arc, Mutex};
 use crate::syntax::ast::AstStatement;
+use codemap::CodeMap;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]

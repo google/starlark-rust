@@ -74,9 +74,10 @@
 //!     }
 //! }
 //! ```
+use crate::environment::Environment;
+use crate::syntax::errors::SyntaxError;
 use codemap::Span;
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
-use crate::environment::Environment;
 use linked_hash_map::LinkedHashMap;
 use std::any::Any;
 use std::cell::RefCell;
@@ -86,7 +87,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::rc::Rc;
-use crate::syntax::errors::SyntaxError;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression

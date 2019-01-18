@@ -13,9 +13,9 @@
 // limitations under the License.
 
 //! Define the list type of Starlark
+use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
-use crate::values::*;
 
 pub struct List {
     mutability: IterableMutability,

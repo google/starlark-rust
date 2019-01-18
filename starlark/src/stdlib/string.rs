@@ -14,8 +14,8 @@
 
 //! Methods for the `string` type.
 
-use std::str::FromStr;
 use crate::values::*;
+use std::str::FromStr;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &str = "UF00";

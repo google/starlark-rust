@@ -983,6 +983,7 @@ impl Lexer {
 #[cfg(test)]
 mod tests {
     use super::Token;
+    use crate::syntax::errors::SyntaxError;
     use codemap;
     use codemap_diagnostic;
     use std::fs;
@@ -990,7 +991,6 @@ mod tests {
     use std::io::Read;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
-    use crate::syntax::errors::SyntaxError;
 
     fn collect_result_buffered(s: Vec<&'static str>) -> Vec<Token> {
         let codemap = Arc::new(Mutex::new(codemap::CodeMap::new()));

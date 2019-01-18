@@ -19,13 +19,7 @@
 //! All evaluation function can evaluate the full Starlark language (i.e. Bazel's
 //! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
 //! The BUILD dialect does not allow `def` statements.
-use codemap::{CodeMap, Span, Spanned};
-use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use crate::environment::Environment;
-use linked_hash_map::LinkedHashMap;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -33,6 +27,12 @@ use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::function::FunctionParameter;
 use crate::values::*;
+use codemap::{CodeMap, Span, Spanned};
+use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
+use linked_hash_map::LinkedHashMap;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 macro_rules! eval_vector {
     ($v:expr, $ctx:expr) => {{

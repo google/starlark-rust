@@ -1,6 +1,3 @@
-
-
-
 use assert_cmd::prelude::*;
 use predicates::str::contains;
 use std::io::Write;
