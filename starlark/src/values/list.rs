@@ -166,7 +166,7 @@ impl TypedValue for List {
             start,
             stop,
             stride,
-            &self.content,
+            self.content.iter(),
         )))
     }
 

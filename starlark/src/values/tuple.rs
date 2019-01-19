@@ -25,7 +25,12 @@ pub struct Tuple {
 }
 
 #[doc(hidden)]
-pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &[Value]) -> Vec<Value> {
+pub fn slice_vector<'a, I: Iterator<Item = &'a Value>>(
+    start: i64,
+    stop: i64,
+    stride: i64,
+    content: I,
+) -> Vec<Value> {
     let (low, take, astride) = if stride < 0 {
         (stop + 1, start - stop, -stride)
     } else {
@@ -35,7 +40,6 @@ pub fn slice_vector(start: i64, stop: i64, stride: i64, content: &[Value]) -> Ve
         return Vec::new();
     }
     let mut v: Vec<Value> = content
-        .iter()
         .skip(low as usize)
         .take(take as usize)
         .cloned()
@@ -358,7 +362,7 @@ impl TypedValue for Tuple {
             start,
             stop,
             stride,
-            &self.content,
+            self.content.iter(),
         ))))
     }
 
