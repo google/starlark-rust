@@ -73,8 +73,11 @@
 pub mod environment;
 #[doc(hidden)]
 pub mod syntax;
+#[macro_use]
 pub mod values;
 #[macro_use]
 pub mod eval;
 #[macro_use]
 pub mod stdlib;
+#[cfg(feature = "linked_hash_set")]
+pub mod linked_hash_set;

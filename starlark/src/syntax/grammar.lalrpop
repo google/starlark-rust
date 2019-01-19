@@ -218,6 +218,15 @@ Operand: AstExpr = {
     ListComp,
     <l:@L> "{" <e:COMMA<DictEntry>> "}" <r:@R>
         => Expr::Dict(e).to_ast(file_span.subspan(l, r)),
+     <l:@L> "{" <e:Test> "}" <r:@R> => Expr::Set(vec![e]).to_ast(file_span.subspan(l, r)),
+     SetComp,
+     // Must contain at least one element - {} is an empty dict not set.
+     <l:@L> "{" <e1:Test> "," <es:COMMA<Test>> "}" <r:@R>
+             => {
+                 let mut es = es;
+                 es.insert(0, e1);
+                 Expr::Set(es).to_ast(file_span.subspan(l, r))
+             },
     DictComp,
     <l:@L> "(" <e:TestList?> ")" <r:@R>
         => match e {
@@ -231,6 +240,10 @@ DictEntry: (AstExpr, AstExpr) = <Test> ":" <Test> => (<>);
 ListComp: AstExpr = ASTE<ListComp_>;
 ListComp_: Expr = "[" <Test> <CompClause>  "]"
     => Expr::ListComprehension(<>);
+
+SetComp: AstExpr = ASTE<SetComp_>;
+SetComp_: Expr = "{" <Test> <CompClause> "}"
+    => Expr::SetComprehension(<>);
 
 DictComp: AstExpr = ASTE<DictComp_>;
 DictComp_: Expr = "{" <DictEntry> <CompClause>"}"

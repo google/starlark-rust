@@ -159,6 +159,8 @@ pub enum ValueError {
     UnsupportedRecursiveDataStructure,
     /// It is not allowed to mutate a structure during iteration.
     MutationDuringIteration,
+    /// A type was used which isn't supported with the current feature set. Wraps the type name.
+    TypeNotSupported(String),
 }
 
 /// A simpler error format to return as a ValueError
@@ -235,6 +237,9 @@ impl SyntaxError for ValueError {
                         ValueError::MutationDuringIteration => {
                             "Cannot mutate an iterable while iterating".to_owned()
                         }
+                        ValueError::TypeNotSupported(ref t) => {
+                            format!("Attempt to construct unsupported type ({})", t)
+                        }
                         ValueError::DiagnosedError(..) => unreachable!(),
                     }),
                 };
@@ -295,11 +300,14 @@ impl SyntaxError for ValueError {
                         ValueError::MutationDuringIteration => {
                             "This operation mutate an iterable for an iterator is borrowed.".to_owned()
                         }
+                        ValueError::TypeNotSupported(ref t) => {
+                            format!("Type `{}` is not supported. Perhaps you need to enable some crate feature?", t)
+                        }
                         ValueError::DiagnosedError(..) => unreachable!(),
                     },
                     code: Some(
                         match self {
-                            ValueError::OperationNotSupported { .. } => NOT_SUPPORTED_ERROR_CODE,
+                            ValueError::OperationNotSupported { .. } | ValueError::TypeNotSupported(..) => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::TypeNotX { .. } => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
                             ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,

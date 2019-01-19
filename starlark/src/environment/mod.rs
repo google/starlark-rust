@@ -94,6 +94,21 @@ struct EnvironmentContent {
     variables: HashMap<String, Value>,
     /// List of static values of an object per type
     type_objs: HashMap<String, HashMap<String, Value>>,
+
+    set_constructor: SetConstructor,
+}
+
+// Newtype so that EnvironmentContent can derive Debug.
+struct SetConstructor((Option<Box<Fn(Vec<Value>) -> ValueResult>>));
+
+impl std::fmt::Debug for SetConstructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        if self.0.is_some() {
+            write!(f, "<set constructor>")
+        } else {
+            write!(f, "<no set constructor>")
+        }
+    }
 }
 
 impl Environment {
@@ -106,6 +121,7 @@ impl Environment {
                 parent: None,
                 variables: HashMap::new(),
                 type_objs: HashMap::new(),
+                set_constructor: SetConstructor(None),
             })),
         }
     }
@@ -135,6 +151,7 @@ impl Environment {
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
                 type_objs: HashMap::new(),
+                set_constructor: SetConstructor(None),
             })),
         }
     }
@@ -179,6 +196,23 @@ impl Environment {
     /// Return the parent environment (or `None` if there is no parent).
     pub fn get_parent(&self) -> Option<Environment> {
         self.env.borrow().get_parent()
+    }
+
+    pub fn with_set_constructor(&self, constructor: Box<Fn(Vec<Value>) -> ValueResult>) {
+        self.env.borrow_mut().set_constructor = SetConstructor(Some(constructor));
+    }
+
+    pub fn make_set(&self, values: Vec<Value>) -> ValueResult {
+        match self.env.borrow().set_constructor.0 {
+            Some(ref ctor) => ctor(values),
+            None => {
+                if let Some(parent) = self.get_parent() {
+                    parent.make_set(values)
+                } else {
+                    Err(ValueError::TypeNotSupported("set".to_string()))
+                }
+            }
+        }
     }
 }
 

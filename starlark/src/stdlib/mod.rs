@@ -939,11 +939,22 @@ starlark_module! {global_functions =>
 /// For example `stdlib::global_environment().freeze().child("test")` create a child environment
 /// of this global environment that have been frozen.
 pub fn global_environment() -> Environment {
-    let env = Environment::new("global");
+    let env = add_set(Environment::new("global"));
     env.set("None", Value::new(None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
     dict::global(list::global(string::global(global_functions(env))))
+}
+
+#[cfg(feature = "linked_hash_set")]
+fn add_set(env: Environment) -> Environment {
+    env.with_set_constructor(Box::new(crate::linked_hash_set::value::Set::new));
+    crate::linked_hash_set::stdlib::global(env)
+}
+
+#[cfg(not(feature = "linked_hash_set"))]
+fn add_set(env: Environment) -> Environment {
+    env
 }
 
 /// Execute a starlark snippet with the default environment for test and return the truth value

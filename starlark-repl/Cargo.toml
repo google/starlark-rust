@@ -34,3 +34,6 @@ tempfile = ">=3, <3.0.5"
 
 [[bin]]
 name = "starlark-repl"
+
+[features]
+linked_hash_set = ["starlark/linked_hash_set"]

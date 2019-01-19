@@ -20,9 +20,12 @@ https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/
 and the Python 3 documentation when things were unclear.
 
 This interpreter does not support most of the go extensions (e.g. bitwise
-operator or floating point). It does not include the `set()` type either ([the
-official Starlark specification](https://github.com/bazelbuild/starlark/blob/master/spec.md)
-does not have them either). It uses signed 64-bit integers.
+operator or floating point). It optionally includes a `set` type (by enabling the `linked_hash_set` feature),
+as an extension which is not specified in [the
+official Starlark specification](https://github.com/bazelbuild/starlark/blob/master/spec.md), but note that this
+is just an insertion-order-preserving set, and does not have optimisations for nesting as can be found in the
+starlark Java implemnetation's [depset](https://docs.bazel.build/versions/master/skylark/lib/depset.html) implementation.
+It uses signed 64-bit integers.
 
 ## Usage
 
