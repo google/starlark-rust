@@ -24,7 +24,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
 
-extern crate lalrpop_util as lu;
+use lalrpop_util as lu;
 
 // TODO: move that code in some common error code list?
 // CP Prefix = Critical Parsing

@@ -13,18 +13,18 @@
 // limitations under the License.
 
 //! A module with the standard function and constants that are by default in all dialect of Starlark
+use crate::eval::simple::eval;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
-use eval::simple::eval;
 use std;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync;
 
-use environment::Environment;
-use syntax::dialect::Dialect;
-use values::dict::Dictionary;
-use values::*;
+use crate::environment::Environment;
+use crate::syntax::dialect::Dialect;
+use crate::values::dict::Dictionary;
+use crate::values::*;
 
 // Errors -- CR = Critical Runtime
 const CHR_NOT_UTF8_CODEPOINT_ERROR_CODE: &str = "CR00";
@@ -966,9 +966,9 @@ pub mod tests {
     use super::global_environment;
     use super::starlark_default;
     use super::Dialect;
+    use crate::eval::simple::eval;
     use codemap::CodeMap;
     use codemap_diagnostic::Diagnostic;
-    use eval::simple::eval;
     use std::sync;
 
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {

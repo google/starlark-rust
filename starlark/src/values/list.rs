@@ -13,9 +13,9 @@
 // limitations under the License.
 
 //! Define the list type of Starlark
+use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
-use values::*;
 
 pub struct List {
     mutability: IterableMutability,
@@ -45,7 +45,7 @@ impl List {
         })
     }
 
-    pub fn mutate(v: &Value, f: &Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
+    pub fn mutate(v: &Value, f: &dyn Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
         if v.get_type() != "list" {
             Err(ValueError::IncorrectParameterType)
         } else {
@@ -108,7 +108,7 @@ impl TypedValue for List {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "list" {
             let mut iter1 = self.iter()?;
             let mut iter2 = other.iter()?;
@@ -148,7 +148,7 @@ impl TypedValue for List {
         Ok(Value::new(false))
     }
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
+    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
         self.content
             .iter()
             .any(|x| x.same_as(other) || x.is_descendant(other))
@@ -170,7 +170,7 @@ impl TypedValue for List {
         )))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
         Ok(Box::new(self.content.iter().cloned()))
     }
 

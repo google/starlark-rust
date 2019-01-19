@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syntax::grammar::StarlarkParser;
+use crate::syntax::grammar::StarlarkParser;
 use std::sync::{Arc, Mutex};
-use syntax::ast::Statement;
-use syntax::dialect::Dialect;
-use syntax::parser::parse_file;
-use syntax::errors::SyntaxError;
+use crate::syntax::ast::Statement;
+use crate::syntax::dialect::Dialect;
+use crate::syntax::parser::parse_file;
+use crate::syntax::errors::SyntaxError;
 use codemap;
 use codemap_diagnostic;
 use std::path::PathBuf;

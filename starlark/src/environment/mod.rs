@@ -17,10 +17,10 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::values::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use values::*;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module

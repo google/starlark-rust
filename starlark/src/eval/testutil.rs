@@ -13,12 +13,12 @@
 // limitations under the License.
 
 //! Macro to test starlark code execution
+use crate::environment;
+use crate::eval;
+use crate::syntax::dialect::Dialect;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
-use environment;
-use eval;
 use std::sync;
-use syntax::dialect::Dialect;
 
 /// Execute a starlark snippet with an empty environment.
 pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {

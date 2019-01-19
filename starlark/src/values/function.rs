@@ -14,11 +14,11 @@
 
 //! Function as a TypedValue
 use super::*;
+use crate::environment::Environment;
+use crate::eval::eval_def;
+use crate::syntax::ast::AstStatement;
 use codemap::CodeMap;
-use environment::Environment;
-use eval::eval_def;
 use std::sync::{Arc, Mutex};
-use syntax::ast::AstStatement;
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -38,7 +38,7 @@ pub enum FunctionType {
 }
 
 pub type StarlarkFunctionPrototype =
-    Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult;
+    dyn Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult;
 
 pub struct Function {
     function: Box<StarlarkFunctionPrototype>,
@@ -261,7 +261,7 @@ impl TypedValue for Function {
     }
     not_supported!(get_hash);
 
-    fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "function" {
             Ok(self.to_repr().cmp(&other.to_repr()))
         } else {
@@ -380,7 +380,7 @@ impl TypedValue for WrappedMethod {
     fn to_bool(&self) -> bool {
         true
     }
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         self.method.compare_underlying(other, recursion)
     }
 

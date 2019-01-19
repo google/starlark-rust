@@ -14,8 +14,8 @@
 
 //! Methods for the `string` type.
 
+use crate::values::*;
 use std::str::FromStr;
-use values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SUBSTRING_INDEX_FAILED_ERROR_CODE: &str = "UF00";
@@ -53,7 +53,7 @@ fn format_capture<T: Iterator<Item = Value>>(
     };
     let conv_s = |x: Value| x.to_str();
     let conv_r = |x: Value| x.to_repr();
-    let conv: &Fn(Value) -> String = match conv {
+    let conv: &dyn Fn(Value) -> String = match conv {
         "s" => &conv_s,
         "r" => &conv_r,
         c => starlark_err!(
@@ -1361,7 +1361,7 @@ mod tests {
     use super::super::starlark_default;
     use super::super::tests::starlark_default_fail;
     use super::*;
-    use values::dict;
+    use crate::values::dict;
 
     macro_rules! starlark_ok {
         ($($t:expr),+) => (starlark_ok_fn!(starlark_default, $($t),+))

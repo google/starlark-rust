@@ -13,11 +13,11 @@
 // limitations under the License.
 
 //! Define the tuple type for Starlark.
+use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
-use values::*;
 
 /// A starlark tuple
 pub struct Tuple {
@@ -300,7 +300,7 @@ impl TypedValue for Tuple {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "tuple" {
             let mut iter1 = self.iter()?;
             let mut iter2 = other.iter()?;
@@ -340,7 +340,7 @@ impl TypedValue for Tuple {
         Ok(Value::new(false))
     }
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
+    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
         self.content
             .iter()
             .any(|x| x.same_as(other) || x.is_descendant(other))
@@ -362,7 +362,7 @@ impl TypedValue for Tuple {
         ))))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
         Ok(Box::new(self.content.iter().cloned()))
     }
 

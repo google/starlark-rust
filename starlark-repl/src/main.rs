@@ -14,10 +14,6 @@
 
 //! A command line interpreter for Starlark, provide a REPL.
 
-extern crate getopts;
-extern crate starlark;
-extern crate starlark_repl;
-
 use getopts::Options;
 use starlark::eval::interactive::{eval, eval_file, EvalError};
 use starlark::stdlib::global_environment;

@@ -74,9 +74,10 @@
 //!     }
 //! }
 //! ```
+use crate::environment::Environment;
+use crate::syntax::errors::SyntaxError;
 use codemap::Span;
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
-use environment::Environment;
 use linked_hash_map::LinkedHashMap;
 use std::any::Any;
 use std::cell::RefCell;
@@ -86,7 +87,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::rc::Rc;
-use syntax::errors::SyntaxError;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
@@ -361,7 +361,7 @@ impl PartialEq for ValueError {
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value(pub Rc<RefCell<TypedValue>>);
+pub struct Value(pub Rc<RefCell<dyn TypedValue>>);
 
 pub type ValueResult = Result<Value, ValueError>;
 
@@ -373,7 +373,7 @@ impl Value {
 
     /// Clone for inserting into the other container, using weak reference if we do a
     /// recursive insertion.
-    pub fn clone_for_container(&self, other: &TypedValue) -> Result<Value, ValueError> {
+    pub fn clone_for_container(&self, other: &dyn TypedValue) -> Result<Value, ValueError> {
         if self.is_descendant(other) {
             Err(ValueError::UnsupportedRecursiveDataStructure)
         } else {
@@ -396,10 +396,10 @@ impl Value {
     }
 
     /// Return true if other is pointing to the same value as self
-    pub fn same_as(&self, other: &TypedValue) -> bool {
+    pub fn same_as(&self, other: &dyn TypedValue) -> bool {
         // We use raw pointers..
-        let p: *const TypedValue = other;
-        let p1: *const TypedValue = self.0.as_ptr();
+        let p: *const dyn TypedValue = other;
+        let p1: *const dyn TypedValue = self.0.as_ptr();
         p1 == p
     }
 }
@@ -412,11 +412,11 @@ pub trait TypedValue {
 
     /// Convert to an Any. This allows for operation on the native type.
     /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
-    fn as_any(&self) -> &Any;
+    fn as_any(&self) -> &dyn Any;
 
     /// Convert to a mutable Any. This allows for operation on the native type.
     /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
-    fn as_any_mut(&mut self) -> &mut Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Freeze, i.e. make the value immutable.
     fn freeze(&mut self);
@@ -450,7 +450,7 @@ pub trait TypedValue {
     fn get_hash(&self) -> Result<u64, ValueError>;
 
     /// Returns true if `other` is a descendent of the current value, used for sanity checks.
-    fn is_descendant(&self, other: &TypedValue) -> bool;
+    fn is_descendant(&self, other: &dyn TypedValue) -> bool;
 
     /// Compare `self` with `other`.
     ///
@@ -465,7 +465,7 @@ pub trait TypedValue {
     ///       the trait needs to know the actual type of the value we compare.
     ///
     /// The extraneous recursion parameter is used to detect deep recursion.
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError>;
+    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError>;
 
     /// Perform a call on the object, only meaningfull for function object.
     ///
@@ -553,7 +553,7 @@ pub trait TypedValue {
 
     /// Returns an iterator over the value of this container if this value hold an iterable
     /// container.
-    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError>;
+    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError>;
 
     /// Returns the length of the value, if this value is a sequence.
     fn length(&self) -> Result<i64, ValueError>;
@@ -714,8 +714,8 @@ pub trait TypedValue {
     fn pipe(&self, other: Value) -> ValueResult;
 }
 
-impl fmt::Debug for TypedValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+impl fmt::Debug for dyn TypedValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "Value[{}]({})", self.get_type(), self.to_repr())
     }
 }
@@ -723,11 +723,11 @@ impl fmt::Debug for TypedValue {
 #[macro_export]
 macro_rules! any {
     () => {
-        fn as_any(&self) -> &Any {
+        fn as_any(&self) -> &dyn Any {
             self
         }
 
-        fn as_any_mut(&mut self) -> &mut Any {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
     }
@@ -835,7 +835,7 @@ macro_rules! not_supported {
         }
     };
     (iter) => {
-        fn iter(&self) -> Result<Box<Iterator<Item=Value>>, ValueError> {
+        fn iter(&self) -> Result<Box<dyn Iterator<Item=Value>>, ValueError> {
             Err(ValueError::TypeNotX {
                 object_type: self.get_type().to_owned(),
                 op: "iterable".to_owned()
@@ -865,7 +865,7 @@ macro_rules! not_supported {
                 right: Some(self.get_type().to_owned()) })
         }
         // We cannot have descendant if the is_in operation is not defined
-        fn is_descendant(&self, _other: &TypedValue) -> bool { false }
+        fn is_descendant(&self, _other: &dyn TypedValue) -> bool { false }
     };
     (add) => {
         fn add(&self, other: Value) -> ValueResult {
@@ -933,7 +933,7 @@ macro_rules! not_supported {
 /// A default implementation of the compare function, this can be used if the two types of
 /// value are differents or numeric. Custom types should implement their own comparison for the
 /// last case.
-pub fn default_compare(v1: &TypedValue, v2: &TypedValue) -> Result<Ordering, ValueError> {
+pub fn default_compare(v1: &dyn TypedValue, v2: &dyn TypedValue) -> Result<Ordering, ValueError> {
     Ok(match (v1.get_type(), v2.get_type()) {
         ("bool", "bool") | ("bool", "int") | ("int", "bool") | ("int", "int") => {
             v1.to_int()?.cmp(&(v2.to_int()?))
@@ -946,7 +946,7 @@ pub fn default_compare(v1: &TypedValue, v2: &TypedValue) -> Result<Ordering, Val
 
 macro_rules! default_compare {
     () => {
-        fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
+        fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
     }
 }
 
@@ -1046,12 +1046,12 @@ macro_rules! define_iterable_mutability {
 }
 
 impl Value {
-    pub fn any_apply<Return>(&self, f: &Fn(&Any) -> Return) -> Return {
+    pub fn any_apply<Return>(&self, f: &dyn Fn(&dyn Any) -> Return) -> Return {
         let borrowed = self.0.borrow();
         f(borrowed.as_any())
     }
 
-    pub fn any_apply_mut<Return>(&mut self, f: &Fn(&mut Any) -> Return) -> Return {
+    pub fn any_apply_mut<Return>(&mut self, f: &dyn Fn(&mut dyn Any) -> Return) -> Return {
         let mut borrowed = self.0.borrow_mut();
         f(borrowed.as_any_mut())
     }
@@ -1100,7 +1100,7 @@ impl Value {
 
     pub fn compare_underlying(
         &self,
-        other: &TypedValue,
+        other: &dyn TypedValue,
         recursion: u32,
     ) -> Result<Ordering, ValueError> {
         let borrowed = self.0.borrow();
@@ -1115,7 +1115,7 @@ impl Value {
         }
     }
 
-    pub fn is_descendant(&self, other: &TypedValue) -> bool {
+    pub fn is_descendant(&self, other: &dyn TypedValue) -> bool {
         if self.same_as(other) {
             return true;
         }
@@ -1157,7 +1157,7 @@ impl Value {
         let borrowed = self.0.borrow_mut();
         borrowed.slice(start, stop, stride)
     }
-    pub fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
+    pub fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
         let borrowed = self.0.borrow();
         let v: Vec<Value> = borrowed.iter()?.collect();
         Ok(Box::new(v.into_iter()))
@@ -1225,14 +1225,14 @@ impl Value {
 }
 
 impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         let borrowed = self.0.borrow();
         write!(f, "{:?}", borrowed)
     }
 }
 
 impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{}", self.to_str())
     }
 }
@@ -1480,7 +1480,7 @@ impl TypedValue for bool {
     not_supported!(pipe);
 }
 
-impl TypedValue {
+impl dyn TypedValue {
     // To be calleds by convert_slice_indices only
     fn convert_index_aux(
         len: i64,
@@ -1826,7 +1826,7 @@ mod tests {
             }
             fn compare<'a>(
                 &'a self,
-                other: &TypedValue,
+                other: &dyn TypedValue,
                 _recursion: u32,
             ) -> Result<std::cmp::Ordering, ValueError> {
                 match other.get_type() {

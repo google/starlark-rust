@@ -1,6 +1,3 @@
-extern crate assert_cmd;
-extern crate predicates;
-
 use assert_cmd::prelude::*;
 use predicates::str::contains;
 use std::io::Write;

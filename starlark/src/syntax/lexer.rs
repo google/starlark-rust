@@ -154,7 +154,7 @@ pub enum Token {
 }
 
 impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Indent => write!(f, "new indentation block"),
             Token::Dedent => write!(f, "end of indentation block"),
@@ -667,7 +667,7 @@ impl Lexer {
                     self.pop();
                     self.consume_int_radix(8)
                 }
-                '0'...'7' => self.consume_int_radix(8),
+                '0'..='7' => self.consume_int_radix(8),
                 'x' | 'X' => {
                     self.pop();
                     self.consume_int_radix(16)
@@ -723,7 +723,7 @@ impl Lexer {
                             Err(LexerError::InvalidEscapeSequence(pos, p.1))
                         }
                     }
-                    '1'...'9' => {
+                    '1'..='9' => {
                         self.pop();
                         Err(LexerError::InvalidEscapeSequence(pos, pos2 + 1))
                     }
@@ -864,7 +864,7 @@ impl Lexer {
                     self.consume_identifier_queue("r")
                 }
             }
-            '0'...'9' => self.consume_int(),
+            '0'..='9' => self.consume_int(),
             '_' => self.consume_identifier(),
             c if c.is_alphabetic() => self.consume_identifier(),
             ',' => self.consume(Token::Comma),
@@ -983,6 +983,7 @@ impl Lexer {
 #[cfg(test)]
 mod tests {
     use super::Token;
+    use crate::syntax::errors::SyntaxError;
     use codemap;
     use codemap_diagnostic;
     use std::fs;
@@ -990,7 +991,6 @@ mod tests {
     use std::io::Read;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
-    use syntax::errors::SyntaxError;
 
     fn collect_result_buffered(s: Vec<&'static str>) -> Vec<Token> {
         let codemap = Arc::new(Mutex::new(codemap::CodeMap::new()));
