@@ -104,7 +104,10 @@ fn sets() {
         "Type `set` is not supported. Perhaps you need to enable some crate feature?".to_string()
     );
     assert_eq!(err.level, codemap_diagnostic::Level::Error);
-    assert_eq!(err.code, Some(crate::values::NOT_SUPPORTED_ERROR_CODE.to_string()));
+    assert_eq!(
+        err.code,
+        Some(crate::values::NOT_SUPPORTED_ERROR_CODE.to_string())
+    );
 }
 
 #[cfg(feature = "linked_hash_set")]

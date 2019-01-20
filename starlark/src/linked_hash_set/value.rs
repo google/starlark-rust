@@ -171,13 +171,7 @@ impl TypedValue for Set {
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.length()?)? as usize;
         let to_skip = if i == 0 { 0 } else { i - 1 };
-        Ok(self
-            .content
-            .iter()
-            .nth(to_skip)
-            .unwrap()
-            .value
-            .clone())
+        Ok(self.content.iter().nth(to_skip).unwrap().value.clone())
     }
 
     fn length(&self) -> Result<i64, ValueError> {
