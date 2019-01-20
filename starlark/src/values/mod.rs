@@ -235,7 +235,7 @@ impl SyntaxError for ValueError {
                         ValueError::MutationDuringIteration => {
                             "Cannot mutate an iterable while iterating".to_owned()
                         }
-                        _ => unreachable!(),
+                        ValueError::DiagnosedError(..) => unreachable!(),
                     }),
                 };
                 Diagnostic {
@@ -295,7 +295,7 @@ impl SyntaxError for ValueError {
                         ValueError::MutationDuringIteration => {
                             "This operation mutate an iterable for an iterator is borrowed.".to_owned()
                         }
-                        _ => unreachable!(),
+                        ValueError::DiagnosedError(..) => unreachable!(),
                     },
                     code: Some(
                         match self {
