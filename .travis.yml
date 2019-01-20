@@ -13,7 +13,7 @@ matrix:
     rust: nightly
   - name: "Rust: clippy"
     env: ACTION=clippy
-    rust: nightly
+    rust: stable
   - name: "Rust: doc"
     env: ACTION=doc
     rust: stable
