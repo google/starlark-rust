@@ -39,7 +39,7 @@ impl Set {
         Value::new(Set::default())
     }
 
-    pub fn new<V: Into<Value>>(values: Vec<V>) -> Result<Value, ValueError> {
+    pub fn from<V: Into<Value>>(values: Vec<V>) -> Result<Value, ValueError> {
         let mut result = Self::default();
         for v in values.into_iter() {
             result
@@ -174,8 +174,7 @@ impl TypedValue for Set {
         Ok(self
             .content
             .iter()
-            .skip(to_skip)
-            .next()
+            .nth(to_skip)
             .unwrap()
             .value
             .clone())
@@ -186,9 +185,9 @@ impl TypedValue for Set {
     }
 
     fn is_in(&self, other: &Value) -> ValueResult {
-        return Ok(Value::new(
+        Ok(Value::new(
             self.content.contains(&ValueWrapper::new(other.clone())?),
-        ));
+        ))
     }
 
     fn is_descendant(&self, other: &TypedValue) -> bool {
@@ -317,28 +316,28 @@ mod tests {
 
     #[test]
     fn test_to_str() {
-        assert_eq!("{1, 2, 3}", Set::new(vec![1, 2, 3]).unwrap().to_str());
+        assert_eq!("{1, 2, 3}", Set::from(vec![1, 2, 3]).unwrap().to_str());
         assert_eq!(
             "{1, {2, 3}}",
-            Set::new(vec![Value::from(1), Set::new(vec![2, 3]).unwrap()])
+            Set::from(vec![Value::from(1), Set::from(vec![2, 3]).unwrap()])
                 .unwrap()
                 .to_str()
         );
-        assert_eq!("{1}", Set::new(vec![1]).unwrap().to_str());
-        assert_eq!("{}", Set::new(Vec::<i64>::new()).unwrap().to_str());
+        assert_eq!("{1}", Set::from(vec![1]).unwrap().to_str());
+        assert_eq!("{}", Set::from(Vec::<i64>::new()).unwrap().to_str());
     }
 
     #[test]
     fn equality_ignores_order() {
         assert_eq!(
-            Set::new(vec![1, 2, 3]).unwrap(),
-            Set::new(vec![3, 2, 1]).unwrap(),
+            Set::from(vec![1, 2, 3]).unwrap(),
+            Set::from(vec![3, 2, 1]).unwrap(),
         );
     }
 
     #[test]
     fn test_value_alias() {
-        let v1 = Set::new(vec![1, 2]).unwrap();
+        let v1 = Set::from(vec![1, 2]).unwrap();
         let v2 = v1.clone();
         Set::insert_if_absent(&v2, Value::from(3)).unwrap();
         assert_eq!(v2.to_str(), "{1, 2, 3}");
@@ -347,9 +346,9 @@ mod tests {
 
     #[test]
     fn test_is_descendant() {
-        let v1 = Set::new(vec![1, 2, 3]).unwrap();
-        let v2 = Set::new(vec![Value::new(1), Value::new(2), v1.clone()]).unwrap();
-        let v3 = Set::new(vec![Value::new(1), Value::new(2), v2.clone()]).unwrap();
+        let v1 = Set::from(vec![1, 2, 3]).unwrap();
+        let v2 = Set::from(vec![Value::new(1), Value::new(2), v1.clone()]).unwrap();
+        let v3 = Set::from(vec![Value::new(1), Value::new(2), v2.clone()]).unwrap();
         assert!(v3.is_descendant_value(&v2));
         assert!(v3.is_descendant_value(&v1));
         assert!(v3.is_descendant_value(&v3));

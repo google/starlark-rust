@@ -35,10 +35,10 @@ starlark_module! {global =>
     ///
     /// With no argument, `set()` returns a new empty set.
     set(#a = None) {
-        let mut s = Set::empty();
+        let s = Set::empty();
         if a.get_type() != "NoneType" {
             for x in a.iter()? {
-                Set::insert_if_absent(&mut s, x)?;
+                Set::insert_if_absent(&s, x)?;
             }
         }
         ok!(s)
@@ -482,7 +482,7 @@ starlark_module! {global =>
     /// x.symmetric_difference(z) == set([1, 2, 3, 4, 5])
     /// # )"#).unwrap());
     set.symmetric_difference(this, #other) {
-        Set::compare(&this, &other, &|s1, s2| Ok(Set::new(s1.symmetric_difference(s2).into_iter().collect()).unwrap()))
+        Set::compare(&this, &other, &|s1, s2| Ok(Set::from(s1.symmetric_difference(s2).collect()).unwrap()))
     }
 
     /// set.symmetric_difference_update: update this set to contain the symmetric difference of
@@ -519,7 +519,7 @@ starlark_module! {global =>
     /// z == set([5])
     /// # )"#).unwrap());
     set.symmetric_difference_update(this, #other) {
-        let symmetric_difference = Set::compare(&this, &other, &|s1, s2| Ok(Set::new(s1.symmetric_difference(s2).collect()).unwrap()))?;
+        let symmetric_difference = Set::compare(&this, &other, &|s1, s2| Ok(Set::from(s1.symmetric_difference(s2).collect()).unwrap()))?;
         Set::mutate(&this, &|s| {
             s.clear();
             for item in symmetric_difference.iter()? {

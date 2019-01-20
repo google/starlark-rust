@@ -948,7 +948,7 @@ pub fn global_environment() -> Environment {
 
 #[cfg(feature = "linked_hash_set")]
 fn add_set(env: Environment) -> Environment {
-    env.with_set_constructor(Box::new(crate::linked_hash_set::value::Set::new));
+    env.with_set_constructor(Box::new(crate::linked_hash_set::value::Set::from));
     crate::linked_hash_set::stdlib::global(env)
 }
 
