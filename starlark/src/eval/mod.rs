@@ -58,6 +58,8 @@ pub const INCORRECT_LEFT_VALUE_ERROR_CODE: &str = "CE03";
 pub const INCORRECT_UNPACK_ERROR_CODE: &str = "CE04";
 #[doc(hidden)]
 pub const RECURSION_ERROR_CODE: &str = "CE05";
+#[doc(hidden)]
+pub const COMPARISON_ERROR_CODE: &str = "CE06";
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -74,6 +76,8 @@ pub enum EvalException {
     IncorrectNumberOfValueToUnpack(Span, i64, i64),
     // Recursion
     Recursion(Span, String, Vec<(String, String)>),
+    // Invalid comparison between different types.
+    InvalidComparison(Span, String, String),
 }
 
 type EvalResult = Result<Value, EvalException>;
@@ -162,6 +166,20 @@ impl Into<Diagnostic> for EvalException {
                     span: s,
                     style: SpanStyle::Primary,
                     label: Some("Recursive call".to_owned()),
+                }],
+            },
+            EvalException::InvalidComparison(span, type1, type2) => Diagnostic {
+                level: Level::Error,
+                message: format!(
+                    "Disallowed ordered comparison between types {} and {}.",
+                    type1,
+                    type2,
+                ),
+                code: Some(COMPARISON_ERROR_CODE.to_owned()),
+                spans: vec![SpanLabel {
+                    span: span,
+                    style: SpanStyle::Primary,
+                    label: Some("Disallowed ordered comparison".to_owned()),
                 }],
             },
         }
@@ -305,13 +323,22 @@ fn eval_compare<T: FileLoader + 'static, F>(
     right: &AstExpr,
     cmp: F,
     context: &mut EvaluationContext<T>,
+    same_type: bool,
 ) -> EvalResult
 where
     F: Fn(Ordering) -> bool,
 {
     let l = left.eval(context)?;
     let r = right.eval(context)?;
-    Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
+    if l.get_type() != r.get_type() && same_type {
+        Err(EvalException::InvalidComparison(
+            this.span,
+            l.get_type().to_owned(),
+            r.get_type().to_owned(),
+        ))
+    } else {
+        Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
+    }
 }
 
 fn eval_slice<T: FileLoader + 'static>(
@@ -584,22 +611,22 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 Ok(if !l.to_bool() { l } else { r.eval(context)? })
             }
             Expr::Op(BinOp::EqualsTo, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x == Ordering::Equal, context)
+                eval_compare(self, l, r, |x| x == Ordering::Equal, context, false)
             }
             Expr::Op(BinOp::Different, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x != Ordering::Equal, context)
+                eval_compare(self, l, r, |x| x != Ordering::Equal, context, false)
             }
             Expr::Op(BinOp::LowerThan, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x == Ordering::Less, context)
+                eval_compare(self, l, r, |x| x == Ordering::Less, context, true)
             }
             Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x == Ordering::Greater, context)
+                eval_compare(self, l, r, |x| x == Ordering::Greater, context, true)
             }
             Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x != Ordering::Greater, context)
+                eval_compare(self, l, r, |x| x != Ordering::Greater, context, true)
             }
             Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x != Ordering::Less, context)
+                eval_compare(self, l, r, |x| x != Ordering::Less, context, true)
             }
             Expr::Op(BinOp::In, ref l, ref r) => {
                 t!(r.eval(context)?.is_in(&l.eval(context)?), self)

@@ -36,17 +36,25 @@
 #   tuple slice
 #   interpolate with %c, %%
 
+---
+# Ordered comparisons of different types are disallowed.
+None < False   ### [CE06]
+---
+False < list   ### [CE06]
+---
+list < {}      ### [CE06]
+---
 def lam(): None
-
-# All comparisons are legal
-None < False
-False < list
-list < {}
-{} < lam
-lam < 0
-0 < []
-[] < ""
-"" < ()
+{} < lam       ### [CE06]
+---
+def lam(): None
+lam < 0        ### [CE06]
+---
+0 < []         ### [CE06]
+---
+[] < ""        ### [CE06]
+---
+"" < ()        ### [CE06]
 
 ---
 # cyclic data structures
