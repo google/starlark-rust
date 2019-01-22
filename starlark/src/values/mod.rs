@@ -723,11 +723,11 @@ impl fmt::Debug for dyn TypedValue {
 #[macro_export]
 macro_rules! any {
     () => {
-        fn as_any(&self) -> &dyn Any {
+        fn as_any(&self) -> &dyn ::std::any::Any {
             self
         }
 
-        fn as_any_mut(&mut self) -> &mut dyn Any {
+        fn as_any_mut(&mut self) -> &mut dyn ::std::any::Any {
             self
         }
     }
@@ -760,10 +760,10 @@ macro_rules! not_supported {
         }
     };
     (call) => {
-        fn call(&self, _call_stack: &[(String, String)], _env: Environment,
-                _positional: Vec<Value>, _named: HashMap<String, Value>,
-                _args: Option<Value>, _kwargs: Option<Value>) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
+        fn call(&self, _call_stack: &[(String, String)], _env: $crate::environment::Environment,
+                _positional: Vec<$crate::values::Value>, _named: ::std::collections::HashMap<String, $crate::values::Value>,
+                _args: Option<$crate::values::Value>, _kwargs: Option<$crate::values::Value>) -> $crate::values::ValueResult {
+            Err($crate::values::ValueError::OperationNotSupported {
                 op: "call()".to_owned(), left: self.get_type().to_owned(), right: None })
         }
     };
