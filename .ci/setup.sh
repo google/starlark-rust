@@ -9,6 +9,6 @@ case "$1" in
     ;;
   clippy)
     echo "Installing clippy..."
-    rustup component add clippy --toolchain=nightly || cargo install --git https://github.com/rust-lang/rust-clippy/ --force clippy
+    rustup component add clippy || cargo install --git https://github.com/rust-lang/rust-clippy/ --force clippy
     ;;
 esac
