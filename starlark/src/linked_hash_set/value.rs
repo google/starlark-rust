@@ -154,8 +154,10 @@ impl TypedValue for Set {
             {
                 return Ok(Ordering::Equal);
             }
-            // Consistent: Yes.
-            // Useful: No.
+            // Comparing based on hash value isn't particularly meaningful to users, who may expect
+            // sets to compare based on, say, their size, or comparing their elements.
+            // We do this because it's guaranteed to provide a consistent ordering for any pair of
+            // sets. We should consider better defining the sort order of sets if users complain.
             let l = self.get_hash().unwrap();
             let r = other.get_hash().unwrap();
             if l <= r {

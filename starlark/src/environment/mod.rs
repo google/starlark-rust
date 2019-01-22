@@ -94,7 +94,8 @@ struct EnvironmentContent {
     variables: HashMap<String, Value>,
     /// List of static values of an object per type
     type_objs: HashMap<String, HashMap<String, Value>>,
-
+    /// Optional function which can be used to construct set literals (i.e. `{foo, bar}`).
+    /// If not set, attempts to use set literals will raise an error.
     set_constructor: SetConstructor,
 }
 
@@ -198,6 +199,17 @@ impl Environment {
         self.env.borrow().get_parent()
     }
 
+    /// Set the function which will be used to instantiate set literals encountered when evaluating
+    /// in this `Environment`. Set literals are {}s with one or more elements between, separated by
+    /// commas, e.g. `{1, 2, "three"}`.
+    ///
+    /// If this function is not called on the `Environment`, its parent's set constructor will be
+    /// used when set literals are encountered. If neither this `Environment`, nor any of its
+    /// transitive parents, have a set constructor defined, attempts to evaluate set literals will
+    /// raise and error.
+    ///
+    /// The `Value` returned by this function is expected to be a one-dimensional collection
+    /// containing no duplicates.
     pub fn with_set_constructor(&self, constructor: Box<Fn(Vec<Value>) -> ValueResult>) {
         self.env.borrow_mut().set_constructor = SetConstructor(Some(constructor));
     }
