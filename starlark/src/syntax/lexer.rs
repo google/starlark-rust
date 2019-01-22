@@ -1196,7 +1196,7 @@ mod tests {
     #[test]
     fn test_number_collated_with_keywords_or_identifier() {
         let r = collect_result(
-            "0in 1and 2else 3load 4break 5for 6not 7not  in 8continue 10identifier11"
+            "0in 1and 2else 3load 4break 5for 6not 7not  in 8continue 10identifier11",
         );
         assert_eq!(
             &[
