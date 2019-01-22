@@ -172,8 +172,7 @@ impl Into<Diagnostic> for EvalException {
                 level: Level::Error,
                 message: format!(
                     "Disallowed ordered comparison between types {} and {}.",
-                    type1,
-                    type2,
+                    type1, type2,
                 ),
                 code: Some(COMPARISON_ERROR_CODE.to_owned()),
                 spans: vec![SpanLabel {
