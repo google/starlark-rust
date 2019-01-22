@@ -676,7 +676,7 @@ impl Lexer {
                     self.pop();
                     self.consume_int_radix(2)
                 }
-                c if !c.is_alphanumeric() => self.end(Token::IntegerLiteral(0)),
+                c if !c.is_numeric() => self.end(Token::IntegerLiteral(0)),
                 _ => self.invalid(),
             }
         } else {
@@ -1196,9 +1196,11 @@ mod tests {
     #[test]
     fn test_number_collated_with_keywords_or_identifier() {
         let r =
-            collect_result("1and 2else 3load 4break 5for 6not 7not  in 8continue 10identifier11");
+            collect_result("0in 1and 2else 3load 4break 5for 6not 7not  in 8continue 10identifier11");
         assert_eq!(
             &[
+                Token::IntegerLiteral(0),
+                Token::In,
                 Token::IntegerLiteral(1),
                 Token::And,
                 Token::IntegerLiteral(2),

@@ -1,8 +1,10 @@
 # This file contains the list of example reported by https://github.com/josharian
 # as part of his fuzzing of starlark-rust
 
-# https://github.com/google/starlark-rust/issues#44: whitespace isn't required between some tokens
+# https://github.com/google/starlark-rust/issues/44: whitespace isn't required between some tokens
 assert_eq(6or(), 6)
 # 6burgle still generates a parse error.
 6burgle  ### [CP01]
 ---
+# https://github.com/google/starlark-rust/issues/56: Non whitespace after 0 should be allowed.
+assert_eq(0in[1,2,3], False)

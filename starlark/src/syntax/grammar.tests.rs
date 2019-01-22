@@ -172,6 +172,15 @@ fn test_optional_whitespace() {
     );
 }
 
+// Regression test for https://github.com/google/starlark-rust/issues/56.
+#[test]
+fn test_optional_whitespace_after_0() {
+    assert_eq!(
+        unwrap_parse!("0in[1,2,3]"),
+        "(0 in [1, 2, 3])\n"
+    );
+}
+
 #[test]
 fn test_fncall_span() {
     let content = r#"def fn(a):
