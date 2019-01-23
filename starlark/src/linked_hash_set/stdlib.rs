@@ -182,7 +182,7 @@ starlark_module! {global =>
     /// x.difference_update(set([1]))
     /// x.difference_update([2, 3])
     /// x == set([4])
-    /// "#).unwrap());
+    /// # "#).unwrap());
     /// ```
     set.difference_update(this, #other) {
         let previous_length = this.length()? as usize;
@@ -288,7 +288,7 @@ starlark_module! {global =>
     /// x.intersection_update(set([1, 2]))
     /// x.intersection_update([2, 3])
     /// x == set([2])
-    /// "#).unwrap());
+    /// # "#).unwrap());
     /// ```
     set.intersection_update(this, #other) {
         let previous_length = this.length()? as usize;
