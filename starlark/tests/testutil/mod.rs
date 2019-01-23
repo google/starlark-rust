@@ -103,9 +103,10 @@ def assert_(cond, msg="assertion failed"):
         } else {
             ""
         };
+        let content = std::iter::repeat("\n").take(offset).collect::<String>() + &content;
         match eval(
             &map,
-            &format!("{}<{}>", path, offset),
+            &path,
             &content,
             starlark::syntax::dialect::Dialect::Bzl,
             &mut prelude.child(&path),
