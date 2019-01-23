@@ -214,6 +214,7 @@ impl Environment {
         self.env.borrow_mut().set_constructor = SetConstructor(Some(constructor));
     }
 
+    #[doc(hidden)]
     pub fn make_set(&self, values: Vec<Value>) -> ValueResult {
         match self.env.borrow().set_constructor.0 {
             Some(ref ctor) => ctor(values),
