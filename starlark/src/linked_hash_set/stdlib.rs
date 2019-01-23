@@ -114,6 +114,7 @@ starlark_module! {global =>
     /// # and
     /// y == set([1, 2, 3, 5])
     /// # )"#).unwrap());
+    /// ```
     set.copy(this) {
         let ret = Set::empty();
         for el in this.iter()? {
@@ -148,6 +149,7 @@ starlark_module! {global =>
     /// # and
     /// z == set([2, 3])
     /// # )"#).unwrap());
+    /// ```
     set.difference(this, *others) {
         let ret = Set::empty();
         for el in this.iter()? {
@@ -181,6 +183,7 @@ starlark_module! {global =>
     /// x.difference_update([2, 3])
     /// x == set([4])
     /// "#).unwrap());
+    /// ```
     set.difference_update(this, #other) {
         let previous_length = this.length()? as usize;
         Set::mutate(&this, &|x| {
@@ -251,6 +254,7 @@ starlark_module! {global =>
     /// # and
     /// z == set([2, 3])
     /// # )"#).unwrap());
+    /// ```
     set.intersection(this, *others) {
         let ret = Set::empty();
         for el in this.iter()? {
@@ -285,6 +289,7 @@ starlark_module! {global =>
     /// x.intersection_update([2, 3])
     /// x == set([2])
     /// "#).unwrap());
+    /// ```
     set.intersection_update(this, #other) {
         let previous_length = this.length()? as usize;
         Set::mutate(&this, &|x| {
@@ -321,6 +326,7 @@ starlark_module! {global =>
     /// # and
     /// x.isdisjoint(set([1, 5])) == False
     /// # )"#).unwrap());
+    /// ```
     set.isdisjoint(this, #other) {
         ok!(Set::compare(&this, &other, &|s1, s2| Ok(s1.intersection(s2).next().is_none()))?)
     }
@@ -344,6 +350,7 @@ starlark_module! {global =>
     /// # and
     /// x.issubset(set([1, 2, 3, 4, 5])) == True
     /// # )"#).unwrap());
+    /// ```
     set.issubset(this, #other) {
         ok!(Set::compare(&this, &other, &|this, other| Ok(this.is_subset(other)))?)
     }
@@ -367,6 +374,7 @@ starlark_module! {global =>
     /// # and
     /// x.issuperset(set([1, 2, 3, 4, 5])) == False
     /// # )"#).unwrap());
+    /// ```
     set.issuperset(this, #other) {
         ok!(Set::compare(&this, &other, &|this, other| Ok(other.is_subset(this)))?)
     }
@@ -445,7 +453,6 @@ starlark_module! {global =>
     ///
     /// A subsequent call to `x.remove(2)` would yield an error because the element won't be
     /// found.
-    /// ```
     set.remove(this, #needle) {
         let did_remove = Set::mutate(&this, &|x| {
             ok!(x.remove(&ValueWrapper::new(needle.clone())?))
@@ -481,6 +488,7 @@ starlark_module! {global =>
     /// # and
     /// x.symmetric_difference(z) == set([1, 2, 3, 4, 5])
     /// # )"#).unwrap());
+    /// ```
     set.symmetric_difference(this, #other) {
         Set::compare(&this, &other, &|s1, s2| Ok(Set::from(s1.symmetric_difference(s2).collect()).unwrap()))
     }
@@ -518,6 +526,7 @@ starlark_module! {global =>
     /// # and
     /// z == set([5])
     /// # )"#).unwrap());
+    /// ```
     set.symmetric_difference_update(this, #other) {
         let symmetric_difference = Set::compare(&this, &other, &|s1, s2| Ok(Set::from(s1.symmetric_difference(s2).collect()).unwrap()))?;
         Set::mutate(&this, &|s| {
@@ -554,6 +563,7 @@ starlark_module! {global =>
     /// # and
     /// z == [5, 6]
     /// # )"#).unwrap());
+    /// ```
     set.union(this, *others) {
         let ret = Set::empty();
         for el in this.iter()? {
