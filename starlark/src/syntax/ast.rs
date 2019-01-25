@@ -106,8 +106,10 @@ pub enum Expr {
     Op(BinOp, AstExpr, AstExpr),
     If(AstExpr, AstExpr, AstExpr), // Order: condition, v1, v2 <=> v1 if condition else v2
     List(Vec<AstExpr>),
+    Set(Vec<AstExpr>),
     Dict(Vec<(AstExpr, AstExpr)>),
     ListComprehension(AstExpr, Vec<AstClause>),
+    SetComprehension(AstExpr, Vec<AstClause>),
     DictComprehension((AstExpr, AstExpr), Vec<AstClause>),
 }
 to_ast_trait!(Expr, AstExpr, Box);
@@ -479,6 +481,11 @@ impl Display for Expr {
                 comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
                 f.write_str("]")
             }
+            Expr::Set(ref v) => {
+                f.write_str("{")?;
+                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                f.write_str("}")
+            }
             Expr::Dict(ref v) => {
                 f.write_str("{")?;
                 comma_separated_fmt(f, v, |x, f| write!(f, "{}: {}", x.0.node, x.1.node), false)?;
@@ -488,6 +495,11 @@ impl Display for Expr {
                 write!(f, "[{}", e.node)?;
                 comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
                 f.write_str("]")
+            }
+            Expr::SetComprehension(ref e, ref v) => {
+                write!(f, "{{{}", e.node)?;
+                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                f.write_str("}}")
             }
             Expr::DictComprehension((ref k, ref v), ref c) => {
                 write!(f, "{{{}: {}", k.node, v.node)?;

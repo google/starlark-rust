@@ -94,6 +94,22 @@ struct EnvironmentContent {
     variables: HashMap<String, Value>,
     /// List of static values of an object per type
     type_objs: HashMap<String, HashMap<String, Value>>,
+    /// Optional function which can be used to construct set literals (i.e. `{foo, bar}`).
+    /// If not set, attempts to use set literals will raise an error.
+    set_constructor: SetConstructor,
+}
+
+// Newtype so that EnvironmentContent can derive Debug.
+struct SetConstructor((Option<Box<Fn(Vec<Value>) -> ValueResult>>));
+
+impl std::fmt::Debug for SetConstructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        if self.0.is_some() {
+            write!(f, "<set constructor>")
+        } else {
+            write!(f, "<no set constructor>")
+        }
+    }
 }
 
 impl Environment {
@@ -106,6 +122,7 @@ impl Environment {
                 parent: None,
                 variables: HashMap::new(),
                 type_objs: HashMap::new(),
+                set_constructor: SetConstructor(None),
             })),
         }
     }
@@ -135,6 +152,7 @@ impl Environment {
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
                 type_objs: HashMap::new(),
+                set_constructor: SetConstructor(None),
             })),
         }
     }
@@ -179,6 +197,35 @@ impl Environment {
     /// Return the parent environment (or `None` if there is no parent).
     pub fn get_parent(&self) -> Option<Environment> {
         self.env.borrow().get_parent()
+    }
+
+    /// Set the function which will be used to instantiate set literals encountered when evaluating
+    /// in this `Environment`. Set literals are {}s with one or more elements between, separated by
+    /// commas, e.g. `{1, 2, "three"}`.
+    ///
+    /// If this function is not called on the `Environment`, its parent's set constructor will be
+    /// used when set literals are encountered. If neither this `Environment`, nor any of its
+    /// transitive parents, have a set constructor defined, attempts to evaluate set literals will
+    /// raise and error.
+    ///
+    /// The `Value` returned by this function is expected to be a one-dimensional collection
+    /// containing no duplicates.
+    pub fn with_set_constructor(&self, constructor: Box<Fn(Vec<Value>) -> ValueResult>) {
+        self.env.borrow_mut().set_constructor = SetConstructor(Some(constructor));
+    }
+
+    #[doc(hidden)]
+    pub fn make_set(&self, values: Vec<Value>) -> ValueResult {
+        match self.env.borrow().set_constructor.0 {
+            Some(ref ctor) => ctor(values),
+            None => {
+                if let Some(parent) = self.get_parent() {
+                    parent.make_set(values)
+                } else {
+                    Err(ValueError::TypeNotSupported("set".to_string()))
+                }
+            }
+        }
     }
 }
 

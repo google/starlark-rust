@@ -7,6 +7,7 @@ case "$1" in
   build)
     cargo build --all
     cargo test --all
+    (cd starlark && cargo test --all --features=linked_hash_set)
     ;;
   doc)
     cargo doc --all

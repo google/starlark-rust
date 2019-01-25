@@ -416,7 +416,7 @@ fn eval_dict_comprehension<T: FileLoader + 'static>(
     k: &AstExpr,
     v: &AstExpr,
     clauses: &[AstClause],
-    context: &mut EvaluationContext<T>,
+    context: &EvaluationContext<T>,
 ) -> EvalResult {
     let mut r = LinkedHashMap::new();
     let tuple = Box::new(Spanned {
@@ -432,17 +432,25 @@ fn eval_dict_comprehension<T: FileLoader + 'static>(
     Ok(Value::from(r))
 }
 
-fn eval_list_comprehension<T: FileLoader + 'static>(
+fn eval_one_dimensional_comprehension<T: FileLoader + 'static>(
     e: &AstExpr,
     clauses: &[AstClause],
-    context: &mut EvaluationContext<T>,
-) -> EvalResult {
+    context: &EvaluationContext<T>,
+) -> Result<Vec<Value>, EvalException> {
     let mut r = Vec::new();
-    let mut context = context.child("list_comprehension");
+    let mut context = context.child("one_dimensional_comprehension");
     for v in eval_comprehension_clause(&mut context, e, clauses)? {
         r.push(v.clone());
     }
-    Ok(Value::from(r))
+    Ok(r)
+}
+
+fn eval_list_comprehension<T: FileLoader + 'static>(
+    e: &AstExpr,
+    clauses: &[AstClause],
+    context: &EvaluationContext<T>,
+) -> EvalResult {
+    eval_one_dimensional_comprehension(e, clauses, &context).map(Value::from)
 }
 
 enum TransformedExpr<T: FileLoader> {
@@ -517,6 +525,17 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
             }
         }
     }
+}
+
+fn make_set<T: FileLoader + 'static>(
+    values: Vec<Value>,
+    context: &EvaluationContext<T>,
+    span: Span,
+) -> EvalResult {
+    context
+        .env
+        .make_set(values)
+        .map_err(|err| EvalException::DiagnosedError(err.to_diagnostic(span)))
 }
 
 impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
@@ -646,11 +665,19 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 }
                 Ok(r)
             }
+            Expr::Set(ref v) => {
+                let values: Result<Vec<_>, _> = v.iter().map(|s| s.eval(context)).collect();
+                make_set(values?, context, self.span)
+            }
             Expr::ListComprehension(ref e, ref clauses) => {
                 eval_list_comprehension(e, clauses, context)
             }
             Expr::DictComprehension((ref k, ref v), ref clauses) => {
                 eval_dict_comprehension(k, v, clauses, context)
+            }
+            Expr::SetComprehension(ref e, ref clauses) => {
+                let values = eval_one_dimensional_comprehension(e, clauses, context)?;
+                make_set(values, context, self.span)
             }
         }
     }

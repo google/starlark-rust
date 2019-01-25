@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::eval::testutil;
+use crate::eval::testutil::starlark_no_diagnostic;
 use crate::eval::RECURSION_ERROR_CODE;
 
 #[test]
@@ -91,4 +92,38 @@ def rec6(): rec2()
     starlark_fail!("def f(a, **kwargs, b=1): pass");
     starlark_fail!("def f(a, b=1, **kwargs, c=1): pass");
     starlark_fail!("def f(a, **kwargs, *args): pass");
+}
+
+#[cfg(not(feature = "linked_hash_set"))]
+#[test]
+fn sets() {
+    let err = starlark_no_diagnostic(&mut crate::stdlib::global_environment(), "s = {1, 2, 3}")
+        .unwrap_err();
+    assert_eq!(
+        err.message,
+        "Type `set` is not supported. Perhaps you need to enable some crate feature?".to_string()
+    );
+    assert_eq!(err.level, codemap_diagnostic::Level::Error);
+    assert_eq!(
+        err.code,
+        Some(crate::values::NOT_SUPPORTED_ERROR_CODE.to_string())
+    );
+}
+
+#[cfg(feature = "linked_hash_set")]
+#[test]
+fn sets() {
+    fn starlark_ok_with_global_env(snippet: &str) {
+        assert!(starlark_no_diagnostic(&mut crate::stdlib::global_environment(), snippet).unwrap());
+    }
+
+    starlark_ok_with_global_env(
+        "s1 = {1, 2, 3, 1} ; s2 = set([1, 2, 3]) ; len(s1) == 3 and s1 == s2",
+    );
+    starlark_ok_with_global_env("list(set([1, 2, 3, 1])) == [1, 2, 3]");
+    starlark_ok_with_global_env("list(set()) == []");
+    starlark_ok_with_global_env("not set()");
+
+    let parent_env = crate::stdlib::global_environment();
+    assert!(starlark_no_diagnostic(&mut parent_env.child("child"), "len({1, 2}) == 2").unwrap());
 }
