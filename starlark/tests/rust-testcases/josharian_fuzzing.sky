@@ -8,3 +8,6 @@ assert_eq(6or(), 6)
 ---
 # https://github.com/google/starlark-rust/issues/56: Non whitespace after 0 should be allowed.
 assert_eq(0in[1,2,3], False)
+---
+# https://github.com/google/starlark-rust/issues/61: panic on bad range using string.index
+'a'.index('', 1, 0)  ### [UF00]

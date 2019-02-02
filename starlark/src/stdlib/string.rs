@@ -519,15 +519,16 @@ starlark_module! {global =>
         convert_indices!(this, start, end);
         let this = this.to_str();
         let needle = needle.to_str();
-        if let Some(offset) = this.as_str().get(start..end).unwrap().find(needle.as_str()) {
-            ok!((offset + start) as i64)
-        } else {
-            starlark_err!(
-                SUBSTRING_INDEX_FAILED_ERROR_CODE,
-                format!("Substring '{}' not found in '{}'", needle, this),
-                "substring not found".to_owned()
-            );
+        if let Some(substring) = this.as_str().get(start..end) {
+            if let Some(offset) = substring.find(needle.as_str()) {
+                ok!((offset + start) as i64);
+            }
         }
+        starlark_err!(
+            SUBSTRING_INDEX_FAILED_ERROR_CODE,
+            format!("Substring '{}' not found in '{}'", needle, this),
+            "substring not found".to_owned()
+        );
     }
 
     /// [string.isalnum](
