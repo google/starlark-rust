@@ -295,6 +295,7 @@ starlark_module! {global_functions =>
         if let Ok(v) = x.dir_attr() {
             result.extend(v);
         }
+        result.sort();
         Ok(Value::from(result))
     }
 
