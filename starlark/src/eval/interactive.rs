@@ -28,7 +28,7 @@ pub struct EvalError {
 
 impl EvalError {
     pub fn write_to_stderr(self) {
-        Emitter::stderr(ColorConfig::Always, Some(&self.codemap.lock().unwrap()))
+        Emitter::stderr(ColorConfig::Auto, Some(&self.codemap.lock().unwrap()))
             .emit(&[self.diagnostic])
     }
 }

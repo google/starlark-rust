@@ -23,7 +23,7 @@ lalrpop = "0.16.0"
 
 [dependencies]
 codemap = "0.1.1"
-codemap-diagnostic = "0.1"
+codemap-diagnostic = "0.1.1"
 lalrpop-util = "0.16.0"
 linked-hash-map = "0.5.1"
 linked_hash_set = { version = "0.1.3", optional = true }
