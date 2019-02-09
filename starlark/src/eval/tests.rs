@@ -21,7 +21,7 @@ fn arithmetic_test() {
     starlark_ok!("(1 + 2 == 3)");
     starlark_ok!("(1 * 2 == 2)");
     starlark_ok!("(-1 * 2 == -2)");
-    starlark_ok!("(5 / 2 == 2)");
+    starlark_ok!("(5 // 2 == 2)");
     starlark_ok!("(5 % 2 == 1)");
 }
 

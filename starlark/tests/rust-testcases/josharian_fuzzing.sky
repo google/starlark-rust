@@ -17,3 +17,6 @@ assert_eq('a'.rfind('', 1, 0), -1)
 ---
 # https://github.com/google/starlark-rust/issues/64: alphabetize dir entries
 assert_eq(dir(""), sorted(dir("")))
+---
+# https://github.com/google/starlark-rust/issues/66: / is only for floats (which we don't support)
+1 / 1  ### [CV00]
