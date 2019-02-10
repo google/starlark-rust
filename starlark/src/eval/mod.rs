@@ -639,7 +639,15 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 t!(l.eval(context)?.percent(r.eval(context)?), self)
             }
             Expr::Op(BinOp::Division, ref l, ref r) => {
-                t!(l.eval(context)?.div(r.eval(context)?), self)
+                let l = l.eval(context)?;
+                let r = r.eval(context)?;
+                // No types currently support / so always error.
+                let err = ValueError::OperationNotSupported {
+                    op: "/".to_string(),
+                    left: l.get_type().to_string(),
+                    right: Some(r.get_type().to_string()),
+                };
+                Err(EvalException::DiagnosedError(err.to_diagnostic(self.span)))
             }
             Expr::Op(BinOp::FloorDivision, ref l, ref r) => {
                 t!(l.eval(context)?.floor_div(r.eval(context)?), self)

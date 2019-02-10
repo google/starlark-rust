@@ -42,7 +42,7 @@ assert_eq(-98 % -7, 0)
 
 # precedence
 assert_eq(5 - 7 * 2 + 3, -6)
-assert_eq(4 * 5 / 2 + 5 / 2 * 4, 18)
+assert_eq(4 * 5 // 2 + 5 // 2 * 4, 18)
 
 # compound assignment
 def compound():
@@ -61,6 +61,6 @@ def compound():
 compound()
 
 ---
-1 / 0  ### divide by zero
+1 // 0  ### divide by zero
 ---
 1 % 0  ### divide by zero
