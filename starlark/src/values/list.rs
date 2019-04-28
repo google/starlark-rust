@@ -46,15 +46,12 @@ impl List {
     }
 
     pub fn mutate(v: &Value, f: &dyn Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
-        if v.get_type() != "list" {
-            Err(ValueError::IncorrectParameterType)
-        } else {
-            let mut v = v.clone();
-            v.downcast_apply_mut(|x: &mut List| -> ValueResult {
-                x.mutability.test()?;
-                f(&mut x.content)
-            })
-        }
+        let mut v = v.clone();
+        v.downcast_apply_mut(|x: &mut List| -> ValueResult {
+            x.mutability.test()?;
+            f(&mut x.content)
+        })
+        .unwrap_or(Err(ValueError::IncorrectParameterType))
     }
 }
 
