@@ -53,6 +53,10 @@ impl List {
         })
         .unwrap_or(Err(ValueError::IncorrectParameterType))
     }
+
+    pub fn values(&self) -> &[Value] {
+        &self.content
+    }
 }
 
 impl TypedValue for List {

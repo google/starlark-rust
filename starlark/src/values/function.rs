@@ -17,6 +17,7 @@ use super::*;
 use crate::environment::Environment;
 use crate::eval::eval_def;
 use crate::syntax::ast::AstStatement;
+use crate::values::interop::StarlarkParameterToRust;
 use codemap::CodeMap;
 use std::sync::{Arc, Mutex};
 
@@ -175,6 +176,94 @@ impl Function {
 
     pub fn new_self_call(self_obj: Value, method: Value) -> Value {
         Value::new(WrappedMethod { method, self_obj })
+    }
+
+    /// Make parameter name for native function.
+    fn native_parameter_name(parameter_index: usize) -> String {
+        format!("p{}", parameter_index)
+    }
+
+    /// Make a basic function signature for given number of parameter.
+    fn make_native_signature(parameter_count: usize) -> Vec<FunctionParameter> {
+        (0..parameter_count)
+            .map(|i| FunctionParameter::Normal(Function::native_parameter_name(i)))
+            .collect()
+    }
+
+    /// Verify given args list has expected number of parameters.
+    fn verify_arg_count(
+        args: &[Value],
+        name: &str,
+        parameter_count: usize,
+    ) -> Result<(), ValueError> {
+        if args.len() > parameter_count {
+            Err(FunctionError::ExtraParameter.into())
+        } else if args.len() < parameter_count {
+            Err(FunctionError::NotEnoughParameter {
+                missing: Function::native_parameter_name(args.len()),
+                function_type: FunctionType::Native(name.to_owned()),
+                signature: Function::make_native_signature(parameter_count),
+            }
+            .into())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Make a function from simple Rust function.
+    pub fn new_native_0<R, F>(name: String, f: F) -> Value
+    where
+        R: Into<Value>,
+        F: Fn() -> Result<R, ValueError> + 'static,
+    {
+        Function::new(
+            name.clone(),
+            move |_stack, _env, args| {
+                Function::verify_arg_count(&args, &name, 0)?;
+                f().map(Into::into)
+            },
+            Function::make_native_signature(0),
+        )
+    }
+
+    /// Make a function from simple Rust function.
+    pub fn new_native_1<R, A, F>(name: String, f: F) -> Value
+    where
+        R: Into<Value>,
+        A: StarlarkParameterToRust,
+        F: Fn(A) -> Result<R, ValueError> + 'static,
+    {
+        Function::new(
+            name.clone(),
+            move |_stack, _env, mut args| {
+                Function::verify_arg_count(&args, &name, 1)?;
+                let p0 = StarlarkParameterToRust::from_starlark(args.pop().unwrap())?;
+                assert!(args.is_empty());
+                f(p0).map(Into::into)
+            },
+            Function::make_native_signature(1),
+        )
+    }
+
+    /// Make a function from simple Rust function.
+    pub fn new_native_2<R, A, B, F>(name: String, f: F) -> Value
+    where
+        R: Into<Value>,
+        A: StarlarkParameterToRust,
+        B: StarlarkParameterToRust,
+        F: Fn(A, B) -> Result<R, ValueError> + 'static,
+    {
+        Function::new(
+            name.clone(),
+            move |_stack, _env, mut args| {
+                Function::verify_arg_count(&args, &name, 2)?;
+                let p1 = StarlarkParameterToRust::from_starlark(args.pop().unwrap())?;
+                let p0 = StarlarkParameterToRust::from_starlark(args.pop().unwrap())?;
+                assert!(args.is_empty());
+                f(p0, p1).map(Into::into)
+            },
+            Function::make_native_signature(2),
+        )
     }
 
     pub fn name(&self) -> String {
