@@ -85,14 +85,15 @@ impl TypedValue for List {
     fn to_str(&self) -> String {
         format!(
             "[{}]",
-            self.content.iter().map(Value::to_repr).enumerate().fold(
-                "".to_string(),
-                |accum, s| if s.0 == 0 {
+            self.content
+                .iter()
+                .map(Value::to_repr)
+                .enumerate()
+                .fold("".to_string(), |accum, s| if s.0 == 0 {
                     accum + &s.1
                 } else {
                     accum + ", " + &s.1
-                },
-            )
+                },)
         )
     }
 
