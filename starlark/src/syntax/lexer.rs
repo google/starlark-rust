@@ -1428,7 +1428,7 @@ def test(a):
 test("abc")
 "#,
         )
-        .map(|x| x.unwrap())
+        .map(Result::unwrap)
         .collect();
         assert_eq!(expected, actual);
     }
