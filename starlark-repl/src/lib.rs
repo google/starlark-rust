@@ -84,8 +84,17 @@ starlark_module! {print_function =>
     /// ```python
     /// print("some message")  # Will print "some message" to stderr
     /// ```
-    print(msg) {
-        eprintln!("{}", msg.to_str());
+    print(*args) {
+        let mut r = String::new();
+        let mut first = true;
+        for arg in args.iter()? {
+            if !first {
+                r.push_str(" ");
+            }
+            first = false;
+            r.push_str(&arg.to_str());
+        }
+        eprintln!("{}", r);
         Ok(Value::new(None))
     }
 }
