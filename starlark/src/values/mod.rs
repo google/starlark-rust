@@ -105,6 +105,7 @@ pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &str = "CV12";
 pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &str = "CV13";
 pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &str = "CV14";
 pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &str = "CV15";
+pub const INTEGER_OVERFLOW_ERROR_CODE: &str = "CV16";
 
 // Maximum recursion level for comparison
 // TODO(dmarting): those are rather short, maybe make it configurable?
@@ -130,6 +131,8 @@ pub enum ValueError {
     },
     /// Division by 0
     DivisionByZero,
+    /// Arithmetic operation results in integer overflow.
+    IntegerOverlow,
     /// Trying to modify an immutable value.
     CannotMutateImmutableValue,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
@@ -208,6 +211,7 @@ impl SyntaxError for ValueError {
                             ref op,
                         } => format!("The type '{}' is not {}", object_type, op),
                         ValueError::DivisionByZero => "Division by zero".to_owned(),
+                        ValueError::IntegerOverlow => "Integer overflow".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
@@ -262,6 +266,7 @@ impl SyntaxError for ValueError {
                             ref op,
                         } => format!("The type '{}' is not {}", object_type, op),
                         ValueError::DivisionByZero => "Cannot divide by zero".to_owned(),
+                        ValueError::IntegerOverlow => "Integer overflow".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
@@ -310,6 +315,7 @@ impl SyntaxError for ValueError {
                             ValueError::OperationNotSupported { .. } | ValueError::TypeNotSupported(..) => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::TypeNotX { .. } => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
+                            ValueError::IntegerOverlow => INTEGER_OVERFLOW_ERROR_CODE,
                             ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,
                             ValueError::IncorrectParameterType => {
                                 INCORRECT_PARAMETER_TYPE_ERROR_CODE
@@ -1333,17 +1339,32 @@ impl TypedValue for i64 {
         Ok(Value::new(*self))
     }
     fn minus(&self) -> ValueResult {
-        Ok(Value::new(-*self))
+        match self.checked_neg() {
+            Some(r) => Ok(Value::new(r)),
+            None => Err(ValueError::IntegerOverlow),
+        }
     }
     fn add(&self, other: Value) -> ValueResult {
         match other.get_type() {
-            "int" | "bool" => Ok(Value::new(self.wrapping_add(other.to_int().unwrap()))),
+            "int" | "bool" => {
+                let other_int = other.to_int().unwrap();
+                match self.checked_add(other_int) {
+                    Some(r) => Ok(Value::new(r)),
+                    None => Err(ValueError::IntegerOverlow),
+                }
+            }
             _ => other.add(Value::new(*self)),
         }
     }
     fn sub(&self, other: Value) -> ValueResult {
         match other.get_type() {
-            "int" | "bool" => Ok(Value::new(self.wrapping_sub(other.to_int().unwrap()))),
+            "int" | "bool" => {
+                let other_int = other.to_int().unwrap();
+                match self.checked_sub(other_int) {
+                    Some(r) => Ok(Value::new(r)),
+                    None => Err(ValueError::IntegerOverlow),
+                }
+            }
             _ => Err(ValueError::OperationNotSupported {
                 op: "-".to_owned(),
                 left: "int".to_owned(),
@@ -1353,7 +1374,13 @@ impl TypedValue for i64 {
     }
     fn mul(&self, other: Value) -> ValueResult {
         match other.get_type() {
-            "int" | "bool" => Ok(Value::new(self.wrapping_mul(other.to_int().unwrap()))),
+            "int" | "bool" => {
+                let other_int = other.to_int().unwrap();
+                match self.checked_mul(other_int) {
+                    Some(r) => Ok(Value::new(r)),
+                    None => Err(ValueError::IntegerOverlow),
+                }
+            }
             _ => other.mul(Value::new(*self)),
         }
     }
@@ -1361,6 +1388,10 @@ impl TypedValue for i64 {
         let other = other.to_int()?;
         if other == 0 {
             return Err(ValueError::DivisionByZero);
+        }
+        // In Rust `i64::min_value() % -1` is overflow, but we should eval it to zero.
+        if *self == Self::min_value() && other == -1 {
+            return Ok(Value::new(0));
         }
         let me = self.to_int()?;
         let r = me % other;
@@ -1385,7 +1416,10 @@ impl TypedValue for i64 {
         let me = self.to_int()?;
         let sig = other.signum() * me.signum();
         let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
-        Ok(Value::new(me / other - offset))
+        match me.checked_div(other) {
+            Some(div) => Ok(Value::new(div - offset)),
+            None => Err(ValueError::IntegerOverlow),
+        }
     }
     not_supported!(container);
     not_supported!(function);
@@ -1420,68 +1454,28 @@ impl TypedValue for bool {
     }
     default_compare!();
     fn plus(&self) -> ValueResult {
-        Ok(Value::new(self.to_int().unwrap()))
+        Value::new(self.to_int()?).plus()
     }
     fn minus(&self) -> ValueResult {
-        Ok(Value::new(-self.to_int().unwrap()))
+        Value::new(self.to_int()?).minus()
     }
     fn add(&self, other: Value) -> ValueResult {
-        match other.get_type() {
-            "int" | "bool" => Ok(Value::new(
-                self.to_int().unwrap().wrapping_add(other.to_int().unwrap()),
-            )),
-            _ => other.add(Value::new(*self)),
-        }
+        Value::new(self.to_int()?).add(other)
     }
     fn sub(&self, other: Value) -> ValueResult {
-        match other.get_type() {
-            "int" | "bool" => Ok(Value::new(
-                self.to_int().unwrap().wrapping_sub(other.to_int().unwrap()),
-            )),
-            _ => Err(ValueError::OperationNotSupported {
-                op: "-".to_owned(),
-                left: "int".to_owned(),
-                right: Some(other.get_type().to_owned()),
-            }),
-        }
+        Value::new(self.to_int()?).sub(other)
     }
     fn mul(&self, other: Value) -> ValueResult {
-        match other.get_type() {
-            "int" | "bool" => Ok(Value::new(
-                self.to_int().unwrap().wrapping_mul(other.to_int().unwrap()),
-            )),
-            _ => other.mul(Value::new(*self)),
-        }
+        Value::new(self.to_int()?).mul(other)
     }
     fn percent(&self, other: Value) -> ValueResult {
-        let other = other.to_int()?;
-        if other == 0 {
-            return Err(ValueError::DivisionByZero);
-        }
-        let me = self.to_int()?;
-        let r = me % other;
-        if r == 0 {
-            Ok(Value::new(0))
-        } else {
-            Ok(Value::new(if other.signum() != r.signum() {
-                r + other
-            } else {
-                r
-            }))
-        }
+        Value::new(self.to_int()?).percent(other)
     }
     fn div(&self, other: Value) -> ValueResult {
-        self.floor_div(other)
+        Value::new(self.to_int()?).div(other)
     }
     fn floor_div(&self, other: Value) -> ValueResult {
-        let other = other.to_int()?;
-        if other == 0 {
-            return Err(ValueError::DivisionByZero);
-        }
-        let me = self.to_int()?;
-        let sig = other.signum() * me.signum();
-        let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
-        Ok(Value::new(me / other - offset))
+        Value::new(self.to_int()?).floor_div(other)
     }
     not_supported!(container);
     not_supported!(function);
