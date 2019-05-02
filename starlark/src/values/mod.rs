@@ -1624,7 +1624,7 @@ impl dyn TypedValue {
 
 impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
-    pub fn downcast_apply<T: Any, F, Return>(&self, f: F) -> Return
+    pub fn downcast_apply<T: Any + TypedValue, F, Return>(&self, f: F) -> Return
     where
         F: Fn(&T) -> Return,
     {
@@ -1632,7 +1632,7 @@ impl Value {
     }
 
     /// A convenient wrapper around any_apply_mut to actually operate on the underlying type
-    pub fn downcast_apply_mut<T: Any, F, Return>(&mut self, f: F) -> Return
+    pub fn downcast_apply_mut<T: Any + TypedValue, F, Return>(&mut self, f: F) -> Return
     where
         F: Fn(&mut T) -> Return,
     {
