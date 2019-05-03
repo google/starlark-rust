@@ -14,6 +14,7 @@
 
 //! Methods for the `dict` type.
 
+use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
 
@@ -49,7 +50,7 @@ starlark_module! {global =>
     dict.clear(this) {
         dict::Dictionary::mutate(
             &this,
-            &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
+            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 x.clear();
                 ok!(None)
             }
@@ -107,9 +108,9 @@ starlark_module! {global =>
     dict.items(this) {
         dict::Dictionary::apply(
             &this,
-            &|x: &LinkedHashMap<Value, Value>| -> ValueResult {
+            &|x: &LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 let v : Vec<Value> =
-                    x.iter().map(|x| Value::from((x.0.clone(), x.1.clone()))).collect();
+                    x.iter().map(|x| Value::from((x.0.get_value().clone(), x.1.clone()))).collect();
                 ok!(v)
             }
         )
@@ -169,11 +170,11 @@ starlark_module! {global =>
     /// x.pop("four")  # error: missing key
     /// ```
     dict.pop(this, #key, #default = None) {
-        key.get_hash()?;  // ensure the key is hashable
-        let key_error = format!("Key '{}' not found in '{}'", key.to_repr(), this.to_repr());
+        let key = HashedValue::new(key)?;
+        let key_error = format!("Key '{}' not found in '{}'", key.get_value().to_repr(), this.to_repr());
         dict::Dictionary::mutate(
             &this,
-            &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
+            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 match x.remove(&key) {
                     Some(x) => Ok(x),
                     None => if default.get_type() == "NoneType" {
@@ -219,7 +220,7 @@ starlark_module! {global =>
     dict.popitem(this) {
         dict::Dictionary::mutate(
             &this,
-            &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
+            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 match x.pop_front() {
                     Some(x) => ok!(x),
                     None => starlark_err!(
@@ -262,11 +263,11 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.setdefault(this, #key, #default = None) {
-        key.get_hash()?; // Ensure the key is hashable
+        let key = HashedValue::new(key)?;
         let cloned_default = default.clone_for_container_value(&this);
         dict::Dictionary::mutate(
             &this,
-            &|x: &mut LinkedHashMap<Value, Value>| -> ValueResult {
+            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 if let Some(r) = x.get(&key) {
                     return Ok(r.clone())
                 }
@@ -367,7 +368,7 @@ starlark_module! {global =>
     dict.values(this) {
         dict::Dictionary::apply(
             &this,
-            &|x: &LinkedHashMap<Value, Value>| -> ValueResult {
+            &|x: &LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 let v : Vec<Value> = x.iter().map(|x| x.1.clone()).collect();
                 ok!(v)
             }

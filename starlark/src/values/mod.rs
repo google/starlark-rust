@@ -84,7 +84,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -1274,17 +1274,6 @@ impl PartialOrd for Value {
     }
 }
 
-impl Hash for Value {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        // We panic! if we try to hash a non hashable value, the rest of the code should make sure
-        // we do not try to use the Hash trait on non hashble value.
-        state.write_u64(self.get_hash().unwrap())
-    }
-}
-
 /// Define the NoneType type
 impl TypedValue for Option<()> {
     immutable!();
@@ -1657,6 +1646,7 @@ impl Value {
 // Submodules
 pub mod dict;
 pub mod function;
+pub mod hashed_value;
 pub mod list;
 pub mod string;
 pub mod tuple;
@@ -1664,6 +1654,7 @@ pub mod tuple;
 // Converters
 use self::list::List;
 use self::tuple::Tuple;
+use std::convert::TryFrom;
 macro_rules! from_X {
     ($x: ty) => {
         impl From<$x> for Value {
@@ -1727,18 +1718,22 @@ from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7);
 from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8);
 from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Hash + Clone> From<HashMap<T1, T2>>
+impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone> TryFrom<HashMap<T1, T2>>
     for Value
 {
-    fn from(a: HashMap<T1, T2>) -> Value {
-        Value::new(dict::Dictionary::from(a))
+    type Error = ValueError;
+
+    fn try_from(a: HashMap<T1, T2>) -> Result<Value, ValueError> {
+        Ok(Value::new(dict::Dictionary::try_from(a)?))
     }
 }
-impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Hash + Clone>
-    From<LinkedHashMap<T1, T2>> for Value
+impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone>
+    TryFrom<LinkedHashMap<T1, T2>> for Value
 {
-    fn from(a: LinkedHashMap<T1, T2>) -> Value {
-        Value::new(dict::Dictionary::from(a))
+    type Error = ValueError;
+
+    fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Value, ValueError> {
+        Ok(Value::new(dict::Dictionary::try_from(a)?))
     }
 }
 from_X!(Vec<T>, List);

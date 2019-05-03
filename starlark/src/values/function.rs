@@ -344,7 +344,7 @@ impl TypedValue for Function {
                     while args_iter.next().is_some() {}
                 }
                 FunctionParameter::KWArgsDict(..) => {
-                    v.push(Value::from(kwargs_dict.clone()));
+                    v.push(Value::try_from(kwargs_dict.clone())?);
                     kwargs_dict.clear();
                 }
             }

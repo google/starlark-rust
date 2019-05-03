@@ -14,9 +14,10 @@
 
 //! Methods for the `set` type.
 
+use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 
-use crate::linked_hash_set::value::{Set, ValueWrapper};
+use crate::linked_hash_set::value::Set;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SET_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE: &str = "UF30";
@@ -189,7 +190,7 @@ starlark_module! {global =>
         Set::mutate(&this, &|x| {
             let mut values = Vec::with_capacity(previous_length);
             for el in x.iter() {
-                if !other.is_in(&el.into())?.to_bool() {
+                if !other.is_in(el.get_value())?.to_bool() {
                     values.push(el.clone());
                 }
             }
@@ -223,7 +224,7 @@ starlark_module! {global =>
     /// ```
     set.discard(this, #needle) {
         Set::mutate(&this, &|x| {
-            x.remove(&ValueWrapper::new(needle.clone())?);
+            x.remove(&HashedValue::new(needle.clone())?);
             ok!(None)
         })
     }
@@ -295,7 +296,7 @@ starlark_module! {global =>
         Set::mutate(&this, &|x| {
             let mut values = Vec::with_capacity(previous_length);
             for el in x.iter() {
-                if other.is_in(&el.into())?.to_bool() {
+                if other.is_in(el.get_value())?.to_bool() {
                     values.push(el.clone());
                 }
             }
@@ -455,7 +456,7 @@ starlark_module! {global =>
     /// found.
     set.remove(this, #needle) {
         let did_remove = Set::mutate(&this, &|x| {
-            ok!(x.remove(&ValueWrapper::new(needle.clone())?))
+            ok!(x.remove(&HashedValue::new(needle.clone())?))
         });
         if did_remove?.to_bool() {
             ok!(None)
@@ -490,7 +491,9 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.symmetric_difference(this, #other) {
-        Set::compare(&this, &other, &|s1, s2| Ok(Set::from(s1.symmetric_difference(s2).collect()).unwrap()))
+        Set::compare(&this, &other, &|s1, s2| {
+            Ok(Set::from(s1.symmetric_difference(s2).cloned().collect()).unwrap())
+        })
     }
 
     /// set.symmetric_difference_update: update this set to contain the symmetric difference of
@@ -528,11 +531,13 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.symmetric_difference_update(this, #other) {
-        let symmetric_difference = Set::compare(&this, &other, &|s1, s2| Ok(Set::from(s1.symmetric_difference(s2).collect()).unwrap()))?;
+        let symmetric_difference = Set::compare(&this, &other, &|s1, s2| {
+            Ok(Set::from(s1.symmetric_difference(s2).cloned().collect()).unwrap())
+        })?;
         Set::mutate(&this, &|s| {
             s.clear();
             for item in symmetric_difference.iter()? {
-                s.insert(ValueWrapper::new(item)?);
+                s.insert(HashedValue::new(item)?);
             }
             ok!(None)
         })

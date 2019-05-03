@@ -13,16 +13,15 @@
 // limitations under the License.
 
 //! Define the set type of Starlark
+use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use linked_hash_set::LinkedHashSet;
-use std::borrow::BorrowMut;
-use std::cmp::{Eq, Ordering, PartialEq};
-use std::hash::{Hash, Hasher};
+use std::cmp::Ordering;
 use std::num::Wrapping;
 
 pub struct Set {
     mutability: IterableMutability,
-    content: LinkedHashSet<ValueWrapper>,
+    content: LinkedHashSet<HashedValue>,
 }
 
 impl Default for Set {
@@ -42,9 +41,7 @@ impl Set {
     pub fn from<V: Into<Value>>(values: Vec<V>) -> Result<Value, ValueError> {
         let mut result = Self::default();
         for v in values.into_iter() {
-            result
-                .content
-                .insert_if_absent(ValueWrapper::new(v.into())?);
+            result.content.insert_if_absent(HashedValue::new(v.into())?);
         }
         Ok(Value::new(result))
     }
@@ -52,14 +49,14 @@ impl Set {
     pub fn insert_if_absent(set: &Value, v: Value) -> Result<Value, ValueError> {
         let v = v.clone_for_container_value(set)?;
         Self::mutate(set, &|hashset| {
-            hashset.insert_if_absent(ValueWrapper::new(v.clone())?);
+            hashset.insert_if_absent(HashedValue::new(v.clone())?);
             Ok(Value::from(None))
         })
     }
 
     pub fn mutate(
         v: &Value,
-        f: &Fn(&mut LinkedHashSet<ValueWrapper>) -> ValueResult,
+        f: &Fn(&mut LinkedHashSet<HashedValue>) -> ValueResult,
     ) -> ValueResult {
         let mut v = v.clone();
         v.downcast_apply_mut(|x: &mut Set| -> ValueResult {
@@ -73,8 +70,8 @@ impl Set {
         v1: &Value,
         v2: &Value,
         f: &Fn(
-            &LinkedHashSet<ValueWrapper>,
-            &LinkedHashSet<ValueWrapper>,
+            &LinkedHashSet<HashedValue>,
+            &LinkedHashSet<HashedValue>,
         ) -> Result<Return, ValueError>,
     ) -> Result<Return, ValueError> {
         v1.downcast_apply(|v1: &Set| {
@@ -95,7 +92,7 @@ impl TypedValue for Set {
         let mut new = LinkedHashSet::with_capacity(self.content.len());
         while !self.content.is_empty() {
             let mut value = self.content.pop_front().unwrap();
-            value.value.borrow_mut().freeze();
+            value.freeze();
             new.insert(value);
         }
         self.content = new;
@@ -118,7 +115,7 @@ impl TypedValue for Set {
             "{{{}}}",
             self.content
                 .iter()
-                .map(|x| x.value.to_repr(),)
+                .map(|x| x.get_value().to_repr(),)
                 .enumerate()
                 .fold("".to_string(), |accum, s| if s.0 == 0 {
                     accum + &s.1
@@ -170,7 +167,13 @@ impl TypedValue for Set {
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.length()?)? as usize;
         let to_skip = if i == 0 { 0 } else { i - 1 };
-        Ok(self.content.iter().nth(to_skip).unwrap().value.clone())
+        Ok(self
+            .content
+            .iter()
+            .nth(to_skip)
+            .unwrap()
+            .get_value()
+            .clone())
     }
 
     fn length(&self) -> Result<i64, ValueError> {
@@ -179,14 +182,14 @@ impl TypedValue for Set {
 
     fn is_in(&self, other: &Value) -> ValueResult {
         Ok(Value::new(
-            self.content.contains(&ValueWrapper::new(other.clone())?),
+            self.content.contains(&HashedValue::new(other.clone())?),
         ))
     }
 
     fn is_descendant(&self, other: &TypedValue) -> bool {
         self.content
             .iter()
-            .any(|x| x.value.same_as(other) || x.value.is_descendant(other))
+            .any(|x| x.get_value().same_as(other) || x.get_value().is_descendant(other))
     }
 
     fn slice(
@@ -201,12 +204,12 @@ impl TypedValue for Set {
             start,
             stop,
             stride,
-            self.content.iter().map(|v| &v.value),
+            self.content.iter().map(HashedValue::get_value),
         )))
     }
 
     fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().map(|x| x.value.clone())))
+        Ok(Box::new(self.content.iter().map(|x| x.get_value().clone())))
     }
 
     /// Concatenate `other` to the current value.
@@ -236,7 +239,7 @@ impl TypedValue for Set {
             for x in other.iter()? {
                 result
                     .content
-                    .insert_if_absent(ValueWrapper::new(x.clone())?);
+                    .insert_if_absent(HashedValue::new(x.clone())?);
             }
             Ok(Value::new(result))
         } else {
@@ -248,7 +251,7 @@ impl TypedValue for Set {
         Ok(self
             .content
             .iter()
-            .map(|v| v.precomputed_hash)
+            .map(HashedValue::get_hash)
             .map(Wrapping)
             .fold(Wrapping(0_u64), |acc, v| acc + v)
             .0)
@@ -257,50 +260,6 @@ impl TypedValue for Set {
     not_supported!(mul, set_at);
     not_supported!(attr, function);
     not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
-}
-
-#[derive(Clone)]
-pub struct ValueWrapper {
-    pub value: Value,
-    // Precompute the hash to verify that the value is hashable. Eagerly error if it's not, so that
-    // the caller who wants to use the ValueWrapper knows it can't be done.
-    precomputed_hash: u64,
-}
-
-impl ValueWrapper {
-    pub fn new(value: Value) -> Result<ValueWrapper, ValueError> {
-        let precomputed_hash = value.get_hash()?;
-        Ok(ValueWrapper {
-            value,
-            precomputed_hash,
-        })
-    }
-}
-
-impl Into<Value> for &ValueWrapper {
-    fn into(self) -> Value {
-        self.clone().value
-    }
-}
-
-impl PartialEq for ValueWrapper {
-    fn eq(&self, other: &ValueWrapper) -> bool {
-        self.value.compare(&other.value, 0) == Ok(Ordering::Equal)
-    }
-}
-
-impl Eq for ValueWrapper {}
-
-impl Hash for ValueWrapper {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        h.write_u64(self.precomputed_hash);
-    }
-}
-
-impl Into<Value> for ValueWrapper {
-    fn into(self) -> Value {
-        self.value
-    }
 }
 
 #[cfg(test)]

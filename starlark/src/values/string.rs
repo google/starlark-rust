@@ -189,6 +189,7 @@ impl TypedValue for String {
     /// # use starlark::values::*;
     /// # use starlark::values::string;
     /// # use std::collections::HashMap;
+    /// # use std::convert::TryFrom;
     /// # assert!(
     /// // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
     /// Value::from("Hello %s, your score is %d").percent(Value::from(("Bob", 75))).unwrap()
@@ -201,7 +202,7 @@ impl TypedValue for String {
     /// # );
     /// // "%(greeting)s, %(audience)s" % {"greeting": "Hello", "audience": "world"} ==
     /// //      "Hello, world"
-    /// let mut d = Value::from(HashMap::<Value, Value>::new());
+    /// let mut d = Value::try_from(HashMap::<String, Value>::new()).unwrap();
     /// d.set_at(Value::from("greeting"), Value::from("Hello"));
     /// d.set_at(Value::from("audience"), Value::from("world"));
     /// # assert!(
@@ -326,6 +327,7 @@ impl TypedValue for String {
 mod tests {
     use super::super::Value;
     use std::collections::HashMap;
+    use std::convert::TryFrom;
 
     #[test]
     fn test_to_repr() {
@@ -429,7 +431,7 @@ mod tests {
         );
         // "%(greeting)s, %(audience)s" % {"greeting": "Hello", "audience": "world"} ==
         //      "Hello, world"
-        let mut d = Value::from(HashMap::<Value, Value>::new());
+        let mut d = Value::try_from(HashMap::<String, Value>::new()).unwrap();
         d.set_at(Value::from("greeting"), Value::from("Hello"))
             .unwrap();
         d.set_at(Value::from("audience"), Value::from("world"))
