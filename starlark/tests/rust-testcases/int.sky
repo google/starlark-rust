@@ -1,0 +1,19 @@
+# Integer tests
+
+9223372036854775807 + 1      ###  Integer overflow
+---
+-9223372036854775807 - 2     ###  Integer overflow
+---
+9223372036854775807 * 2      ###  Integer overflow
+---
+int_min = -9223372036854775807 - 1
+-int_min                     ###  Integer overflow
+---
+int_min = -9223372036854775807 - 1
+int_min // -1                ###  Integer overflow
+---
+int_min = -9223372036854775807 - 1
+assert_eq(0, int_min % -1)
+assert_eq(0, int_min % int_min)
+assert_eq(9223372036854775806, int_min % 9223372036854775807)
+assert_eq(-1, 9223372036854775807 % int_min)
