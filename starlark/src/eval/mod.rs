@@ -25,11 +25,11 @@ use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
+use crate::values::dict::Dictionary;
 use crate::values::function::FunctionParameter;
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
-use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -418,7 +418,7 @@ fn eval_dict_comprehension<T: FileLoader + 'static>(
     clauses: &[AstClause],
     context: &EvaluationContext<T>,
 ) -> EvalResult {
-    let mut r = LinkedHashMap::new();
+    let mut r = Dictionary::new_typed();
     let tuple = Box::new(Spanned {
         span: k.span.merge(v.span),
         node: Expr::Tuple(vec![k.clone(), v.clone()]),
@@ -427,9 +427,9 @@ fn eval_dict_comprehension<T: FileLoader + 'static>(
     for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
         let k = t!(e.at(Value::from(0)), tuple)?;
         let v = t!(e.at(Value::from(1)), tuple)?;
-        r.insert(k, v);
+        t!(r.set_at(k, v), tuple)?;
     }
-    Ok(Value::from(r))
+    Ok(Value::new(r))
 }
 
 fn eval_one_dimensional_comprehension<T: FileLoader + 'static>(
