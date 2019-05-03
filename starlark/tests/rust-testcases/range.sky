@@ -1,0 +1,25 @@
+# Range tests
+
+# Content matters, not how range is created
+assert_eq(range(1), range(0, -1, -1))
+
+assert_eq(list(range(10)), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+assert_eq(list(range(3, 10)), [3, 4, 5, 6, 7, 8, 9])
+assert_eq(list(range(3, 10, 2)), [3, 5, 7, 9])
+assert_eq(list(range(10, 3, -2)), [10, 8, 6, 4])
+
+def f():
+    # Largest possible range, can create, can't really do much with it
+    r = range(-9223372036854775807-1, 9223372036854775807)
+    l = []
+    for x in r:
+        l += [x]
+        if len(l) == 3:
+            break
+    assert_eq([-9223372036854775807-1, -9223372036854775807, -9223372036854775807+1], l)
+f()
+
+---
+len(range(-9223372036854775807-1, 9223372036854775807))   ###   Integer overflow
+---
+assert_eq(9223372036854775807, len(range(-9223372036854775807, 9223372036854775807, 2)))

@@ -1264,7 +1264,11 @@ impl dyn ValueHolderDyn {
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
         match self.to_int() {
             Ok(x) => {
-                let i = if x < 0 { len + x } else { x };
+                let i = if x < 0 {
+                    len.checked_add(x).ok_or(ValueError::IntegerOverflow)?
+                } else {
+                    x
+                };
                 if i < 0 || i >= len {
                     Err(ValueError::IndexOutOfBound(i))
                 } else {
@@ -1385,6 +1389,7 @@ pub mod iter;
 pub mod list;
 pub mod mutability;
 pub mod none;
+pub mod range;
 pub mod string;
 pub mod tuple;
 

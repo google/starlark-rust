@@ -19,6 +19,7 @@ use linked_hash_map::LinkedHashMap;
 use std;
 use std::cmp::Ordering;
 use std::error::Error;
+use std::num::NonZeroI64;
 use std::sync;
 
 use crate::environment::{Environment, TypeValues};
@@ -27,6 +28,7 @@ use crate::syntax::dialect::Dialect;
 use crate::values::dict::Dictionary;
 use crate::values::function::WrappedMethod;
 use crate::values::none::NoneType;
+use crate::values::range::Range;
 use crate::values::*;
 
 // Errors -- CR = Critical Runtime
@@ -720,27 +722,17 @@ starlark_module! {global_functions =>
             None => 1,
             Some(a3) => a3,
         };
-        let mut r = Vec::new();
-        let mut idx : i64 = start;
-        if step == 0 {
-            starlark_err!(
-                NUL_RANGE_STEP_ERROR_CODE,
-                "Third argument of range (step) cannot be null".to_owned(),
-                "Null range step".to_owned()
-            )
-        }
-        if step > 0 {
-            while idx < stop {
-                r.push(Value::new(idx));
-                idx += step;
+        let step = match NonZeroI64::new(step) {
+            Some(step) => step,
+            None => {
+                starlark_err!(
+                    NUL_RANGE_STEP_ERROR_CODE,
+                    "Third argument of range (step) cannot be null".to_owned(),
+                    "Null range step".to_owned()
+                )
             }
-        } else {
-            while idx > stop {
-                r.push(Value::new(idx));
-                idx += step;
-            }
-        }
-        Ok(Value::new(tuple::Tuple::new(r)))
+        };
+        Ok(Value::new(Range::new(start, stop, step)))
     }
 
     /// [repr](
