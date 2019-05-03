@@ -1618,19 +1618,25 @@ impl dyn TypedValue {
 
 impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
-    pub fn downcast_apply<T: Any + TypedValue, F, Return>(&self, f: F) -> Return
+    pub fn downcast_apply<T: Any + TypedValue, F, Return>(&self, f: F) -> Option<Return>
     where
         F: Fn(&T) -> Return,
     {
-        self.any_apply(&move |x| f(x.downcast_ref().unwrap()))
+        self.any_apply(&move |x| match x.downcast_ref() {
+            Some(x) => Some(f(x)),
+            None => None,
+        })
     }
 
     /// A convenient wrapper around any_apply_mut to actually operate on the underlying type
-    pub fn downcast_apply_mut<T: Any + TypedValue, F, Return>(&mut self, f: F) -> Return
+    pub fn downcast_apply_mut<T: Any + TypedValue, F, Return>(&mut self, f: F) -> Option<Return>
     where
         F: Fn(&mut T) -> Return,
     {
-        self.any_apply_mut(&move |x| f(x.downcast_mut().unwrap()))
+        self.any_apply_mut(&move |x| match x.downcast_mut() {
+            Some(x) => Some(f(x)),
+            None => None,
+        })
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
