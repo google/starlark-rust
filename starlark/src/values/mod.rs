@@ -612,7 +612,7 @@ pub trait TypedValue {
     /// // "z" in "abc" == False
     /// assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap().to_bool());
     /// ```
-    fn is_in(&self, other: &Value) -> ValueResult;
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError>;
 
     /// Apply the `+` unary operator to the current value.
     ///
@@ -872,7 +872,7 @@ macro_rules! not_supported {
     (binop) => { not_supported!(arithmetic, percent, pipe); };
     // Generic
     (is_in) => {
-        fn is_in(&self, other: &Value) -> ValueResult {
+        fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
             Err(ValueError::OperationNotSupported {
                 op: "in".to_owned(),
                 left: other.get_type().to_owned(),
@@ -1196,7 +1196,7 @@ impl Value {
         let borrowed = self.0.borrow();
         borrowed.dir_attr()
     }
-    pub fn is_in(&self, other: &Value) -> ValueResult {
+    pub fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         let borrowed = self.0.borrow();
         borrowed.is_in(other)
     }

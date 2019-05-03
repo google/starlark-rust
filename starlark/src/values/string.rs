@@ -66,9 +66,9 @@ impl TypedValue for String {
         Ok(self.chars().count() as i64)
     }
 
-    fn is_in(&self, other: &Value) -> ValueResult {
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         if other.get_type() == "string" {
-            Ok(Value::new(self.contains(&other.to_str())))
+            Ok(self.contains(&other.to_str()))
         } else {
             Err(ValueError::IncorrectParameterType)
         }
@@ -397,20 +397,11 @@ mod tests {
     #[test]
     fn test_string_is_in() {
         // "a" in "abc" == True
-        assert!(Value::from("abc")
-            .is_in(&Value::from("a"))
-            .unwrap()
-            .to_bool());
+        assert!(Value::from("abc").is_in(&Value::from("a")).unwrap());
         // "b" in "abc" == True
-        assert!(Value::from("abc")
-            .is_in(&Value::from("b"))
-            .unwrap()
-            .to_bool());
+        assert!(Value::from("abc").is_in(&Value::from("b")).unwrap());
         // "z" in "abc" == False
-        assert!(!Value::from("abc")
-            .is_in(&Value::from("z"))
-            .unwrap()
-            .to_bool());
+        assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap());
     }
 
     #[test]

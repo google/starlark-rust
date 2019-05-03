@@ -137,13 +137,13 @@ impl TypedValue for List {
         Ok(self.content.len() as i64)
     }
 
-    fn is_in(&self, other: &Value) -> ValueResult {
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         for x in self.content.iter() {
             if x.compare(other, 0)? == Ordering::Equal {
-                return Ok(Value::new(true));
+                return Ok(true);
             }
         }
-        Ok(Value::new(false))
+        Ok(false)
     }
 
     fn is_descendant(&self, other: &dyn TypedValue) -> bool {
