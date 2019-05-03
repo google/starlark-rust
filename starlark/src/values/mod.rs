@@ -132,7 +132,7 @@ pub enum ValueError {
     /// Division by 0
     DivisionByZero,
     /// Arithmetic operation results in integer overflow.
-    IntegerOverlow,
+    IntegerOverflow,
     /// Trying to modify an immutable value.
     CannotMutateImmutableValue,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
@@ -211,7 +211,7 @@ impl SyntaxError for ValueError {
                             ref op,
                         } => format!("The type '{}' is not {}", object_type, op),
                         ValueError::DivisionByZero => "Division by zero".to_owned(),
-                        ValueError::IntegerOverlow => "Integer overflow".to_owned(),
+                        ValueError::IntegerOverflow => "Integer overflow".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
@@ -266,7 +266,7 @@ impl SyntaxError for ValueError {
                             ref op,
                         } => format!("The type '{}' is not {}", object_type, op),
                         ValueError::DivisionByZero => "Cannot divide by zero".to_owned(),
-                        ValueError::IntegerOverlow => "Integer overflow".to_owned(),
+                        ValueError::IntegerOverflow => "Integer overflow".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
@@ -315,7 +315,7 @@ impl SyntaxError for ValueError {
                             ValueError::OperationNotSupported { .. } | ValueError::TypeNotSupported(..) => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::TypeNotX { .. } => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
-                            ValueError::IntegerOverlow => INTEGER_OVERFLOW_ERROR_CODE,
+                            ValueError::IntegerOverflow => INTEGER_OVERFLOW_ERROR_CODE,
                             ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,
                             ValueError::IncorrectParameterType => {
                                 INCORRECT_PARAMETER_TYPE_ERROR_CODE
@@ -1330,7 +1330,7 @@ impl TypedValue for i64 {
     fn minus(&self) -> ValueResult {
         match self.checked_neg() {
             Some(r) => Ok(Value::new(r)),
-            None => Err(ValueError::IntegerOverlow),
+            None => Err(ValueError::IntegerOverflow),
         }
     }
     fn add(&self, other: Value) -> ValueResult {
@@ -1339,7 +1339,7 @@ impl TypedValue for i64 {
                 let other_int = other.to_int().unwrap();
                 match self.checked_add(other_int) {
                     Some(r) => Ok(Value::new(r)),
-                    None => Err(ValueError::IntegerOverlow),
+                    None => Err(ValueError::IntegerOverflow),
                 }
             }
             _ => other.add(Value::new(*self)),
@@ -1351,7 +1351,7 @@ impl TypedValue for i64 {
                 let other_int = other.to_int().unwrap();
                 match self.checked_sub(other_int) {
                     Some(r) => Ok(Value::new(r)),
-                    None => Err(ValueError::IntegerOverlow),
+                    None => Err(ValueError::IntegerOverflow),
                 }
             }
             _ => Err(ValueError::OperationNotSupported {
@@ -1367,7 +1367,7 @@ impl TypedValue for i64 {
                 let other_int = other.to_int().unwrap();
                 match self.checked_mul(other_int) {
                     Some(r) => Ok(Value::new(r)),
-                    None => Err(ValueError::IntegerOverlow),
+                    None => Err(ValueError::IntegerOverflow),
                 }
             }
             _ => other.mul(Value::new(*self)),
@@ -1407,7 +1407,7 @@ impl TypedValue for i64 {
         let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
         match me.checked_div(other) {
             Some(div) => Ok(Value::new(div - offset)),
-            None => Err(ValueError::IntegerOverlow),
+            None => Err(ValueError::IntegerOverflow),
         }
     }
     not_supported!(container);
