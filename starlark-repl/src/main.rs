@@ -90,10 +90,11 @@ fn main() {
                 } else {
                     Dialect::Bzl
                 };
+                let free_args_empty = matches.free.is_empty();
                 for i in matches.free.into_iter() {
                     maybe_print_or_exit(eval_file(&i, dialect, &mut global.child(&i)));
                 }
-                if opt_repl {
+                if opt_repl || (free_args_empty && command.is_none()) {
                     println!("Welcome to Starlark REPL, press Ctrl+D to exit.");
                     repl(&global, dialect);
                 }
