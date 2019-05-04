@@ -18,6 +18,7 @@ use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 
 use crate::linked_hash_set::value::Set;
+use linked_hash_set::LinkedHashSet;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const SET_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE: &str = "UF30";
@@ -36,10 +37,10 @@ starlark_module! {global =>
     ///
     /// With no argument, `set()` returns a new empty set.
     set(#a = None) {
-        let s = Set::empty();
+        let mut s = LinkedHashSet::new();
         if a.get_type() != "NoneType" {
             for x in a.iter()? {
-                Set::insert_if_absent(&s, x)?;
+                s.insert_if_absent(HashedValue::new(x)?);
             }
         }
         ok!(s)
@@ -71,7 +72,7 @@ starlark_module! {global =>
     /// ```
     set.add(this, #el) {
         Set::insert_if_absent(&this, el)?;
-        ok!(None)
+        Ok(Value::new_imm(NoneValue))
     }
 
     /// set.clear: clear a set
@@ -95,7 +96,7 @@ starlark_module! {global =>
     set.clear(this) {
         Set::mutate(&this, &|x| {
             x.clear();
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -117,7 +118,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.copy(this) {
-        let ret = Set::empty();
+        let ret = Set::new_value(Default::default());
         for el in this.iter()? {
             Set::insert_if_absent(&ret, el)?;
         }
@@ -152,11 +153,11 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.difference(this, *others) {
-        let ret = Set::empty();
+        let ret = Set::new_value(Default::default());
         for el in this.iter()? {
             let mut is_in_any_other = false;
             for other in &others {
-                if other.is_in(&el)?.to_bool() {
+                if other.is_in(&el)? {
                     is_in_any_other = true;
                     break;
                 }
@@ -190,7 +191,7 @@ starlark_module! {global =>
         Set::mutate(&this, &|x| {
             let mut values = Vec::with_capacity(previous_length);
             for el in x.iter() {
-                if !other.is_in(el.get_value())?.to_bool() {
+                if !other.is_in(el.get_value())? {
                     values.push(el.clone());
                 }
             }
@@ -198,7 +199,7 @@ starlark_module! {global =>
             for value in values.into_iter() {
                 x.insert(value);
             }
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -225,7 +226,7 @@ starlark_module! {global =>
     set.discard(this, #needle) {
         Set::mutate(&this, &|x| {
             x.remove(&HashedValue::new(needle.clone())?);
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -257,11 +258,11 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.intersection(this, *others) {
-        let ret = Set::empty();
+        let ret = Set::new_value(Default::default());
         for el in this.iter()? {
             let mut is_in_every_other = true;
             for other in &others {
-                if !other.is_in(&el)?.to_bool() {
+                if !other.is_in(&el)? {
                     is_in_every_other = false;
                     break;
                 }
@@ -296,7 +297,7 @@ starlark_module! {global =>
         Set::mutate(&this, &|x| {
             let mut values = Vec::with_capacity(previous_length);
             for el in x.iter() {
-                if other.is_in(el.get_value())?.to_bool() {
+                if other.is_in(el.get_value())? {
                     values.push(el.clone());
                 }
             }
@@ -304,7 +305,7 @@ starlark_module! {global =>
             for value in values.into_iter() {
                 x.insert(value);
             }
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -459,7 +460,7 @@ starlark_module! {global =>
             ok!(x.remove(&HashedValue::new(needle.clone())?))
         });
         if did_remove?.to_bool() {
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         } else {
             starlark_err!(
                 SET_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE,
@@ -539,7 +540,7 @@ starlark_module! {global =>
             for item in symmetric_difference.iter()? {
                 s.insert(HashedValue::new(item)?);
             }
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -570,7 +571,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.union(this, *others) {
-        let ret = Set::empty();
+        let ret = Set::new_value(Default::default());
         for el in this.iter()? {
             Set::insert_if_absent(&ret, el)?;
         }
@@ -609,6 +610,6 @@ starlark_module! {global =>
                 Set::insert_if_absent(&this, el)?;
             }
         }
-        ok!(None)
+        Ok(Value::new_imm(NoneValue))
     }
 }

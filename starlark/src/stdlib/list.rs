@@ -55,7 +55,7 @@ starlark_module! {global =>
         let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &|x| {
             x.push(el.clone()?);
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -80,7 +80,7 @@ starlark_module! {global =>
     list.clear(this) {
         list::List::mutate(&this, &|x| {
             x.clear();
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -109,10 +109,11 @@ starlark_module! {global =>
     /// ```
     list.extend(this, #other) {
         let this_cloned = this.clone();
-        let other_cloned: Result<Vec<_>, _>  = other.iter()?.map(|v| v.clone_for_container_value(&this_cloned)).collect();
+        let other_cloned: Result<Vec<_>, _>  = other.iter()?.into_iter()
+            .map(|v| v.clone_for_container_value(&this_cloned)).collect();
         list::List::mutate(&this, &|x| {
             x.extend(other_cloned.clone()?);
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -147,7 +148,7 @@ starlark_module! {global =>
     /// ```
     list.index(this, #needle, #start = 0, #end = None) {
         convert_indices!(this, start, end);
-        let mut it = this.iter()?.skip(start).take(end - start);
+        let mut it = this.iter()?.into_iter().skip(start).take(end - start);
         if let Some(offset) = it.position(|x| x == needle) {
             ok!((offset + start) as i64)
         } else {
@@ -189,7 +190,7 @@ starlark_module! {global =>
         let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &move |x| {
             x.insert(index, el.clone()?);
-            ok!(None)
+            Ok(Value::new_imm(NoneValue))
         })
     }
 
@@ -260,11 +261,11 @@ starlark_module! {global =>
     /// ```
     list.remove(this, #needle) {
         let for_it = this.clone();
-        let mut it = for_it.iter()?;
+        let mut it = for_it.iter()?.into_iter();
         if let Some(offset) = it.position(|x| x == needle) {
             list::List::mutate(&this, &|x| {
                 x.remove(offset);
-                ok!(None)
+                Ok(Value::new_imm(NoneValue))
             })
         } else {
             starlark_err!(

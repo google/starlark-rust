@@ -13,89 +13,23 @@
 // limitations under the License.
 
 //! Define the set type of Starlark
-use crate::values::hashed_value::HashedValue;
-use crate::values::*;
-use linked_hash_set::LinkedHashSet;
 use std::cmp::Ordering;
 use std::num::Wrapping;
 
-pub struct Set {
-    mutability: IterableMutability,
-    content: LinkedHashSet<HashedValue>,
-}
+use linked_hash_set::LinkedHashSet;
 
-impl Default for Set {
-    fn default() -> Self {
-        Set {
-            mutability: IterableMutability::Mutable,
-            content: LinkedHashSet::new(),
-        }
-    }
-}
+use crate::values::hashed_value::HashedValue;
+use crate::values::immutable::ReadableContent;
+use crate::values::mutable::{Mutable, MutableContent};
+use crate::values::*;
 
-impl Set {
-    pub fn empty() -> Value {
-        Value::new(Set::default())
+impl ReadableContent for LinkedHashSet<HashedValue> {
+    fn get_type() -> &'static str {
+        "set"
     }
 
-    pub fn from<V: Into<Value>>(values: Vec<V>) -> Result<Value, ValueError> {
-        let mut result = Self::default();
-        for v in values.into_iter() {
-            result.content.insert_if_absent(HashedValue::new(v.into())?);
-        }
-        Ok(Value::new(result))
-    }
-
-    pub fn insert_if_absent(set: &Value, v: Value) -> Result<Value, ValueError> {
-        let v = v.clone_for_container_value(set)?;
-        Self::mutate(set, &|hashset| {
-            hashset.insert_if_absent(HashedValue::new(v.clone())?);
-            Ok(Value::from(None))
-        })
-    }
-
-    pub fn mutate(
-        v: &Value,
-        f: &Fn(&mut LinkedHashSet<HashedValue>) -> ValueResult,
-    ) -> ValueResult {
-        let mut v = v.clone();
-        v.downcast_apply_mut(|x: &mut Set| -> ValueResult {
-            x.mutability.test()?;
-            f(&mut x.content)
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
-    }
-
-    pub fn compare<Return>(
-        v1: &Value,
-        v2: &Value,
-        f: &Fn(
-            &LinkedHashSet<HashedValue>,
-            &LinkedHashSet<HashedValue>,
-        ) -> Result<Return, ValueError>,
-    ) -> Result<Return, ValueError> {
-        v1.downcast_apply(|v1: &Set| {
-            v2.downcast_apply(|v2: &Set| f(&v1.content, &v2.content))
-                .unwrap_or(Err(ValueError::IncorrectParameterType))
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
-    }
-}
-
-impl TypedValue for Set {
-    any!();
-
-    define_iterable_mutability!(mutability);
-
-    fn freeze(&mut self) {
-        self.mutability.freeze();
-        let mut new = LinkedHashSet::with_capacity(self.content.len());
-        while !self.content.is_empty() {
-            let mut value = self.content.pop_front().unwrap();
-            value.freeze();
-            new.insert(value);
-        }
-        self.content = new;
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.iter().map(|v| v.get_value().clone()))
     }
 
     /// Returns a string representation for the set
@@ -110,11 +44,10 @@ impl TypedValue for Set {
     /// assert_eq!("[1]", Value::from(vec![1]).to_str());
     /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
     /// ```
-    fn to_str(&self) -> String {
+    fn to_repr(&self) -> String {
         format!(
             "{{{}}}",
-            self.content
-                .iter()
+            self.iter()
                 .map(|x| x.get_value().to_repr(),)
                 .enumerate()
                 .fold("".to_string(), |accum, s| if s.0 == 0 {
@@ -125,69 +58,52 @@ impl TypedValue for Set {
         )
     }
 
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-
-    not_supported!(to_int);
-    fn get_type(&self) -> &'static str {
-        "set"
-    }
     fn to_bool(&self) -> bool {
-        !self.content.is_empty()
-    }
-
-    fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "set" {
-            let other = other.as_any().downcast_ref::<Self>().unwrap();
-            if self
-                .content
-                .symmetric_difference(&other.content)
-                .next()
-                .is_none()
-            {
-                return Ok(Ordering::Equal);
-            }
-            // Comparing based on hash value isn't particularly meaningful to users, who may expect
-            // sets to compare based on, say, their size, or comparing their elements.
-            // We do this because it's guaranteed to provide a consistent ordering for any pair of
-            // sets. We should consider better defining the sort order of sets if users complain.
-            let l = self.get_hash().unwrap();
-            let r = other.get_hash().unwrap();
-            if l <= r {
-                Ok(Ordering::Less)
-            } else {
-                Ok(Ordering::Greater)
-            }
-        } else {
-            default_compare(self, other)
-        }
+        !self.is_empty()
     }
 
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.length()?)? as usize;
         let to_skip = if i == 0 { 0 } else { i - 1 };
-        Ok(self
-            .content
-            .iter()
-            .nth(to_skip)
-            .unwrap()
-            .get_value()
-            .clone())
+        Ok(self.iter().nth(to_skip).unwrap().get_value().clone())
+    }
+
+    fn compare(
+        &self,
+        other: &LinkedHashSet<HashedValue>,
+        _recursion: u32,
+    ) -> Result<Ordering, ValueError> {
+        if self.symmetric_difference(other).next().is_none() {
+            return Ok(Ordering::Equal);
+        }
+        // Comparing based on hash value isn't particularly meaningful to users, who may expect
+        // sets to compare based on, say, their size, or comparing their elements.
+        // We do this because it's guaranteed to provide a consistent ordering for any pair of
+        // sets. We should consider better defining the sort order of sets if users complain.
+        let l = self.get_hash()?;
+        let r = other.get_hash()?;
+        if l <= r {
+            Ok(Ordering::Less)
+        } else {
+            Ok(Ordering::Greater)
+        }
     }
 
     fn length(&self) -> Result<i64, ValueError> {
-        Ok(self.content.len() as i64)
+        Ok(self.len() as i64)
     }
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        Ok(self.content.contains(&HashedValue::new(other.clone())?))
+        Ok(self.contains(&HashedValue::new(other.clone())?))
     }
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
-        self.content
+    fn get_hash(&self) -> Result<u64, ValueError> {
+        Ok(self
             .iter()
-            .any(|x| x.get_value().same_as(other) || x.get_value().is_descendant(other))
+            .map(HashedValue::get_hash)
+            .map(Wrapping)
+            .fold(Wrapping(0_u64), |acc, v| acc + v)
+            .0)
     }
 
     fn slice(
@@ -202,12 +118,12 @@ impl TypedValue for Set {
             start,
             stop,
             stride,
-            self.content.iter().map(HashedValue::get_value),
+            self.iter().map(HashedValue::get_value),
         )))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().map(|x| x.get_value().clone())))
+    fn iter(&self) -> Result<Vec<Value>, ValueError> {
+        Ok(self.iter().map(|x| x.get_value().clone()).collect())
     }
 
     /// Concatenate `other` to the current value.
@@ -225,39 +141,66 @@ impl TypedValue for Set {
     ///     == Value::from(vec![1, 2, 3, 2, 3])
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "set" {
-            let mut result = Set {
-                mutability: IterableMutability::Mutable,
-                content: LinkedHashSet::new(),
-            };
-            for x in self.content.iter() {
-                result.content.insert(x.clone());
-            }
-            for x in other.iter()? {
-                result
-                    .content
-                    .insert_if_absent(HashedValue::new(x.clone())?);
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+    fn add(
+        &self,
+        other: &LinkedHashSet<HashedValue>,
+    ) -> Result<LinkedHashSet<HashedValue>, ValueError> {
+        let mut result = self.clone();
+        for x in other.iter() {
+            result.insert_if_absent(x.clone());
         }
+        Ok(result)
     }
 
-    fn get_hash(&self) -> Result<u64, ValueError> {
-        Ok(self
-            .content
-            .iter()
-            .map(HashedValue::get_hash)
-            .map(Wrapping)
-            .fold(Wrapping(0_u64), |acc, v| acc + v)
-            .0)
+    not_supported!(mul, percent, function);
+    not_supported!(arithmetic);
+    not_supported!(to_int, pipe);
+    not_supported!(attr);
+}
+
+impl MutableContent for LinkedHashSet<HashedValue> {
+    not_supported!(set_at, set_attr);
+}
+
+pub type Set = Mutable<LinkedHashSet<HashedValue>>;
+
+impl Set {
+    pub fn from<V: Into<Value>>(values: Vec<V>) -> Result<Value, ValueError> {
+        let mut result = LinkedHashSet::new();
+        for v in values.into_iter() {
+            result.insert_if_absent(HashedValue::new(v.into())?);
+        }
+        Ok(Value::new(Set::new(result)))
     }
 
-    not_supported!(mul, set_at);
-    not_supported!(attr, function);
-    not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
+    pub fn insert_if_absent(set: &Value, v: Value) -> Result<Value, ValueError> {
+        let v = v.clone_for_container_value(set)?;
+        Self::mutate(set, &|hashset| {
+            hashset.insert_if_absent(HashedValue::new(v.clone())?);
+            Ok(Value::from(None))
+        })
+    }
+
+    pub fn compare<Return>(
+        v1: &Value,
+        v2: &Value,
+        f: &Fn(
+            &LinkedHashSet<HashedValue>,
+            &LinkedHashSet<HashedValue>,
+        ) -> Result<Return, ValueError>,
+    ) -> Result<Return, ValueError> {
+        v1.downcast_apply(|v1: &Set| {
+            v2.downcast_apply(|v2: &Set| f(&v1.content.borrow(), &v2.content.borrow()))
+                .unwrap_or(Err(ValueError::IncorrectParameterType))
+        })
+        .unwrap_or(Err(ValueError::IncorrectParameterType))
+    }
+}
+
+impl From<LinkedHashSet<HashedValue>> for Value {
+    fn from(set: LinkedHashSet<HashedValue>) -> Value {
+        Value::new(Set::new(set))
+    }
 }
 
 #[cfg(test)]
@@ -297,8 +240,8 @@ mod tests {
     #[test]
     fn test_is_descendant() {
         let v1 = Set::from(vec![1, 2, 3]).unwrap();
-        let v2 = Set::from(vec![Value::new(1), Value::new(2), v1.clone()]).unwrap();
-        let v3 = Set::from(vec![Value::new(1), Value::new(2), v2.clone()]).unwrap();
+        let v2 = Set::from(vec![Value::new_imm(1), Value::new_imm(2), v1.clone()]).unwrap();
+        let v3 = Set::from(vec![Value::new_imm(1), Value::new_imm(2), v2.clone()]).unwrap();
         assert!(v3.is_descendant_value(&v2));
         assert!(v3.is_descendant_value(&v1));
         assert!(v3.is_descendant_value(&v3));

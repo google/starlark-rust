@@ -13,15 +13,21 @@
 // limitations under the License.
 
 //! Define the string type for Starlark.
+use crate::values::immutable::{Immutable, ImmutableContent, ReadableContent};
 use crate::values::*;
 use std;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 
-impl TypedValue for String {
-    immutable!();
-    any!();
+type StarlarkString = Immutable<String>;
+
+impl ImmutableContent for String {}
+
+impl ReadableContent for String {
+    fn get_type() -> &'static str {
+        "string"
+    }
 
     fn to_str(&self) -> String {
         self.clone()
@@ -36,9 +42,6 @@ impl TypedValue for String {
     }
 
     not_supported!(to_int);
-    fn get_type(&self) -> &'static str {
-        "string"
-    }
     fn to_bool(&self) -> bool {
         !self.is_empty()
     }
@@ -49,17 +52,15 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "string" {
-            Ok(self.cmp(&other.to_str()))
-        } else {
-            default_compare(self, other)
-        }
+    fn compare(&self, other: &Self, _recursion: u32) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(&other.to_str()))
     }
 
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.len() as i64)? as usize;
-        Ok(Value::new(self.chars().nth(i).unwrap().to_string()))
+        Ok(StarlarkString::new_value(
+            self.chars().nth(i).unwrap().to_string(),
+        ))
     }
 
     fn length(&self) -> Result<i64, ValueError> {
@@ -72,10 +73,6 @@ impl TypedValue for String {
         } else {
             Err(ValueError::IncorrectParameterType)
         }
-    }
-
-    fn is_descendant(&self, _other: &dyn TypedValue) -> bool {
-        false
     }
 
     fn slice(
@@ -124,7 +121,7 @@ impl TypedValue for String {
                 })
                 .collect()
         };
-        Ok(Value::new(v))
+        Ok(StarlarkString::new_value(v))
     }
 
     /// Concatenate `other` to the current value.
@@ -141,13 +138,9 @@ impl TypedValue for String {
     /// Value::from("abc").add(Value::from("def")).unwrap() == Value::from("abcdef")
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "string" {
-            let s: String = self.chars().chain(other.to_str().chars()).collect();
-            Ok(Value::new(s))
-        } else {
-            Err(ValueError::IncorrectParameterType)
-        }
+    fn add(&self, other: &String) -> Result<String, ValueError> {
+        let s: String = self.chars().chain(other.to_str().chars()).collect();
+        Ok(s)
     }
 
     /// Repeat `other` times this string.
@@ -171,7 +164,7 @@ impl TypedValue for String {
             for _i in 0..l {
                 result += self
             }
-            Ok(Value::new(result))
+            Ok(StarlarkString::new_value(result))
         } else {
             Err(ValueError::IncorrectParameterType)
         }
@@ -232,11 +225,11 @@ impl TypedValue for String {
                             None => return Err(ValueError::InterpolationFormat),
                         }
                     }
-                    other.at(Value::new(varname))?.clone()
+                    other.at(StarlarkString::new_value(varname))?.clone()
                 } else {
                     match other.iter() {
                         Ok(..) => {
-                            let val = other.at(Value::new(idx));
+                            let val = other.at(StarlarkInt::new_value(idx));
                             idx += 1;
                             match val {
                                 Ok(v) => {
@@ -313,14 +306,17 @@ impl TypedValue for String {
         if idx < len {
             Err(ValueError::TooManyParametersForInterpolation)
         } else {
-            Ok(Value::new(res))
+            Ok(StarlarkString::new_value(res))
         }
     }
 
     not_supported!(iterable);
-    not_supported!(set_indexable);
     not_supported!(attr, function);
     not_supported!(plus, minus, sub, div, pipe, floor_div);
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(std::iter::empty())
+    }
 }
 
 #[cfg(test)]

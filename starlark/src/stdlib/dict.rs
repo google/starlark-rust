@@ -52,7 +52,7 @@ starlark_module! {global =>
             &this,
             &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 x.clear();
-                ok!(None)
+                Ok(Value::new_imm(NoneValue))
             }
         )
     }
@@ -134,7 +134,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.keys(this) {
-        let v : Vec<Value> = this.iter()?.collect();
+        let v : Vec<Value> = this.iter()?;
         ok!(v)
     }
 
@@ -323,7 +323,7 @@ starlark_module! {global =>
                         "list of non-pairs".to_owned()
                     )
                 }
-                this.set_at(v.at(Value::new(0))?, v.at(Value::new(1))?)?;
+                this.set_at(v.at(Value::new_imm(0))?, v.at(Value::new_imm(1))?)?;
             },
             "dict" => for k in pairs.iter()? {
                 this.set_at(k.clone(), pairs.at(k)?)?
@@ -344,7 +344,7 @@ starlark_module! {global =>
         for (k, v) in kwargs {
             this.set_at(k.into(), v)?;
         }
-        ok!(None)
+        Ok(Value::new_imm(NoneValue))
     }
 
     /// [dict.values](

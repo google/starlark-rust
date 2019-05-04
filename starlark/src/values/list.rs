@@ -13,58 +13,18 @@
 // limitations under the License.
 
 //! Define the list type of Starlark
+use crate::values::immutable::ReadableContent;
+use crate::values::mutable::{Mutable, MutableContent};
 use crate::values::*;
-use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 
-pub struct List {
-    mutability: IterableMutability,
-    content: Vec<Value>,
-}
-
-impl<T: Into<Value> + Clone> From<Vec<T>> for List {
-    fn from(a: Vec<T>) -> List {
-        let mut result = List {
-            mutability: IterableMutability::Mutable,
-            content: Vec::new(),
-        };
-        for x in a.iter() {
-            let v: Value = x.clone().into();
-            result.content.push(v);
-        }
-        result
-    }
-}
-
-impl List {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> Value {
-        Value::new(List {
-            mutability: IterableMutability::Mutable,
-            content: Vec::new(),
-        })
+impl ReadableContent for Vec<Value> {
+    fn get_type() -> &'static str {
+        "list"
     }
 
-    pub fn mutate(v: &Value, f: &dyn Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
-        let mut v = v.clone();
-        v.downcast_apply_mut(|x: &mut List| -> ValueResult {
-            x.mutability.test()?;
-            f(&mut x.content)
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
-    }
-}
-
-impl TypedValue for List {
-    any!();
-
-    define_iterable_mutability!(mutability);
-
-    fn freeze(&mut self) {
-        self.mutability.freeze();
-        for x in self.content.iter_mut() {
-            x.borrow_mut().freeze();
-        }
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.as_slice().iter().cloned())
     }
 
     /// Returns a string representation for the list
@@ -79,77 +39,36 @@ impl TypedValue for List {
     /// assert_eq!("[1]", Value::from(vec![1]).to_str());
     /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
     /// ```
-    fn to_str(&self) -> String {
+    fn to_repr(&self) -> String {
         format!(
             "[{}]",
-            self.content
-                .iter()
-                .map(Value::to_repr)
-                .enumerate()
-                .fold("".to_string(), |accum, s| if s.0 == 0 {
+            self.as_slice().iter().map(Value::to_repr).enumerate().fold(
+                "".to_string(),
+                |accum, s| if s.0 == 0 {
                     accum + &s.1
                 } else {
                     accum + ", " + &s.1
-                },)
+                },
+            )
         )
     }
 
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-
-    not_supported!(to_int);
-    fn get_type(&self) -> &'static str {
-        "list"
-    }
     fn to_bool(&self) -> bool {
-        !self.content.is_empty()
+        !self.is_empty()
     }
 
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "list" {
-            let mut iter1 = self.iter()?;
-            let mut iter2 = other.iter()?;
-            loop {
-                match (iter1.next(), iter2.next()) {
-                    (None, None) => return Ok(Ordering::Equal),
-                    (None, Some(..)) => return Ok(Ordering::Less),
-                    (Some(..), None) => return Ok(Ordering::Greater),
-                    (Some(v1), Some(v2)) => {
-                        let r = v1.compare(&v2, recursion + 1)?;
-                        if r != Ordering::Equal {
-                            return Ok(r);
-                        }
-                    }
-                }
-            }
-        } else {
-            default_compare(self, other)
-        }
-    }
-
-    fn at(&self, index: Value) -> ValueResult {
+    fn at(&self, index: Value) -> Result<Value, ValueError> {
         let i = index.convert_index(self.length()?)? as usize;
-        Ok(self.content[i].clone())
-    }
-
-    fn length(&self) -> Result<i64, ValueError> {
-        Ok(self.content.len() as i64)
+        Ok(self[i].clone())
     }
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        for x in self.content.iter() {
+        for x in self {
             if x.compare(other, 0)? == Ordering::Equal {
                 return Ok(true);
             }
         }
         Ok(false)
-    }
-
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        self.content
-            .iter()
-            .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
     fn slice(
@@ -164,12 +83,16 @@ impl TypedValue for List {
             start,
             stop,
             stride,
-            self.content.iter(),
+            self.as_slice().iter(),
         )))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().cloned()))
+    fn length(&self) -> Result<i64, ValueError> {
+        Ok(self.len() as i64)
+    }
+
+    fn iter(&self) -> Result<Vec<Value>, ValueError> {
+        Ok(self.clone())
     }
 
     /// Concatenate `other` to the current value.
@@ -187,22 +110,11 @@ impl TypedValue for List {
     ///     == Value::from(vec![1, 2, 3, 2, 3])
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "list" {
-            let mut result = List {
-                mutability: IterableMutability::Mutable,
-                content: Vec::new(),
-            };
-            for x in self.content.iter() {
-                result.content.push(x.clone());
-            }
-            for x in other.iter()? {
-                result.content.push(x.clone());
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
-        }
+    fn add(&self, other: &Self) -> Result<Self, ValueError> {
+        let mut result = Vec::with_capacity(self.len() + other.len());
+        result.extend(self.as_slice().iter().cloned());
+        result.extend(other.as_slice().iter().cloned());
+        Ok(result)
     }
 
     /// Repeat `other` times this tuple.
@@ -223,19 +135,44 @@ impl TypedValue for List {
     fn mul(&self, other: Value) -> ValueResult {
         if other.get_type() == "int" || other.get_type() == "boolean" {
             let l = other.to_int()?;
-            let mut result = List {
-                mutability: IterableMutability::Mutable,
-                content: Vec::new(),
-            };
+            let mut result = Vec::new();
             for _i in 0..l {
-                for x in self.content.iter() {
-                    result.content.push(x.clone());
+                for x in self {
+                    result.push(x.clone());
                 }
             }
-            Ok(Value::new(result))
+            Ok(Value::new(List::new(result)))
         } else {
             Err(ValueError::IncorrectParameterType)
         }
+    }
+
+    fn compare(&self, other: &Self, recursion: u32) -> Result<Ordering, ValueError> {
+        let mut iter1 = self.iter()?.into_iter();
+        let mut iter2 = other.iter()?.into_iter();
+        loop {
+            match (iter1.next(), iter2.next()) {
+                (None, None) => return Ok(Ordering::Equal),
+                (None, Some(..)) => return Ok(Ordering::Less),
+                (Some(..), None) => return Ok(Ordering::Greater),
+                (Some(v1), Some(v2)) => {
+                    let r = v1.compare(&v2, recursion + 1)?;
+                    if r != Ordering::Equal {
+                        return Ok(r);
+                    }
+                }
+            }
+        }
+    }
+
+    not_supported!(get_hash);
+    not_supported!(arithmetic);
+    not_supported!(to_int, pipe, attr, function, percent);
+}
+
+impl MutableContent for Vec<Value> {
+    fn set_at_check(&self, _index: &Value) -> Result<(), ValueError> {
+        Ok(())
     }
 
     /// Set the value at `index` to `new_value`
@@ -250,14 +187,25 @@ impl TypedValue for List {
     /// assert_eq!(&v.to_repr(), "[1, 1, [2, 3]]");
     /// ```
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.mutability.test()?;
         let i = index.convert_index(self.length()?)? as usize;
-        self.content[i] = new_value.clone_for_container(self)?;
+        self[i] = new_value;
         Ok(())
     }
 
-    not_supported!(attr, function, get_hash);
-    not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
+    not_supported!(set_attr);
+}
+
+pub type List = Mutable<Vec<Value>>;
+
+impl<T: Into<Value> + Clone> From<Vec<T>> for List {
+    fn from(a: Vec<T>) -> List {
+        let mut result = Vec::new();
+        for x in a.iter() {
+            let v: Value = x.clone().into();
+            result.push(v);
+        }
+        List::new(result)
+    }
 }
 
 #[cfg(test)]
@@ -311,8 +259,8 @@ mod tests {
     #[test]
     fn test_is_descendant() {
         let v1 = Value::from(vec![1, 2, 3]);
-        let v2 = Value::from(vec![Value::new(1), Value::new(2), v1.clone()]);
-        let v3 = Value::from(vec![Value::new(1), Value::new(2), v2.clone()]);
+        let v2 = Value::from(vec![Value::new_imm(1), Value::new_imm(2), v1.clone()]);
+        let v3 = Value::from(vec![Value::new_imm(1), Value::new_imm(2), v2.clone()]);
         assert!(v3.is_descendant_value(&v2));
         assert!(v3.is_descendant_value(&v1));
         assert!(v3.is_descendant_value(&v3));

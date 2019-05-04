@@ -27,6 +27,7 @@ use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::dict::Dictionary;
 use crate::values::function::{FunctionArg, FunctionParameter};
+use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -36,7 +37,7 @@ use std::sync::{Arc, Mutex};
 
 macro_rules! eval_vector {
     ($v:expr, $ctx:expr) => {{
-        let mut r = Vec::new();
+        let mut r = Vec::<Value>::new();
         for s in $v.iter() {
             r.push(s.eval($ctx)?)
         }
@@ -230,7 +231,7 @@ trait Evaluate<T: FileLoader> {
 
 impl<T: FileLoader> Evaluate<T> for AstString {
     fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
-        Ok(Value::new(self.node.clone()))
+        Ok(Value::new_imm(self.node.clone()))
     }
 
     fn transform(
@@ -247,7 +248,7 @@ impl<T: FileLoader> Evaluate<T> for AstString {
 
 impl<T: FileLoader> Evaluate<T> for AstInt {
     fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
-        Ok(Value::new(self.node))
+        Ok(Value::new_imm(self.node))
     }
 
     fn transform(
@@ -311,7 +312,7 @@ where
 {
     let l = left.eval(context)?;
     let r = right.eval(context)?;
-    Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
+    Ok(Value::from(cmp(t!(l.compare(&r, 0), this)?)))
 }
 
 fn eval_slice<T: FileLoader + 'static>(
@@ -418,18 +419,19 @@ fn eval_dict_comprehension<T: FileLoader + 'static>(
     clauses: &[AstClause],
     context: &EvaluationContext<T>,
 ) -> EvalResult {
-    let mut r = Dictionary::new_typed();
+    let mut r = LinkedHashMap::new();
     let tuple = Box::new(Spanned {
         span: k.span.merge(v.span),
         node: Expr::Tuple(vec![k.clone(), v.clone()]),
     });
     let mut context = context.child("dict_comprehension");
     for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
-        let k = t!(e.at(Value::from(0)), tuple)?;
-        let v = t!(e.at(Value::from(1)), tuple)?;
-        t!(r.set_at(k, v), tuple)?;
+        let k = t!(e.at(Value::new_imm(0)), tuple)?;
+        let k = t!(HashedValue::new(k), tuple)?;
+        let v = t!(e.at(Value::new_imm(1)), tuple)?;
+        r.insert(k, v);
     }
-    Ok(Value::new(r))
+    Ok(Value::new_mut(r))
 }
 
 fn eval_one_dimensional_comprehension<T: FileLoader + 'static>(
@@ -469,7 +471,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     }
 
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
-        let ok = Ok(Value::new(None));
+        let ok = Ok(Value::new_imm(NoneValue));
         match self {
             TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
                 let l = v.len() as i64;
@@ -480,7 +482,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.iter(), span * span)?;
+                    let mut it2 = t!(new_value.iter(), span * span)?.into_iter();
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -502,7 +504,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
         match self {
             TransformedExpr::Tuple(ref v, ..) => {
                 let r = eval_vector!(v, context);
-                Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+                Ok(Value::new(tuple::Tuple::from(r)))
             }
             TransformedExpr::List(ref v, ..) => {
                 let r = eval_vector!(v, context);
@@ -575,7 +577,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
         match self.node {
             Expr::Tuple(ref v) => {
                 let r = eval_vector!(v, context);
-                Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+                Ok(Value::new(tuple::Tuple::from(r)))
             }
             Expr::Dot(ref e, ref s) => eval_dot(self, e, s, context),
             Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
@@ -589,9 +591,9 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 eval_slice(self, a, start, stop, stride, context)
             }
             Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
-            Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
-            Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
-            Expr::Not(ref s) => Ok(Value::new(!s.eval(context)?.to_bool())),
+            Expr::IntLiteral(ref i) => Ok(Value::from(i.node)),
+            Expr::StringLiteral(ref s) => Ok(Value::from(s.node.clone())),
+            Expr::Not(ref s) => Ok(Value::from(!s.eval(context)?.to_bool())),
             Expr::Minus(ref s) => t!(s.eval(context)?.minus(), self),
             Expr::Plus(ref s) => t!(s.eval(context)?.plus(), self),
             Expr::Op(BinOp::Or, ref l, ref r) => {
@@ -621,13 +623,13 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 eval_compare(self, l, r, |x| x != Ordering::Less, context)
             }
             Expr::Op(BinOp::In, ref l, ref r) => t!(
-                r.eval(context)?.is_in(&l.eval(context)?).map(Value::new),
+                r.eval(context)?.is_in(&l.eval(context)?).map(Value::from),
                 self
             ),
             Expr::Op(BinOp::NotIn, ref l, ref r) => t!(
                 r.eval(context)?
                     .is_in(&l.eval(context)?)
-                    .map(|r| Value::new(!r)),
+                    .map(|r| Value::from(!r)),
                 self
             ),
             Expr::Op(BinOp::Substraction, ref l, ref r) => {
@@ -671,11 +673,14 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                 Ok(Value::from(r))
             }
             Expr::Dict(ref v) => {
-                let mut r = dict::Dictionary::new();
-                for s in v.iter() {
-                    t!(r.set_at(s.0.eval(context)?, s.1.eval(context)?), self)?
+                let mut r = LinkedHashMap::new();
+                for (k, v) in v.iter() {
+                    r.insert(
+                        t!(HashedValue::new(k.eval(context)?), self)?,
+                        v.eval(context)?,
+                    );
                 }
-                Ok(r)
+                Ok(Dictionary::new_value(r))
             }
             Expr::Set(ref v) => {
                 let values: Result<Vec<_>, _> = v.iter().map(|s| s.eval(context)).collect();
@@ -695,7 +700,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
     }
 
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
-        let ok = Ok(Value::new(None));
+        let ok = Ok(StarlarkNone::new_value(Default::default()));
         match self.node {
             Expr::Tuple(ref v) | Expr::List(ref v) => {
                 let l = v.len() as i64;
@@ -708,7 +713,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.iter(), self)?;
+                    let mut it2 = t!(new_value.iter(), self)?.into_iter();
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -737,11 +742,13 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
         match self.node {
             Statement::Break => Err(EvalException::Break(self.span)),
             Statement::Continue => Err(EvalException::Continue(self.span)),
-            Statement::Pass => Ok(Value::new(None)),
+            Statement::Pass => Ok(Value::new_imm(NoneValue)),
             Statement::Return(Some(ref e)) => {
                 Err(EvalException::Return(self.span, e.eval(context)?))
             }
-            Statement::Return(None) => Err(EvalException::Return(self.span, Value::new(None))),
+            Statement::Return(None) => {
+                Err(EvalException::Return(self.span, Value::new_imm(NoneValue)))
+            }
             Statement::Expression(ref e) => e.eval(context),
             Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
                 let rhs = rhs.eval(context)?;
@@ -787,7 +794,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 if cond.eval(context)?.to_bool() {
                     st.eval(context)
                 } else {
-                    Ok(Value::new(None))
+                    Ok(Value::new_imm(NoneValue))
                 }
             }
             Statement::IfElse(ref cond, ref st1, ref st2) => {
@@ -805,7 +812,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 ref st,
             ) => {
                 let mut iterable = e2.eval(context)?;
-                let mut result = Ok(Value::new(None));
+                let mut result = Ok(Value::new_imm(NoneValue));
                 iterable.freeze_for_iteration();
                 for v in t!(iterable.iter(), span * span)? {
                     e1.set(context, v)?;
@@ -857,12 +864,12 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                     t!(context.env.import_symbol(&loadenv, &orig_name.node, &new_name.node),
                         span new_name.span.merge(orig_name.span))?
                 }
-                Ok(Value::new(None))
+                Ok(Value::new_imm(NoneValue))
             }
             Statement::Statements(ref v) => {
                 let r = eval_vector!(v, context);
                 match r.len() {
-                    0 => Ok(Value::new(None)),
+                    0 => Ok(Value::new_imm(NoneValue)),
                     _ => Ok(r.last().unwrap().clone()),
                 }
             }
@@ -914,7 +921,7 @@ pub fn eval_def(
     match stmts.eval(&mut ctx) {
         Err(EvalException::Return(_s, ret)) => Ok(ret),
         Err(x) => Err(ValueError::DiagnosedError(x.into())),
-        Ok(..) => Ok(Value::new(None)),
+        Ok(..) => Ok(Value::new_imm(NoneValue)),
     }
 }
 

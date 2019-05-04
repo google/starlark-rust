@@ -270,14 +270,14 @@ macro_rules! starlark_signatures {
 ///     // #a argument will be binded to a `a` Rust value, the '#' prevent the argument from
 ///     // being used by name when calling the method.
 ///     __str__(#a) {
-///       Ok(Value::new(a.to_str().to_owned()))
+///       Ok(Value::new_imm(a.to_str().to_owned()))
 ///     }
 ///
 ///     // Declare a function my_fun that takes one positional parameter 'a', a named and
 ///     // positional parameter 'b', a args array 'args' and a keyword dictionary `kwargs`
 ///     my_fun(#a, b, c = 1, *args, **kwargs) {
 ///       // ...
-/// # Ok(Value::new(true))
+/// # Ok(Value::new_imm(true))
 ///     }
 ///
 ///     // It is also possible to capture the calling environment with `env name`
@@ -309,8 +309,8 @@ macro_rules! starlark_signatures {
 /// # use starlark::values::*;
 /// # use starlark::environment::Environment;
 /// # starlark_module!{ my_starlark_module =>
-/// #     __str__(#a) { Ok(Value::new(a.to_str().to_owned())) }
-/// #     my_fun(#a, b, c = 1, *args, **kwargs) { Ok(Value::new(true)) }
+/// #     __str__(#a) { Ok(Value::new_imm(a.to_str().to_owned())) }
+/// #     my_fun(#a, b, c = 1, *args, **kwargs) { Ok(Value::new_imm(true)) }
 /// # }
 /// # fn main() {
 /// #    let env =
@@ -332,7 +332,7 @@ macro_rules! starlark_signatures {
 ///     // The first argument is always self in that module but we use "this" because "self" is a
 ///     // a rust keyword.
 ///     string.hello(this) {
-///        Ok(Value::new(
+///        Ok(Value::new_imm(
 ///            format!("Hello, {}", this.to_str())
 ///        ))
 ///     }

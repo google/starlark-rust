@@ -13,16 +13,18 @@
 // limitations under the License.
 
 //! Define the tuple type for Starlark.
+use crate::values::immutable::{Immutable, ImmutableContent, ReadableContent};
 use crate::values::*;
-use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 
+// Need to wrap `Vec<Value>` in a struct,
+// because there's `impl ImmutableContent for Vec<Value>` for `list`.
+pub struct TupleContent(Vec<Value>);
+
 /// A starlark tuple
-pub struct Tuple {
-    content: Vec<Value>,
-}
+pub type Tuple = Immutable<TupleContent>;
 
 #[doc(hidden)]
 pub fn slice_vector<'a, I: Iterator<Item = &'a Value>>(
@@ -59,46 +61,28 @@ pub fn slice_vector<'a, I: Iterator<Item = &'a Value>>(
         .collect()
 }
 
-impl Tuple {
-    pub fn new(values: &[Value]) -> Tuple {
-        let mut result = Tuple {
-            content: Vec::new(),
-        };
-        for x in values.iter() {
-            result.content.push(x.clone());
-        }
-        result
-    }
-}
-
 impl From<()> for Tuple {
     fn from(_a: ()) -> Tuple {
-        Tuple { content: vec![] }
+        Tuple::new(TupleContent(vec![]))
     }
 }
 
 // TODO: Can we do that with macro? i.e. generating the index number automatically?
 impl<T: Into<Value>> From<(T,)> for Tuple {
     fn from(a: (T,)) -> Tuple {
-        Tuple {
-            content: vec![a.0.into()],
-        }
+        Tuple::new(TupleContent(vec![a.0.into()]))
     }
 }
 
 impl<T1: Into<Value>, T2: Into<Value>> From<(T1, T2)> for Tuple {
     fn from(a: (T1, T2)) -> Tuple {
-        Tuple {
-            content: vec![a.0.into(), a.1.into()],
-        }
+        Tuple::new(TupleContent(vec![a.0.into(), a.1.into()]))
     }
 }
 
 impl<T1: Into<Value>, T2: Into<Value>, T3: Into<Value>> From<(T1, T2, T3)> for Tuple {
     fn from(a: (T1, T2, T3)) -> Tuple {
-        Tuple {
-            content: vec![a.0.into(), a.1.into(), a.2.into()],
-        }
+        Tuple::new(TupleContent(vec![a.0.into(), a.1.into(), a.2.into()]))
     }
 }
 
@@ -106,9 +90,12 @@ impl<T1: Into<Value>, T2: Into<Value>, T3: Into<Value>, T4: Into<Value>> From<(T
     for Tuple
 {
     fn from(a: (T1, T2, T3, T4)) -> Tuple {
-        Tuple {
-            content: vec![a.0.into(), a.1.into(), a.2.into(), a.3.into()],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+        ]))
     }
 }
 
@@ -116,9 +103,13 @@ impl<T1: Into<Value>, T2: Into<Value>, T3: Into<Value>, T4: Into<Value>, T5: Int
     From<(T1, T2, T3, T4, T5)> for Tuple
 {
     fn from(a: (T1, T2, T3, T4, T5)) -> Tuple {
-        Tuple {
-            content: vec![a.0.into(), a.1.into(), a.2.into(), a.3.into(), a.4.into()],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+            a.4.into(),
+        ]))
     }
 }
 
@@ -132,16 +123,14 @@ impl<
     > From<(T1, T2, T3, T4, T5, T6)> for Tuple
 {
     fn from(a: (T1, T2, T3, T4, T5, T6)) -> Tuple {
-        Tuple {
-            content: vec![
-                a.0.into(),
-                a.1.into(),
-                a.2.into(),
-                a.3.into(),
-                a.4.into(),
-                a.5.into(),
-            ],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+            a.4.into(),
+            a.5.into(),
+        ]))
     }
 }
 
@@ -156,17 +145,15 @@ impl<
     > From<(T1, T2, T3, T4, T5, T6, T7)> for Tuple
 {
     fn from(a: (T1, T2, T3, T4, T5, T6, T7)) -> Tuple {
-        Tuple {
-            content: vec![
-                a.0.into(),
-                a.1.into(),
-                a.2.into(),
-                a.3.into(),
-                a.4.into(),
-                a.5.into(),
-                a.6.into(),
-            ],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+            a.4.into(),
+            a.5.into(),
+            a.6.into(),
+        ]))
     }
 }
 
@@ -182,18 +169,16 @@ impl<
     > From<(T1, T2, T3, T4, T5, T6, T7, T8)> for Tuple
 {
     fn from(a: (T1, T2, T3, T4, T5, T6, T7, T8)) -> Tuple {
-        Tuple {
-            content: vec![
-                a.0.into(),
-                a.1.into(),
-                a.2.into(),
-                a.3.into(),
-                a.4.into(),
-                a.5.into(),
-                a.6.into(),
-                a.7.into(),
-            ],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+            a.4.into(),
+            a.5.into(),
+            a.6.into(),
+            a.7.into(),
+        ]))
     }
 }
 
@@ -210,19 +195,17 @@ impl<
     > From<(T1, T2, T3, T4, T5, T6, T7, T8, T9)> for Tuple
 {
     fn from(a: (T1, T2, T3, T4, T5, T6, T7, T8, T9)) -> Tuple {
-        Tuple {
-            content: vec![
-                a.0.into(),
-                a.1.into(),
-                a.2.into(),
-                a.3.into(),
-                a.4.into(),
-                a.5.into(),
-                a.6.into(),
-                a.7.into(),
-                a.8.into(),
-            ],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+            a.4.into(),
+            a.5.into(),
+            a.6.into(),
+            a.7.into(),
+            a.8.into(),
+        ]))
     }
 }
 
@@ -240,40 +223,37 @@ impl<
     > From<(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)> for Tuple
 {
     fn from(a: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)) -> Tuple {
-        Tuple {
-            content: vec![
-                a.0.into(),
-                a.1.into(),
-                a.2.into(),
-                a.3.into(),
-                a.4.into(),
-                a.5.into(),
-                a.6.into(),
-                a.7.into(),
-                a.8.into(),
-                a.9.into(),
-            ],
-        }
+        Tuple::new(TupleContent(vec![
+            a.0.into(),
+            a.1.into(),
+            a.2.into(),
+            a.3.into(),
+            a.4.into(),
+            a.5.into(),
+            a.6.into(),
+            a.7.into(),
+            a.8.into(),
+            a.9.into(),
+        ]))
     }
 }
 
-impl TypedValue for Tuple {
-    any!();
-
-    fn immutable(&self) -> bool {
-        true
+impl<T: Into<Value>> From<Vec<T>> for Tuple {
+    fn from(v: Vec<T>) -> Tuple {
+        Tuple::new(TupleContent(
+            v.into_iter().map(T::into).collect::<Vec<Value>>(),
+        ))
     }
-    fn freeze(&mut self) {
-        // Tuple are weird, immutable but with potentially mutable
-        for x in self.content.iter_mut() {
-            x.borrow_mut().freeze();
-        }
-    }
+}
 
+impl ImmutableContent for TupleContent {}
+
+impl ReadableContent for TupleContent {
     fn to_str(&self) -> String {
         format!(
             "({}{})",
-            self.content
+            self.0
+                .as_slice()
                 .iter()
                 .map(Value::to_repr)
                 .enumerate()
@@ -282,7 +262,7 @@ impl TypedValue for Tuple {
                 } else {
                     accum + ", " + &s.1
                 },),
-            if self.content.len() == 1 { "," } else { "" }
+            if self.0.len() == 1 { "," } else { "" }
         )
     }
 
@@ -291,64 +271,54 @@ impl TypedValue for Tuple {
     }
 
     not_supported!(to_int);
-    fn get_type(&self) -> &'static str {
+    fn get_type() -> &'static str {
         "tuple"
     }
     fn to_bool(&self) -> bool {
-        !self.content.is_empty()
+        !self.0.is_empty()
     }
     fn get_hash(&self) -> Result<u64, ValueError> {
         let mut s = DefaultHasher::new();
-        for v in self.content.iter() {
+        for v in &self.0 {
             s.write_u64(v.get_hash()?)
         }
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "tuple" {
-            let mut iter1 = self.iter()?;
-            let mut iter2 = other.iter()?;
-            loop {
-                match (iter1.next(), iter2.next()) {
-                    (None, None) => return Ok(Ordering::Equal),
-                    (None, Some(..)) => return Ok(Ordering::Less),
-                    (Some(..), None) => return Ok(Ordering::Greater),
-                    (Some(v1), Some(v2)) => {
-                        let r = v1.compare(&v2, recursion + 1)?;
-                        if r != Ordering::Equal {
-                            return Ok(r);
-                        }
+    fn compare(&self, other: &TupleContent, recursion: u32) -> Result<Ordering, ValueError> {
+        let mut iter1 = self.0.as_slice().iter();
+        let mut iter2 = other.0.as_slice().iter();
+        loop {
+            match (iter1.next(), iter2.next()) {
+                (None, None) => return Ok(Ordering::Equal),
+                (None, Some(..)) => return Ok(Ordering::Less),
+                (Some(..), None) => return Ok(Ordering::Greater),
+                (Some(v1), Some(v2)) => {
+                    let r = v1.compare(&v2, recursion + 1)?;
+                    if r != Ordering::Equal {
+                        return Ok(r);
                     }
                 }
             }
-        } else {
-            default_compare(self, other)
         }
     }
 
     fn at(&self, index: Value) -> ValueResult {
         let i = index.convert_index(self.length()?)? as usize;
-        Ok(self.content[i].clone())
+        Ok(self.0[i].clone())
     }
 
     fn length(&self) -> Result<i64, ValueError> {
-        Ok(self.content.len() as i64)
+        Ok(self.0.len() as i64)
     }
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        for x in self.content.iter() {
+        for x in self.0.as_slice().iter() {
             if x.compare(other, 0)? == Ordering::Equal {
                 return Ok(true);
             }
         }
         Ok(false)
-    }
-
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        self.content
-            .iter()
-            .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
     fn slice(
@@ -359,16 +329,16 @@ impl TypedValue for Tuple {
     ) -> ValueResult {
         let (start, stop, stride) =
             Value::convert_slice_indices(self.length()?, start, stop, stride)?;
-        Ok(Value::new(Tuple::new(&slice_vector(
+        Ok(Value::new(Tuple::new(TupleContent(slice_vector(
             start,
             stop,
             stride,
-            self.content.iter(),
-        ))))
+            self.0.as_slice().iter(),
+        )))))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().cloned()))
+    fn iter(&self) -> Result<Vec<Value>, ValueError> {
+        Ok(self.0.clone())
     }
 
     /// Concatenate `other` to the current value.
@@ -385,21 +355,15 @@ impl TypedValue for Tuple {
     /// Value::from((1,2,3)).add(Value::from((2,3))).unwrap() == Value::from((1, 2, 3, 2, 3))
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "tuple" {
-            let mut result = Tuple {
-                content: Vec::new(),
-            };
-            for x in self.content.iter() {
-                result.content.push(x.clone());
-            }
-            for x in other.iter()? {
-                result.content.push(x.clone());
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+    fn add(&self, other: &TupleContent) -> Result<TupleContent, ValueError> {
+        let mut result = Vec::new();
+        for x in self.0.as_slice().iter() {
+            result.push(x.clone());
         }
+        for x in other.0.as_slice().iter() {
+            result.push(x.clone());
+        }
+        Ok(TupleContent(result))
     }
 
     /// Repeat `other` times this tuple.
@@ -420,24 +384,24 @@ impl TypedValue for Tuple {
     fn mul(&self, other: Value) -> ValueResult {
         if other.get_type() == "int" || other.get_type() == "boolean" {
             let l = other.to_int()?;
-            let mut result = Tuple {
-                content: Vec::new(),
-            };
+            let mut result = Vec::new();
             for _i in 0..l {
-                for x in self.content.iter() {
-                    result.content.push(x.clone());
+                for x in &self.0 {
+                    result.push(x.clone());
                 }
             }
-            Ok(Value::new(result))
+            Ok(Value::new(Tuple::new(TupleContent(result))))
         } else {
             Err(ValueError::IncorrectParameterType)
         }
     }
 
-    not_supported!(freeze_for_iteration);
-    not_supported!(set_indexable);
     not_supported!(attr, function);
     not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.0.as_slice().iter().cloned())
+    }
 }
 
 #[cfg(test)]

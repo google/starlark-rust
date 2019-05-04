@@ -89,10 +89,10 @@ starlark_module! {global_functions =>
     any(#x) {
         for i in x.iter()? {
             if i.to_bool() {
-                return Ok(Value::new(true));
+                return Ok(Value::new_imm(true));
             }
         }
-        Ok(Value::new(false))
+        Ok(Value::new_imm(false))
     }
 
     /// [all](
@@ -122,10 +122,10 @@ starlark_module! {global_functions =>
     all(#x) {
         for i in x.iter()? {
             if !i.to_bool() {
-                return Ok(Value::new(false));
+                return Ok(Value::new_imm(false));
             }
         }
-        Ok(Value::new(true))
+        Ok(Value::new_imm(true))
     }
 
     /// [bool](
@@ -159,7 +159,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     bool(#x = false) {
-        Ok(Value::new(x.to_bool()))
+        Ok(Value::new_imm(x.to_bool()))
     }
 
     /// [chr](
@@ -186,7 +186,7 @@ starlark_module! {global_functions =>
     chr(#i) {
         let cp = i.to_int()? as u32;
         match std::char::from_u32(cp) {
-            Some(x) => Ok(Value::new(x.to_string())),
+            Some(x) => Ok(Value::new_imm(x.to_string())),
             None => starlark_err!(CHR_NOT_UTF8_CODEPOINT_ERROR_CODE,
                 format!(
                     "chr() parameter value is 0x{:x} which is not a valid UTF-8 codepoint",
@@ -230,7 +230,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     dict(#a = None, **kwargs) {
-        let mut map = Dictionary::new();
+        let mut map = Dictionary::new_value(Default::default());
         match a.get_type() {
             "NoneType" => (),
             "dict" => {
@@ -240,9 +240,10 @@ starlark_module! {global_functions =>
                 }
             },
             _ => {
-               for el in a.iter()? {
+               for el in a.iter()?.into_iter() {
                    match el.iter() {
-                       Ok(mut it) => {
+                       Ok(it) => {
+                            let mut it = it.into_iter();
                             let first = it.next();
                             let second = it.next();
                             if first.is_none() || second.is_none() || it.next().is_some() {
@@ -326,8 +327,9 @@ starlark_module! {global_functions =>
         let v : Vec<Value> =
             it
             .iter()?
+            .into_iter()
             .enumerate()
-            .map(|(k, v)| Value::from((Value::new(k as i64 + v2), v)))
+            .map(|(k, v)| Value::from((Value::from(k as i64 + v2), v)))
             .collect();
         Ok(Value::from(v))
     }
@@ -391,7 +393,7 @@ starlark_module! {global_functions =>
             )
         } else {
             let attr = attr.to_str();
-            Ok(Value::new(
+            Ok(Value::new_imm(
                 match env.get_type_value(&a, &attr) {
                     Some(..) => true,
                     None => match a.has_attr(&attr) {
@@ -412,7 +414,7 @@ starlark_module! {global_functions =>
     ///
     /// `hash` fails if x, or any value upon which its hash depends, is unhashable.
     hash(#a) {
-        Ok(Value::new(a.get_hash()? as i64))
+        Ok(Value::new_imm(a.get_hash()? as i64))
     }
 
     /// [int](
@@ -483,7 +485,7 @@ starlark_module! {global_functions =>
                 _ => s
             };
             match i64::from_str_radix(&s, base) {
-                Ok(i) => Ok(Value::new(sign * i)),
+                Ok(i) => Ok(Value::new_imm(sign * i)),
                 Err(x) => starlark_err!(
                     INT_CONVERSION_FAILED_ERROR_CODE,
                     format!(
@@ -503,7 +505,7 @@ starlark_module! {global_functions =>
                     format!("Explict base '{}' provided with non-string", base.to_repr())
                 )
             }
-            Ok(Value::new(a.to_int()?))
+            Ok(Value::new_imm(a.to_int()?))
         }
     }
 
@@ -515,7 +517,7 @@ starlark_module! {global_functions =>
     ///
     /// It is a dynamic error if its argument is not a sequence.
     len(#a) {
-        Ok(Value::new(a.length()?))
+        Ok(Value::new_imm(a.length()?))
     }
 
     /// [list](
@@ -564,7 +566,7 @@ starlark_module! {global_functions =>
         } else {
             Value::from(args)
         };
-        let mut it = args.iter()?;
+        let mut it = args.iter()?.into_iter();
         let mut max = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -617,7 +619,7 @@ starlark_module! {global_functions =>
         } else {
             Value::from(args)
         };
-        let mut it = args.iter()?;
+        let mut it = args.iter()?.into_iter();
         let mut min = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -680,7 +682,7 @@ starlark_module! {global_functions =>
                 "Not a one character string".to_owned()
             )
         } else {
-            Ok(Value::new(i64::from(u32::from(a.to_string().chars().next().unwrap()))))
+            Ok(Value::new_imm(i64::from(u32::from(a.to_string().chars().next().unwrap()))))
         }
     }
 
@@ -732,16 +734,16 @@ starlark_module! {global_functions =>
         }
         if step > 0 {
             while idx < stop {
-                r.push(Value::new(idx));
+                r.push(Value::new_imm(idx));
                 idx += step;
             }
         } else {
             while idx > stop {
-                r.push(Value::new(idx));
+                r.push(Value::new_imm(idx));
                 idx += step;
             }
         }
-        Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+        Ok(Value::new(tuple::Tuple::from(r)))
     }
 
     /// [repr](
@@ -761,7 +763,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     repr(#a) {
-        Ok(Value::new(a.to_repr()))
+        Ok(Value::new_imm(a.to_repr()))
     }
 
     /// [reversed](
@@ -782,7 +784,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     reversed(#a) {
-        let v : Vec<Value> = a.iter()?.collect();
+        let v : Vec<Value> = a.iter()?;
         let v : Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
     }
@@ -815,7 +817,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     sorted(call_stack cs, env e, #x, key = None, reverse = false) {
-        let x = x.iter()?;
+        let x = x.iter()?.into_iter();
         let mut it : Vec<(Value, Value)> = if key.get_type() == "NoneType" {
             x.map(|x| (x.clone(), x)).collect()
         } else {
@@ -860,7 +862,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     _str(#a) {
-        Ok(Value::new(a.to_str()))
+        Ok(Value::new_imm(a.to_str()))
     }
 
     /// [tuple](
@@ -875,7 +877,7 @@ starlark_module! {global_functions =>
                 l.push(x.clone())
             }
         }
-        Ok(Value::new(tuple::Tuple::new(l.as_slice())))
+        Ok(Value::new(tuple::Tuple::from(l)))
     }
 
     /// [type](
@@ -891,7 +893,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     _type(#a) {
-        Ok(Value::new(a.get_type().to_owned()))
+        Ok(Value::new_imm(a.get_type().to_owned()))
     }
 
     /// [zip](
@@ -932,7 +934,7 @@ starlark_module! {global_functions =>
             }
             v.truncate(idx);
         }
-        Ok(Value::from(v))
+        Ok(Value::new_mut(v))
     }
 }
 
@@ -942,9 +944,9 @@ starlark_module! {global_functions =>
 /// of this global environment that have been frozen.
 pub fn global_environment() -> Environment {
     let env = add_set(Environment::new("global"));
-    env.set("None", Value::new(None)).unwrap();
-    env.set("True", Value::new(true)).unwrap();
-    env.set("False", Value::new(false)).unwrap();
+    env.set("None", Value::new_imm(NoneValue)).unwrap();
+    env.set("True", Value::new_imm(true)).unwrap();
+    env.set("False", Value::new_imm(false)).unwrap();
     dict::global(list::global(string::global(global_functions(env))))
 }
 

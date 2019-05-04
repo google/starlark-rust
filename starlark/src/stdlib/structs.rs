@@ -14,6 +14,7 @@
 
 //! Implementation of `struct` function.
 
+use crate::values::immutable::{ImmutableContent, ReadableContent};
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
@@ -23,21 +24,9 @@ pub struct StarlarkStruct {
     fields: LinkedHashMap<String, Value>,
 }
 
-impl TypedValue for StarlarkStruct {
-    any!();
+impl ImmutableContent for StarlarkStruct {}
 
-    fn immutable(&self) -> bool {
-        true
-    }
-
-    fn freeze(&mut self) {
-        for x in self.fields.values() {
-            x.clone().freeze();
-        }
-    }
-
-    not_supported!(freeze_for_iteration);
-
+impl ReadableContent for StarlarkStruct {
     fn to_str(&self) -> String {
         self.to_repr()
     }
@@ -56,18 +45,12 @@ impl TypedValue for StarlarkStruct {
         r
     }
 
-    fn get_type(&self) -> &'static str {
+    fn get_type() -> &'static str {
         "struct"
     }
 
     fn to_bool(&self) -> bool {
         true
-    }
-
-    fn is_descendant(&self, other: &TypedValue) -> bool {
-        self.fields
-            .values()
-            .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
     fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {
@@ -89,39 +72,37 @@ impl TypedValue for StarlarkStruct {
         Ok(self.fields.keys().cloned().collect())
     }
 
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        match other.as_any().downcast_ref::<StarlarkStruct>() {
-            Some(other) => {
-                let mut self_keys: Vec<_> = self.fields.keys().collect();
-                let mut other_keys: Vec<_> = other.fields.keys().collect();
-                self_keys.sort();
-                other_keys.sort();
-                let mut self_keys = self_keys.into_iter();
-                let mut other_keys = other_keys.into_iter();
-                loop {
-                    match (self_keys.next(), other_keys.next()) {
-                        (None, None) => return Ok(Ordering::Equal),
-                        (None, Some(_)) => return Ok(Ordering::Less),
-                        (Some(_), None) => return Ok(Ordering::Greater),
-                        (Some(s_k), Some(o_k)) => {
-                            let s_v = self.fields.get(s_k).unwrap();
-                            let o_v = other.fields.get(o_k).unwrap();
-                            match s_v.compare(o_v, recursion + 1)? {
-                                Ordering::Equal => continue,
-                                ordering => return Ok(ordering),
-                            }
-                        }
+    fn compare(&self, other: &StarlarkStruct, recursion: u32) -> Result<Ordering, ValueError> {
+        let mut self_keys: Vec<_> = self.fields.keys().collect();
+        let mut other_keys: Vec<_> = other.fields.keys().collect();
+        self_keys.sort();
+        other_keys.sort();
+        let mut self_keys = self_keys.into_iter();
+        let mut other_keys = other_keys.into_iter();
+        loop {
+            match (self_keys.next(), other_keys.next()) {
+                (None, None) => return Ok(Ordering::Equal),
+                (None, Some(_)) => return Ok(Ordering::Less),
+                (Some(_), None) => return Ok(Ordering::Greater),
+                (Some(s_k), Some(o_k)) => {
+                    let s_v = self.fields.get(s_k).unwrap();
+                    let o_v = other.fields.get(o_k).unwrap();
+                    match s_v.compare(o_v, recursion + 1)? {
+                        Ordering::Equal => continue,
+                        ordering => return Ok(ordering),
                     }
                 }
             }
-            None => default_compare(self, other),
         }
     }
 
     not_supported!(binop);
     not_supported!(is_in, call);
-    not_supported!(set_attr);
-    not_supported!(iter, length, slice, set_at, at, get_hash, to_int);
+    not_supported!(iter, length, slice, at, get_hash, to_int);
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.fields.values().cloned())
+    }
 }
 
 starlark_module! { global =>
@@ -145,7 +126,7 @@ starlark_module! { global =>
     /// # )").unwrap());
     /// ```
     struct_(**kwargs) {
-        Ok(Value::new(StarlarkStruct {
+        Ok(Value::new_imm(StarlarkStruct {
             fields: kwargs
         }))
     }

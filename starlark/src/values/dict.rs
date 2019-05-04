@@ -14,114 +14,31 @@
 
 //! Module define the Starlark type Dictionary
 use crate::values::hashed_value::HashedValue;
+use crate::values::immutable::ReadableContent;
+use crate::values::mutable::{Mutable, MutableContent};
 use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
-use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::Hash;
 
-/// The Dictionary type
-pub struct Dictionary {
-    mutability: IterableMutability,
-    content: LinkedHashMap<HashedValue, Value>,
-}
-
-impl Dictionary {
-    pub fn new_typed() -> Dictionary {
-        Dictionary {
-            mutability: IterableMutability::Mutable,
-            content: LinkedHashMap::new(),
-        }
+impl ReadableContent for LinkedHashMap<HashedValue, Value> {
+    fn get_type() -> &'static str {
+        "dict"
     }
 
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> Value {
-        Value::new(Dictionary::new_typed())
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(
+            self.iter()
+                .flat_map(|(k, v)| vec![k.get_value().clone(), v.clone()].into_iter()),
+        )
     }
 
-    pub fn get_content(&self) -> &LinkedHashMap<HashedValue, Value> {
-        &self.content
-    }
-
-    pub fn apply<Return>(
-        v: &Value,
-        f: &dyn Fn(&LinkedHashMap<HashedValue, Value>) -> Result<Return, ValueError>,
-    ) -> Result<Return, ValueError> {
-        v.downcast_apply(|x: &Dictionary| -> Result<Return, ValueError> { f(&x.content) })
-            .unwrap_or(Err(ValueError::IncorrectParameterType))
-    }
-
-    pub fn mutate(
-        v: &Value,
-        f: &dyn Fn(&mut LinkedHashMap<HashedValue, Value>) -> ValueResult,
-    ) -> ValueResult {
-        let mut v = v.clone();
-        v.downcast_apply_mut(|x: &mut Dictionary| -> ValueResult {
-            x.mutability.test()?;
-            f(&mut x.content)
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
-    }
-}
-
-impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone> TryFrom<HashMap<T1, T2>>
-    for Dictionary
-{
-    type Error = ValueError;
-
-    fn try_from(a: HashMap<T1, T2>) -> Result<Dictionary, ValueError> {
-        let mut result = Dictionary {
-            mutability: IterableMutability::Mutable,
-            content: LinkedHashMap::new(),
-        };
-        for (k, v) in a.iter() {
-            result
-                .content
-                .insert(HashedValue::new(k.clone().into())?, v.clone().into());
-        }
-        Ok(result)
-    }
-}
-
-impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone>
-    TryFrom<LinkedHashMap<T1, T2>> for Dictionary
-{
-    type Error = ValueError;
-
-    fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Dictionary, ValueError> {
-        let mut result = Dictionary {
-            mutability: IterableMutability::Mutable,
-            content: LinkedHashMap::new(),
-        };
-        for (k, v) in a.iter() {
-            result
-                .content
-                .insert(HashedValue::new(k.clone().into())?, v.clone().into());
-        }
-        Ok(result)
-    }
-}
-
-/// Define the Dictionary type
-impl TypedValue for Dictionary {
-    any!();
-
-    fn freeze(&mut self) {
-        self.mutability.freeze();
-        for (_, v) in self.content.iter_mut() {
-            // XXX: We cannot freeze the key because they are immutable in rust, is it important?
-            (*v).borrow_mut().freeze();
-        }
-    }
-    define_iterable_mutability!(mutability);
-
-    fn to_str(&self) -> String {
+    fn to_repr(&self) -> String {
         format!(
             "{{{}}}",
-            self.content
-                .iter()
+            self.iter()
                 .map(|(k, v)| format!("{}: {}", k.get_value().to_repr(), v.to_repr()))
                 .enumerate()
                 .fold("".to_string(), |accum, s| if s.0 == 0 {
@@ -132,115 +49,120 @@ impl TypedValue for Dictionary {
         )
     }
 
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-
-    fn get_type(&self) -> &'static str {
-        "dict"
-    }
     fn to_bool(&self) -> bool {
-        !self.content.is_empty()
+        !self.is_empty()
     }
 
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "dict" {
-            let mut v1: Vec<Value> = self.iter()?.collect();
-            let mut v2: Vec<Value> = other.iter()?.collect();
-            // We sort the keys because the dictionary preserve insertion order but ordering does
-            // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
-            v1.sort();
-            v2.sort();
-            let mut iter1 = v1.into_iter();
-            let mut iter2 = v2.into_iter();
-            loop {
-                match (iter1.next(), iter2.next()) {
-                    (None, None) => return Ok(Ordering::Equal),
-                    (None, Some(..)) => return Ok(Ordering::Less),
-                    (Some(..), None) => return Ok(Ordering::Greater),
-                    (Some(k1), Some(k2)) => {
-                        let r = k1.compare(&k2, recursion + 1)?;
-                        if r != Ordering::Equal {
-                            return Ok(r);
-                        }
-                        let r = self.at(k1)?.compare(&other.at(k2)?, recursion + 1)?;
-                        if r != Ordering::Equal {
-                            return Ok(r);
-                        }
-                    }
-                }
-            }
-        } else {
-            default_compare(self, other)
-        }
-    }
-
-    fn at(&self, index: Value) -> ValueResult {
-        match self.content.get(&HashedValue::new(index.clone())?) {
+    fn at(&self, index: Value) -> Result<Value, ValueError> {
+        match self.get(&HashedValue::new(index.clone())?) {
             Some(v) => Ok(v.clone()),
             None => Err(ValueError::KeyNotFound(index)),
         }
     }
 
     fn length(&self) -> Result<i64, ValueError> {
-        Ok(self.content.len() as i64)
+        Ok(self.len() as i64)
     }
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        Ok(self.content.contains_key(&HashedValue::new(other.clone())?))
+        Ok(self.contains_key(&HashedValue::new(other.clone())?))
     }
 
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        self.content.iter().any(|(k, v)| {
-            k.get_value().same_as(other)
-                || v.same_as(other)
-                || k.get_value().is_descendant(other)
-                || v.is_descendant(other)
-        })
+    fn iter(&self) -> Result<Vec<Value>, ValueError> {
+        Ok(self.iter().map(|x| x.0.get_value().clone()).collect())
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(
-            self.content.iter().map(|x| x.0.get_value().clone()),
-        ))
+    fn add(&self, other: &Self) -> Result<Self, ValueError> {
+        let mut result = LinkedHashMap::new();
+        for (k, v) in self.iter() {
+            result.insert(k.clone(), v.clone());
+        }
+        for (k, v) in other.iter() {
+            result.insert(k.clone(), v.clone());
+        }
+        Ok(result)
+    }
+
+    fn compare(&self, other: &Self, recursion: u32) -> Result<Ordering, ValueError> {
+        let mut v1: Vec<Value> = self.keys().map(|v| v.get_value().clone()).collect();
+        let mut v2: Vec<Value> = other.keys().map(|v| v.get_value().clone()).collect();
+        // We sort the keys because the dictionary preserve insertion order but ordering does
+        // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
+        v1.sort();
+        v2.sort();
+        let mut iter1 = v1.into_iter();
+        let mut iter2 = v2.into_iter();
+        loop {
+            match (iter1.next(), iter2.next()) {
+                (None, None) => return Ok(Ordering::Equal),
+                (None, Some(..)) => return Ok(Ordering::Less),
+                (Some(..), None) => return Ok(Ordering::Greater),
+                (Some(k1), Some(k2)) => {
+                    let r = k1.compare(&k2, recursion + 1)?;
+                    if r != Ordering::Equal {
+                        return Ok(r);
+                    }
+                    let r = self.at(k1)?.compare(&other.at(k2)?, recursion + 1)?;
+                    if r != Ordering::Equal {
+                        return Ok(r);
+                    }
+                }
+            }
+        }
+    }
+
+    not_supported!(slice, mul, get_hash, arithmetic, to_int, pipe, attr, function, percent);
+}
+
+impl MutableContent for LinkedHashMap<HashedValue, Value> {
+    fn set_at_check(&self, _index: &Value) -> Result<(), ValueError> {
+        Ok(())
     }
 
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.mutability.test()?;
         let index_key = HashedValue::new(index)?;
-        let new_value = new_value.clone_for_container(self)?;
         {
-            if let Some(x) = self.content.get_mut(&index_key) {
+            if let Some(x) = self.get_mut(&index_key) {
                 *x = new_value;
                 return Ok(());
             }
         }
-        self.content.insert(index_key, new_value);
+        self.insert(index_key, new_value);
         Ok(())
     }
 
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "dict" {
-            let mut result = Dictionary {
-                mutability: IterableMutability::Mutable,
-                content: LinkedHashMap::new(),
-            };
-            for (k, v) in self.content.iter() {
-                result.content.insert(k.clone(), v.clone());
-            }
-            for k in other.iter()? {
-                result
-                    .content
-                    .insert(HashedValue::new(k.clone())?, other.at(k)?.clone());
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
-        }
-    }
+    not_supported!(set_attr);
+}
 
-    not_supported!(plus, minus, sub, mul, div, pipe, percent, floor_div);
-    not_supported!(to_int, get_hash, slice, attr, function);
+/// The Dictionary type
+pub type Dictionary = Mutable<LinkedHashMap<HashedValue, Value>>;
+
+impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone> TryFrom<HashMap<T1, T2>>
+    for Dictionary
+{
+    type Error = ValueError;
+
+    fn try_from(a: HashMap<T1, T2>) -> Result<Dictionary, ValueError> {
+        let mut result = LinkedHashMap::new();
+        for (k, v) in a.iter() {
+            result.insert(HashedValue::new(k.clone().into())?, v.clone().into());
+        }
+        Ok(Dictionary::new(result))
+    }
+}
+
+impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone>
+    TryFrom<LinkedHashMap<T1, T2>> for Dictionary
+{
+    type Error = ValueError;
+
+    fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Dictionary, ValueError> {
+        let mut result = LinkedHashMap::new();
+        for (k, v) in a.iter() {
+            result.insert(HashedValue::new(k.clone().into())?, v.clone().into());
+        }
+        Ok(Dictionary::new(result))
+    }
 }
 
 #[cfg(test)]

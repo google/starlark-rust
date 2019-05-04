@@ -171,13 +171,16 @@ impl Into<ValueError> for FunctionError {
     }
 }
 
+type StarlarkFunction = Immutable<Function>;
+type StarlarkWrappedMethod = Immutable<WrappedMethod>;
+
 impl Function {
     #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
         F: Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult + 'static,
     {
-        Value::new(Function {
+        StarlarkFunction::new_value(Function {
             function: Box::new(f),
             signature,
             function_type: FunctionType::Native(name),
@@ -193,7 +196,7 @@ impl Function {
     where
         F: Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult + 'static,
     {
-        Value::new(Function {
+        StarlarkFunction::new_value(Function {
             function: Box::new(f),
             signature,
             function_type: FunctionType::NativeMethod(objname, name),
@@ -209,7 +212,7 @@ impl Function {
         map: Arc<Mutex<CodeMap>>,
     ) -> Value {
         let signature_cp = signature.clone();
-        Value::new(Function {
+        StarlarkFunction::new_value(Function {
             function: Box::new(move |stack, env, v| {
                 eval_def(stack, &signature_cp, &stmts, env, v, map.clone())
             }),
@@ -219,7 +222,7 @@ impl Function {
     }
 
     pub fn new_self_call(self_obj: Value, method: Value) -> Value {
-        Value::new(WrappedMethod { method, self_obj })
+        StarlarkWrappedMethod::new_value(WrappedMethod { method, self_obj })
     }
 
     pub fn name(&self) -> String {
@@ -285,11 +288,10 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
-/// Define the function type
-impl TypedValue for Function {
-    immutable!();
-    any!();
+impl ImmutableContent for Function {}
 
+/// Define the function type
+impl ReadableContent for Function {
     fn to_str(&self) -> String {
         to_str(&self.function_type, &self.signature)
     }
@@ -298,7 +300,7 @@ impl TypedValue for Function {
     }
 
     not_supported!(to_int);
-    fn get_type(&self) -> &'static str {
+    fn get_type() -> &'static str {
         "function"
     }
     fn to_bool(&self) -> bool {
@@ -306,12 +308,8 @@ impl TypedValue for Function {
     }
     not_supported!(get_hash);
 
-    fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "function" {
-            Ok(self.to_repr().cmp(&other.to_repr()))
-        } else {
-            default_compare(self, other)
-        }
+    fn compare(&self, other: &Function, _recursion: u32) -> Result<Ordering, ValueError> {
+        Ok(self.to_repr().cmp(&other.to_repr()))
     }
 
     fn call(
@@ -411,24 +409,23 @@ impl TypedValue for Function {
     not_supported!(container);
 }
 
-impl TypedValue for WrappedMethod {
-    immutable!();
-    any!();
+impl ImmutableContent for WrappedMethod {}
 
+impl ReadableContent for WrappedMethod {
     fn to_str(&self) -> String {
         self.method.to_str()
     }
     fn to_repr(&self) -> String {
         self.method.to_repr()
     }
-    fn get_type(&self) -> &'static str {
+    fn get_type() -> &'static str {
         "function"
     }
     fn to_bool(&self) -> bool {
         true
     }
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        self.method.compare_underlying(other, recursion)
+    fn compare(&self, other: &WrappedMethod, recursion: u32) -> Result<Ordering, ValueError> {
+        self.method.compare(&other.method, recursion)
     }
 
     fn call(

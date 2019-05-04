@@ -48,7 +48,7 @@ use starlark::eval::eval_lexer;
 use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
-use starlark::values::Value;
+use starlark::values::{NoneValue, Value};
 use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -97,7 +97,7 @@ starlark_module! {print_function =>
             r.push_str(&arg.to_str());
         }
         eprintln!("{}", r);
-        Ok(Value::new(None))
+        Ok(Value::new_imm(NoneValue))
     }
 }
 
