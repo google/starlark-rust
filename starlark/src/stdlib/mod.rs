@@ -41,6 +41,7 @@ pub mod macros;
 pub mod dict;
 pub mod list;
 pub mod string;
+pub mod structs;
 
 starlark_module! {global_functions =>
     /// fail: fail the execution
@@ -963,7 +964,9 @@ fn add_set(env: Environment) -> Environment {
 #[doc(hidden)]
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    let mut env = global_environment().freeze().child("test");
+    let env = global_environment();
+    let env = structs::global(env);
+    let mut env = env.freeze().child("test");
     match eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {

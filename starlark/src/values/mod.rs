@@ -862,7 +862,7 @@ macro_rules! not_supported {
     };
     // Special type: iterable, sequence, indexable, container, function
     (iterable) => { not_supported!(iter, freeze_for_iteration); };
-    (sequence) => { not_supported!(length, is_in); };
+    (sequence) => { not_supported!(length, is_in, is_descendant); };
     (set_indexable) => { not_supported!(set_at); };
     (indexable) => { not_supported!(slice, at, set_indexable); };
     (attr) => { not_supported!(get_attr, has_attr, set_attr, dir_attr); };
@@ -878,7 +878,8 @@ macro_rules! not_supported {
                 left: other.get_type().to_owned(),
                 right: Some(self.get_type().to_owned()) })
         }
-        // We cannot have descendant if the is_in operation is not defined
+    };
+    (is_descendant) => {
         fn is_descendant(&self, _other: &dyn TypedValue) -> bool { false }
     };
     (add) => {

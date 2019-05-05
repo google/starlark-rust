@@ -41,6 +41,10 @@ impl Dictionary {
         Value::new(Dictionary::new_typed())
     }
 
+    pub fn get_content(&self) -> &LinkedHashMap<HashedValue, Value> {
+        &self.content
+    }
+
     pub fn apply<Return>(
         v: &Value,
         f: &dyn Fn(&LinkedHashMap<HashedValue, Value>) -> Result<Return, ValueError>,
