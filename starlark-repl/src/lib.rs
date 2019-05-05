@@ -49,6 +49,8 @@ use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
 use starlark::values::Value;
+use std::env;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
@@ -114,6 +116,20 @@ pub fn repl(global_environment: &Environment, dialect: Dialect) {
     let mut env = global_environment.child("repl");
     let mut n = 0;
 
+    // Linefeed default history size is unlimited,
+    // but since we write history to disk, we better limit it.
+    reader.set_history_size(100_000);
+
+    let histfile = env::var_os("STARLARK_RUST_HISTFILE").map(PathBuf::from);
+
+    if let Some(ref histfile) = histfile {
+        if histfile.exists() {
+            if let Err(e) = reader.load_history(histfile) {
+                eprintln!("Failed to load history from {}: {}", histfile.display(), e);
+            }
+        }
+    }
+
     reader.set_prompt(">>> ").unwrap();
 
     while let Ok(ReadResult::Input(input)) = reader.read_line() {
@@ -146,5 +162,14 @@ pub fn repl(global_environment: &Environment, dialect: Dialect) {
         }
         reader.set_prompt(">>> ").unwrap();
     }
-    println!("\nGoodbye!");
+
+    println!();
+
+    if let Some(ref histfile) = histfile {
+        if let Err(e) = reader.save_history(histfile) {
+            eprintln!("Failed to save history to {}: {}", histfile.display(), e);
+        }
+    }
+
+    println!("Goodbye!");
 }
