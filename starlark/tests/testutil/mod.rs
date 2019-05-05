@@ -33,7 +33,7 @@ fn read_input(path: &str) -> Vec<(usize, String)> {
         .split("\n---\n")
         .map(|x| (0, x.to_owned()))
         .collect();
-    let mut idx = 1;
+    let mut idx = 0;
     for mut el in &mut v {
         el.0 = idx;
         idx += el.1.chars().filter(|x| *x == '\n').count() + 2 // 2 = separator new lines
