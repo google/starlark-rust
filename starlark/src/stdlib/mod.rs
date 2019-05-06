@@ -118,7 +118,7 @@ starlark_module! {global_functions =>
     /// all([0, False]) == False
     /// # )").unwrap());
     /// ```
-    all(x) {
+    all(#x) {
         for i in x.iter()? {
             if !i.to_bool() {
                 return Ok(Value::new(false));
@@ -182,7 +182,7 @@ starlark_module! {global_functions =>
     /// chr(0x1F63F) == '😿'
     /// # )").unwrap());
     /// ```
-    chr(i) {
+    chr(#i) {
         let cp = i.to_int()? as u32;
         match std::char::from_u32(cp) {
             Some(x) => Ok(Value::new(x.to_string())),
@@ -290,7 +290,7 @@ starlark_module! {global_functions =>
     /// "capitalize" in dir("abc")
     /// # ))).unwrap());
     /// ```
-    dir(env env, x) {
+    dir(env env, #x) {
         let mut result = env.list_type_value(&x);
         if let Ok(v) = x.dir_attr() {
             result.extend(v);
