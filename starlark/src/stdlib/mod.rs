@@ -16,8 +16,8 @@
 use crate::eval::simple::eval;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use linked_hash_map::LinkedHashMap;
 use std;
-use std::collections::HashMap;
 use std::error::Error;
 use std::sync;
 
@@ -269,8 +269,8 @@ starlark_module! {global_functions =>
                }
            }
        }
-       for el in kwargs.iter()? {
-           map.set_at(el.clone(), kwargs.at(el)?)?;
+       for (k, v) in kwargs {
+           map.set_at(k.into(), v)?;
        }
        Ok(map)
     }
@@ -558,10 +558,10 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     max(call_stack cs, env e, *args, key=None) {
-        let args = if args.length()? == 1 {
-            args.at(Value::new(0))?
+        let args = if args.len() == 1 {
+            args.swap_remove(0)
         } else {
-            args
+            Value::from(args)
         };
         let mut it = args.iter()?;
         let mut max = match it.next() {
@@ -579,9 +579,9 @@ starlark_module! {global_functions =>
                 }
             }
         } else {
-            let mut cached = key.call(cs, e.child("max"), vec![max.clone()], HashMap::new(), None, None)?;
+            let mut cached = key.call(cs, e.child("max"), vec![max.clone()], LinkedHashMap::new(), None, None)?;
             for i in it {
-                let keyi = key.call(cs, e.child("max"), vec![i.clone()], HashMap::new(), None, None)?;
+                let keyi = key.call(cs, e.child("max"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
                 if cached < keyi {
                     max = i;
                     cached = keyi;
@@ -611,10 +611,10 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     min(call_stack cs, env e, *args, key=None) {
-        let args = if args.length()? == 1 {
-            args.at(Value::new(0))?
+        let args = if args.len() == 1 {
+            args.swap_remove(0)
         } else {
-            args
+            Value::from(args)
         };
         let mut it = args.iter()?;
         let mut min = match it.next() {
@@ -632,9 +632,9 @@ starlark_module! {global_functions =>
                 }
             }
         } else {
-            let mut cached = key.call(cs, e.child("min"), vec![min.clone()], HashMap::new(), None, None)?;
+            let mut cached = key.call(cs, e.child("min"), vec![min.clone()], LinkedHashMap::new(), None, None)?;
             for i in it {
-                let keyi = key.call(cs, e.child("min"), vec![i.clone()], HashMap::new(), None, None)?;
+                let keyi = key.call(cs, e.child("min"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
                 if cached > keyi {
                     min = i;
                     cached = keyi;
@@ -822,7 +822,7 @@ starlark_module! {global_functions =>
             for el in x {
                 v.push((
                     el.clone(),
-                    key.call(cs, e.child("sorted"), vec![el], HashMap::new(), None, None)?
+                    key.call(cs, e.child("sorted"), vec![el], LinkedHashMap::new(), None, None)?
                 ));
             }
             v
@@ -917,7 +917,7 @@ starlark_module! {global_functions =>
     zip(*args) {
         let mut v = Vec::new();
 
-        for arg in args.iter()? {
+        for arg in args {
             let first = v.is_empty();
             let mut idx = 0;
             for e in arg.iter()? {

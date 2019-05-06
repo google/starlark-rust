@@ -18,6 +18,8 @@ use crate::environment::Environment;
 use crate::eval::eval_def;
 use crate::syntax::ast::AstStatement;
 use codemap::CodeMap;
+use std::convert::TryInto;
+use std::mem;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
@@ -37,8 +39,51 @@ pub enum FunctionType {
     Def(String, String),
 }
 
+#[derive(Debug, Clone)]
+pub enum FunctionArg {
+    Normal(Value),
+    ArgsArray(Vec<Value>),
+    KWArgsDict(LinkedHashMap<String, Value>),
+}
+
+impl FunctionArg {
+    pub fn into_normal(self) -> Result<Value, ValueError> {
+        match self {
+            FunctionArg::Normal(v) => Ok(v),
+            _ => Err(ValueError::IncorrectParameterType),
+        }
+    }
+
+    pub fn into_args_array(self) -> Result<Vec<Value>, ValueError> {
+        match self {
+            FunctionArg::ArgsArray(v) => Ok(v),
+            _ => Err(ValueError::IncorrectParameterType),
+        }
+    }
+
+    pub fn into_kw_args_dict(self) -> Result<LinkedHashMap<String, Value>, ValueError> {
+        match self {
+            FunctionArg::KWArgsDict(v) => Ok(v),
+            _ => Err(ValueError::IncorrectParameterType),
+        }
+    }
+}
+
+impl From<FunctionArg> for Value {
+    fn from(a: FunctionArg) -> Value {
+        match a {
+            FunctionArg::Normal(v) => v,
+            FunctionArg::ArgsArray(v) => v.into(),
+            FunctionArg::KWArgsDict(v) => {
+                // `unwrap` does not panic, because key is a string which hashable
+                v.try_into().unwrap()
+            }
+        }
+    }
+}
+
 pub type StarlarkFunctionPrototype =
-    dyn Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult;
+    dyn Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult;
 
 pub struct Function {
     function: Box<StarlarkFunctionPrototype>,
@@ -130,7 +175,7 @@ impl Function {
     #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -146,7 +191,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&[(String, String)], Environment, Vec<Value>) -> ValueResult + 'static,
+        F: Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -274,7 +319,7 @@ impl TypedValue for Function {
         call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
-        named: HashMap<String, Value>,
+        named: LinkedHashMap<String, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
@@ -316,9 +361,9 @@ impl TypedValue for Function {
             match parameter {
                 FunctionParameter::Normal(ref name) => {
                     if let Some(x) = args_iter.next() {
-                        v.push(x)
+                        v.push(FunctionArg::Normal(x))
                     } else if let Some(ref r) = kwargs_dict.remove(name) {
-                        v.push(r.clone());
+                        v.push(FunctionArg::Normal(r.clone()));
                     } else {
                         return Err(FunctionError::NotEnoughParameter {
                             missing: name.to_string(),
@@ -330,22 +375,24 @@ impl TypedValue for Function {
                 }
                 FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     if let Some(x) = args_iter.next() {
-                        v.push(x)
+                        v.push(FunctionArg::Normal(x))
                     } else if let Some(ref r) = kwargs_dict.remove(name) {
-                        v.push(r.clone());
+                        v.push(FunctionArg::Normal(r.clone()));
                     } else {
-                        v.push(value.clone());
+                        v.push(FunctionArg::Normal(value.clone()));
                     }
                 }
                 FunctionParameter::ArgsArray(..) => {
                     let argv: Vec<Value> = args_iter.clone().collect();
-                    v.push(Value::from(argv));
+                    v.push(FunctionArg::ArgsArray(argv));
                     // We do not use last so we keep ownership of the iterator
                     while args_iter.next().is_some() {}
                 }
                 FunctionParameter::KWArgsDict(..) => {
-                    v.push(Value::try_from(kwargs_dict.clone())?);
-                    kwargs_dict.clear();
+                    v.push(FunctionArg::KWArgsDict(mem::replace(
+                        &mut kwargs_dict,
+                        Default::default(),
+                    )));
                 }
             }
         }
@@ -389,7 +436,7 @@ impl TypedValue for WrappedMethod {
         call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
-        named: HashMap<String, Value>,
+        named: LinkedHashMap<String, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {

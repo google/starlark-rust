@@ -341,8 +341,8 @@ starlark_module! {global =>
             )
         }
 
-        for k in kwargs.iter()? {
-            this.set_at(k.clone(), kwargs.at(k)?)?
+        for (k, v) in kwargs {
+            this.set_at(k.into(), v)?;
         }
         ok!(None)
     }

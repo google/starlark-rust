@@ -500,7 +500,7 @@ pub trait TypedValue {
         call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
-        named: HashMap<String, Value>,
+        named: LinkedHashMap<String, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult;
@@ -775,7 +775,7 @@ macro_rules! not_supported {
     };
     (call) => {
         fn call(&self, _call_stack: &[(String, String)], _env: $crate::environment::Environment,
-                _positional: Vec<$crate::values::Value>, _named: ::std::collections::HashMap<String, $crate::values::Value>,
+                _positional: Vec<$crate::values::Value>, _named: ::linked_hash_map::LinkedHashMap<String, $crate::values::Value>,
                 _args: Option<$crate::values::Value>, _kwargs: Option<$crate::values::Value>) -> $crate::values::ValueResult {
             Err($crate::values::ValueError::OperationNotSupported {
                 op: "call()".to_owned(), left: self.get_type().to_owned(), right: None })
@@ -1147,7 +1147,7 @@ impl Value {
         call_stack: &[(String, String)],
         env: Environment,
         positional: Vec<Value>,
-        named: HashMap<String, Value>,
+        named: LinkedHashMap<String, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {

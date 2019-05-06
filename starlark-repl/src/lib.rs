@@ -87,7 +87,7 @@ starlark_module! {print_function =>
     print(*args) {
         let mut r = String::new();
         let mut first = true;
-        for arg in args.iter()? {
+        for arg in args {
             if !first {
                 r.push_str(" ");
             }

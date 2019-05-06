@@ -15,6 +15,7 @@
 //! Methods for the `string` type.
 
 use crate::values::*;
+use std::convert::TryFrom;
 use std::str::FromStr;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
@@ -431,7 +432,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.format(this, *args, **kwargs) {
-        let mut it = args.iter()?;
+        let mut it = args.iter().cloned();
         let this = this.to_str();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
@@ -465,8 +466,8 @@ starlark_module! {global =>
                         &mut it,
                         &mut captured_by_index,
                         &mut captured_by_order,
-                        &args,
-                        &kwargs)?;
+                        &Value::from(args.clone()),
+                        &Value::try_from(kwargs.clone()).unwrap())?;
                     capture.clear();
                 },
                 (.., "}") => starlark_err!(

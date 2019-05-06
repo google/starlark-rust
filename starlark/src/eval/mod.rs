@@ -26,12 +26,12 @@ use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::dict::Dictionary;
-use crate::values::function::FunctionParameter;
+use crate::values::function::{FunctionArg, FunctionParameter};
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
+use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 macro_rules! eval_vector {
@@ -348,7 +348,7 @@ fn eval_call<T: FileLoader + 'static>(
     context: &mut EvaluationContext<T>,
 ) -> EvalResult {
     let npos = eval_vector!(pos, context);
-    let mut nnamed = HashMap::new();
+    let mut nnamed = LinkedHashMap::new();
     for &(ref k, ref v) in named.iter() {
         nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
     }
@@ -888,7 +888,7 @@ pub fn eval_def(
     signature: &[FunctionParameter],
     stmts: &AstStatement,
     env: Environment,
-    args: Vec<Value>,
+    args: Vec<FunctionArg>,
     map: Arc<Mutex<CodeMap>>,
 ) -> ValueResult {
     // argument binding
@@ -899,7 +899,7 @@ pub fn eval_def(
             | FunctionParameter::WithDefaultValue(ref v, ..)
             | FunctionParameter::ArgsArray(ref v)
             | FunctionParameter::KWArgsDict(ref v) => {
-                if let Err(x) = env.set(v, it2.next().unwrap().clone()) {
+                if let Err(x) = env.set(v, it2.next().unwrap().clone().into()) {
                     return Err(x.into());
                 }
             }

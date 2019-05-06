@@ -155,7 +155,7 @@ starlark_module! {global =>
         let ret = Set::empty();
         for el in this.iter()? {
             let mut is_in_any_other = false;
-            for other in others.iter()? {
+            for other in &others {
                 if other.is_in(&el)?.to_bool() {
                     is_in_any_other = true;
                     break;
@@ -260,7 +260,7 @@ starlark_module! {global =>
         let ret = Set::empty();
         for el in this.iter()? {
             let mut is_in_every_other = true;
-            for other in others.iter()? {
+            for other in &others {
                 if !other.is_in(&el)?.to_bool() {
                     is_in_every_other = false;
                     break;
@@ -574,7 +574,7 @@ starlark_module! {global =>
         for el in this.iter()? {
             Set::insert_if_absent(&ret, el)?;
         }
-        for other in others.iter()? {
+        for other in others {
             for el in other.iter()? {
                 Set::insert_if_absent(&ret, el)?;
             }
@@ -604,7 +604,7 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     set.update(this, *others) {
-        for other in others.iter()? {
+        for other in others {
             for el in other.iter()? {
                 Set::insert_if_absent(&this, el)?;
             }
