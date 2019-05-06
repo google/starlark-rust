@@ -110,7 +110,7 @@ impl TypedValue for Set {
     /// assert_eq!("[1]", Value::from(vec![1]).to_str());
     /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
     /// ```
-    fn to_str(&self) -> String {
+    fn to_repr(&self) -> String {
         format!(
             "{{{}}}",
             self.content
@@ -125,11 +125,6 @@ impl TypedValue for Set {
         )
     }
 
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-
-    not_supported!(to_int);
     fn get_type(&self) -> &'static str {
         "set"
     }
@@ -254,10 +249,6 @@ impl TypedValue for Set {
             .fold(Wrapping(0_u64), |acc, v| acc + v)
             .0)
     }
-
-    not_supported!(mul, set_at);
-    not_supported!(attr, function);
-    not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
 }
 
 #[cfg(test)]

@@ -79,7 +79,7 @@ impl TypedValue for List {
     /// assert_eq!("[1]", Value::from(vec![1]).to_str());
     /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
     /// ```
-    fn to_str(&self) -> String {
+    fn to_repr(&self) -> String {
         format!(
             "[{}]",
             self.content
@@ -94,11 +94,6 @@ impl TypedValue for List {
         )
     }
 
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-
-    not_supported!(to_int);
     fn get_type(&self) -> &'static str {
         "list"
     }
@@ -255,9 +250,6 @@ impl TypedValue for List {
         self.content[i] = new_value.clone_for_container(self)?;
         Ok(())
     }
-
-    not_supported!(attr, function, get_hash);
-    not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
 }
 
 #[cfg(test)]

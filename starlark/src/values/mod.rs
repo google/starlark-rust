@@ -444,24 +444,40 @@ pub trait TypedValue {
     fn unfreeze_for_iteration(&mut self);
 
     /// Return a string describing of self, as returned by the str() function.
-    fn to_str(&self) -> String;
+    fn to_str(&self) -> String {
+        self.to_repr()
+    }
 
     /// Return a string representation of self, as returned by the repr() function.
-    fn to_repr(&self) -> String;
+    fn to_repr(&self) -> String {
+        format!("<{}>", self.get_type())
+    }
 
     /// Return a string describing the type of self, as returned by the type() function.
     fn get_type(&self) -> &'static str;
 
     /// Convert self to a Boolean truth value, as returned by the bool() function.
-    fn to_bool(&self) -> bool;
+    fn to_bool(&self) -> bool {
+        // Return `true` by default, because this is default when implementing
+        // custom types in Python: https://docs.python.org/release/2.5.2/lib/truth.html
+        true
+    }
 
     /// Convert self to a integer value, as returned by the int() function if the type is numeric
     /// (not for string).
-    fn to_int(&self) -> Result<i64, ValueError>;
+    fn to_int(&self) -> Result<i64, ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: "int()".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Return a hash code for self, as returned by the hash() function, or
     /// OperationNotSupported if there is no hash for this value (e.g. list).
-    fn get_hash(&self) -> Result<u64, ValueError>;
+    fn get_hash(&self) -> Result<u64, ValueError> {
+        Err(ValueError::NotHashableValue)
+    }
 
     /// Returns true if `other` is a descendent of the current value, used for sanity checks.
     fn is_descendant(&self, other: &dyn TypedValue) -> bool;
@@ -497,25 +513,43 @@ pub trait TypedValue {
     /// * kwargs: if provided, the `**kwargs` argument.
     fn call(
         &self,
-        call_stack: &[(String, String)],
-        env: Environment,
-        positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
-        args: Option<Value>,
-        kwargs: Option<Value>,
-    ) -> ValueResult;
+        _call_stack: &[(String, String)],
+        _env: Environment,
+        _positional: Vec<Value>,
+        _named: LinkedHashMap<String, Value>,
+        _args: Option<Value>,
+        _kwargs: Option<Value>,
+    ) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "call()".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Perform an array or dictionary indirection.
     ///
     /// This returns the result of `a[index]` if `a` is indexable.
-    fn at(&self, index: Value) -> ValueResult;
+    fn at(&self, index: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "[]".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(index.get_type().to_owned()),
+        })
+    }
 
     /// Set the value at `index` with `new_value`.
     ///
     /// This method should error with `ValueError::CannotMutateImmutableValue` if the value was
     /// frozen (but with `ValueError::OperationNotSupported` if the operation is not supported
     /// on this value, even if the value is immutable, e.g. for numbers).
-    fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError>;
+    fn set_at(&mut self, index: Value, _new_value: Value) -> Result<(), ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: "[] =".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(index.get_type().to_owned()),
+        })
+    }
 
     /// Extract a slice of the underlying object if the object is indexable. The result will be
     /// object between `start` and `stop` (both of them are added length() if negative and then
@@ -560,28 +594,57 @@ pub trait TypedValue {
     /// ```
     fn slice(
         &self,
-        start: Option<Value>,
-        stop: Option<Value>,
-        stride: Option<Value>,
-    ) -> ValueResult;
+        _start: Option<Value>,
+        _stop: Option<Value>,
+        _stride: Option<Value>,
+    ) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "[::]".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Returns an iterator over the value of this container if this value hold an iterable
     /// container.
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError>;
+    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
+        Err(ValueError::TypeNotX {
+            object_type: self.get_type().to_owned(),
+            op: "iterable".to_owned(),
+        })
+    }
 
     /// Returns the length of the value, if this value is a sequence.
-    fn length(&self) -> Result<i64, ValueError>;
+    fn length(&self) -> Result<i64, ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: "len()".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Get an attribute for the current value as would be returned by dotted expression (i.e.
     /// `a.attribute`).
     ///
     /// __Note__: this does not handle native methods which are handled through universe.
-    fn get_attr(&self, attribute: &str) -> ValueResult;
+    fn get_attr(&self, attribute: &str) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: format!(".{}", attribute),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Return true if an attribute of name `attribute` exists for the current value.
     ///
     /// __Note__: this does not handle native methods which are handled through universe.
-    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError>;
+    fn has_attr(&self, _attribute: &str) -> Result<bool, ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: "has_attr()".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Set the attribute named `attribute` of the current value to `new_value` (e.g.
     /// `a.attribute = new_value`).
@@ -590,11 +653,23 @@ pub trait TypedValue {
     /// frozen or the attribute is immutable (but with `ValueError::OperationNotSupported`
     /// if the operation is not supported on this value, even if the self is immutable,
     /// e.g. for numbers).
-    fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError>;
+    fn set_attr(&mut self, attribute: &str, _new_value: Value) -> Result<(), ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: format!(".{} =", attribute),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Return a vector of string listing all attribute of the current value, excluding native
     /// methods.
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError>;
+    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: "dir()".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Tell wether `other` is in the current value, if it is a container.
     ///
@@ -612,7 +687,13 @@ pub trait TypedValue {
     /// // "z" in "abc" == False
     /// assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap().to_bool());
     /// ```
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError>;
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+        Err(ValueError::OperationNotSupported {
+            op: "in".to_owned(),
+            left: other.get_type().to_owned(),
+            right: Some(self.get_type().to_owned()),
+        })
+    }
 
     /// Apply the `+` unary operator to the current value.
     ///
@@ -625,7 +706,13 @@ pub trait TypedValue {
     /// assert_eq!(1, int_op!(1.plus()));  // 1.plus() = +1 = 1
     /// # }
     /// ```
-    fn plus(&self) -> ValueResult;
+    fn plus(&self) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "+".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Apply the `-` unary operator to the current value.
     ///
@@ -638,7 +725,13 @@ pub trait TypedValue {
     /// assert_eq!(-1, int_op!(1.minus()));  // 1.minus() = -1
     /// # }
     /// ```
-    fn minus(&self) -> ValueResult;
+    fn minus(&self) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "-".to_owned(),
+            left: self.get_type().to_owned(),
+            right: None,
+        })
+    }
 
     /// Add `other` to the current value.
     ///
@@ -651,7 +744,13 @@ pub trait TypedValue {
     /// assert_eq!(3, int_op!(1.add(2)));  // 1.add(2) = 1 + 2 = 3
     /// # }
     /// ```
-    fn add(&self, other: Value) -> ValueResult;
+    fn add(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "+".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 
     /// Substract `other` from the current value.
     ///
@@ -664,7 +763,13 @@ pub trait TypedValue {
     /// assert_eq!(-1, int_op!(1.sub(2)));  // 1.sub(2) = 1 - 2 = -1
     /// # }
     /// ```
-    fn sub(&self, other: Value) -> ValueResult;
+    fn sub(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "-".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 
     /// Multiply the current value with `other`.
     ///
@@ -677,7 +782,13 @@ pub trait TypedValue {
     /// assert_eq!(6, int_op!(2.mul(3)));  // 2.mul(3) = 2 * 3 = 6
     /// # }
     /// ```
-    fn mul(&self, other: Value) -> ValueResult;
+    fn mul(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "*".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 
     /// Apply the percent operator between the current value and `other`.
     ///
@@ -694,7 +805,13 @@ pub trait TypedValue {
     /// assert_eq!(Value::from("a 3 c"), Value::from("a %s c").percent(Value::from(3)).unwrap());
     /// # }
     /// ```
-    fn percent(&self, other: Value) -> ValueResult;
+    fn percent(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "%".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 
     /// Divide the current value with `other`.  division.
     ///
@@ -707,7 +824,13 @@ pub trait TypedValue {
     /// assert_eq!(3, int_op!(7.div(2)));  // 7.div(2) = 7 / 2 = 3
     /// # }
     /// ```
-    fn div(&self, other: Value) -> ValueResult;
+    fn div(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "/".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 
     /// Floor division between the current value and `other`.
     ///
@@ -720,12 +843,24 @@ pub trait TypedValue {
     /// assert_eq!(3, int_op!(7.floor_div(2)));  // 7.div(2) = 7 / 2 = 3
     /// # }
     /// ```
-    fn floor_div(&self, other: Value) -> ValueResult;
+    fn floor_div(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "//".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 
     /// Apply the operator pipe to the current value and `other`.
     ///
     /// This is usually the union on set.
-    fn pipe(&self, other: Value) -> ValueResult;
+    fn pipe(&self, other: Value) -> ValueResult {
+        Err(ValueError::OperationNotSupported {
+            op: "|".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
+    }
 }
 
 impl fmt::Debug for dyn TypedValue {
@@ -744,204 +879,6 @@ macro_rules! any {
         fn as_any_mut(&mut self) -> &mut dyn ::std::any::Any {
             self
         }
-    }
-}
-
-/// A macro to declare method of the trait TypedValue as not supported. This macro take a
-/// comma separated list of identifier that can either be the name of a function or set of
-/// functions:
-///
-/// * `iterable`: set of methods for values that are iterable,
-/// * `sequence`: set of methods for values that are sequence,
-/// * `indexable`: set of methods for values that are indexable,
-/// * `set_indexable`: set of methods for values that are setindexable,
-/// * `attr`: set of methods to modify value attributes,
-/// * `container`: the union of methods in `iterable`, `sequence`, `indexable` and `container`.
-/// * `function`: set of methods for function values,
-/// * `arithmetic`: set of arithmetic operator (`+`, `-`, `/`, `*`)
-/// * `binop`: binary operators: arithmetic, `%`, `|`
-#[macro_export]
-macro_rules! not_supported {
-    (get_hash) => {
-        fn get_hash(&self) -> Result<u64, ValueError> {
-            Err(ValueError::NotHashableValue)
-        }
-    };
-    (to_int) => {
-        fn to_int(&self) -> Result<i64, ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: "int()".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (call) => {
-        fn call(&self, _call_stack: &[(String, String)], _env: $crate::environment::Environment,
-                _positional: Vec<$crate::values::Value>, _named: ::linked_hash_map::LinkedHashMap<String, $crate::values::Value>,
-                _args: Option<$crate::values::Value>, _kwargs: Option<$crate::values::Value>) -> $crate::values::ValueResult {
-            Err($crate::values::ValueError::OperationNotSupported {
-                op: "call()".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (at) => {
-        fn at(&self, index: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "[]".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(index.get_type().to_owned())
-            })
-        }
-    };
-    (set_at) => {
-        fn set_at(&mut self, index: Value, _new_value: Value) -> Result<(), ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: "[] =".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(index.get_type().to_owned())
-            })
-        }
-    };
-    (get_attr) => {
-        fn get_attr(&self, attribute: &str) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: format!(".{}", attribute), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (has_attr) => {
-        fn has_attr(&self, _attribute: &str) -> Result<bool, ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: "has_attr()".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (dir_attr) => {
-         fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-             Err(ValueError::OperationNotSupported {
-                 op: "dir()".to_owned(), left: self.get_type().to_owned(), right: None })
-         }
-    };
-    (set_attr) => {
-        fn set_attr(&mut self, attribute: &str, _new_value: Value) -> Result<(), ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: format!(".{} =", attribute), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (length) => {
-        fn length(&self) -> Result<i64, ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: "len()".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (plus) => {
-        fn plus(&self) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "+".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (minus) => {
-        fn minus(&self) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "-".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (slice) => {
-        fn slice(&self, _i1: Option<Value>, _i2: Option<Value>, _i3: Option<Value>)
-                -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "[::]".to_owned(), left: self.get_type().to_owned(), right: None })
-        }
-    };
-    (iter) => {
-        fn iter(&self) -> Result<Box<dyn Iterator<Item=Value>>, ValueError> {
-            Err(ValueError::TypeNotX {
-                object_type: self.get_type().to_owned(),
-                op: "iterable".to_owned()
-            })
-        }
-    };
-    (freeze_for_iteration) => {
-        fn freeze_for_iteration(&mut self) {}
-        fn unfreeze_for_iteration(&mut self) {}
-    };
-    // Special type: iterable, sequence, indexable, container, function
-    (iterable) => { not_supported!(iter, freeze_for_iteration); };
-    (sequence) => { not_supported!(length, is_in, is_descendant); };
-    (set_indexable) => { not_supported!(set_at); };
-    (indexable) => { not_supported!(slice, at, set_indexable); };
-    (attr) => { not_supported!(get_attr, has_attr, set_attr, dir_attr); };
-    (container) => { not_supported!(iterable, sequence, indexable, attr); };
-    (function) => { not_supported!(call); };
-    (arithmetic) => { not_supported!(plus, minus, add, sub, mul, div, floor_div); };
-    (binop) => { not_supported!(arithmetic, percent, pipe); };
-    // Generic
-    (is_in) => {
-        fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-            Err(ValueError::OperationNotSupported {
-                op: "in".to_owned(),
-                left: other.get_type().to_owned(),
-                right: Some(self.get_type().to_owned()) })
-        }
-    };
-    (is_descendant) => {
-        fn is_descendant(&self, _other: &dyn TypedValue) -> bool { false }
-    };
-    (add) => {
-        fn add(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "+".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    (sub) => {
-        fn sub(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "-".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    (div) => {
-        fn div(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "/".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    (floor_div) => {
-        fn floor_div(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "//".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    (mul) => {
-        fn mul(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "*".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    (pipe) => {
-        fn pipe(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "|".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    (percent) => {
-        fn percent(&self, other: Value) -> ValueResult {
-            Err(ValueError::OperationNotSupported {
-                op: "%".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()) })
-        }
-    };
-    // Repetition
-    ($a: ident, $($y:ident),+) => {
-        not_supported!($a);
-        not_supported!($($y),+);
     }
 }
 
@@ -971,6 +908,8 @@ macro_rules! immutable {
     () => {
         fn immutable(&self) -> bool { true }
         fn freeze(&mut self) {}
+        fn freeze_for_iteration(&mut self) {}
+        fn unfreeze_for_iteration(&mut self) {}
     }
 }
 
@@ -1285,13 +1224,10 @@ impl PartialOrd for Value {
 impl TypedValue for Option<()> {
     immutable!();
     any!();
-    fn to_str(&self) -> String {
+    default_compare!();
+    fn to_repr(&self) -> String {
         "None".to_owned()
     }
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-    not_supported!(to_int);
     fn get_type(&self) -> &'static str {
         "NoneType"
     }
@@ -1302,10 +1238,9 @@ impl TypedValue for Option<()> {
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(9_223_380_832_852_120_682)
     }
-    default_compare!();
-    not_supported!(binop);
-    not_supported!(container);
-    not_supported!(function);
+    fn is_descendant(&self, _other: &TypedValue) -> bool {
+        false
+    }
 }
 
 fn i64_arith_bin_op<F>(left: i64, right: Value, op: &'static str, f: F) -> ValueResult
@@ -1327,6 +1262,7 @@ where
 impl TypedValue for i64 {
     immutable!();
     any!();
+    default_compare!();
     fn to_str(&self) -> String {
         format!("{}", self)
     }
@@ -1345,7 +1281,6 @@ impl TypedValue for i64 {
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(*self as u64)
     }
-    default_compare!();
     fn plus(&self) -> ValueResult {
         Ok(Value::new(*self))
     }
@@ -1407,24 +1342,23 @@ impl TypedValue for i64 {
             }
         })
     }
-    not_supported!(container);
-    not_supported!(function);
-    not_supported!(pipe);
+
+    fn is_descendant(&self, _other: &TypedValue) -> bool {
+        false
+    }
 }
 
 /// Define the bool type
 impl TypedValue for bool {
     immutable!();
     any!();
-    fn to_str(&self) -> String {
+    default_compare!();
+    fn to_repr(&self) -> String {
         if *self {
             "True".to_owned()
         } else {
             "False".to_owned()
         }
-    }
-    fn to_repr(&self) -> String {
-        self.to_str()
     }
     fn to_int(&self) -> Result<i64, ValueError> {
         Ok(if *self { 1 } else { 0 })
@@ -1438,11 +1372,9 @@ impl TypedValue for bool {
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(self.to_int().unwrap() as u64)
     }
-    default_compare!();
-    not_supported!(container);
-    not_supported!(function);
-    not_supported!(pipe);
-    not_supported!(plus, minus, add, sub, mul, div, floor_div, percent);
+    fn is_descendant(&self, _other: &TypedValue) -> bool {
+        false
+    }
 }
 
 impl dyn TypedValue {
@@ -1785,13 +1717,9 @@ mod tests {
         impl TypedValue for WrappedNumber {
             immutable!();
             any!();
-            fn to_str(&self) -> String {
+            fn to_repr(&self) -> String {
                 format!("{:?}", self)
             }
-            fn to_repr(&self) -> String {
-                self.to_str()
-            }
-            not_supported!(to_int);
             fn get_type(&self) -> &'static str {
                 "WrappedNumber"
             }
@@ -1814,9 +1742,10 @@ mod tests {
                     _ => default_compare(self, other),
                 }
             }
-            not_supported!(binop);
-            not_supported!(container);
-            not_supported!(function);
+
+            fn is_descendant(&self, _other: &TypedValue) -> bool {
+                false
+            }
         }
 
         let one = Value::new(WrappedNumber(1));

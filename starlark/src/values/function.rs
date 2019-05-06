@@ -297,14 +297,9 @@ impl TypedValue for Function {
         repr(&self.function_type, &self.signature)
     }
 
-    not_supported!(to_int);
     fn get_type(&self) -> &'static str {
         "function"
     }
-    fn to_bool(&self) -> bool {
-        true
-    }
-    not_supported!(get_hash);
 
     fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
         if other.get_type() == "function" {
@@ -407,8 +402,9 @@ impl TypedValue for Function {
         )
     }
 
-    not_supported!(binop);
-    not_supported!(container);
+    fn is_descendant(&self, _other: &TypedValue) -> bool {
+        false
+    }
 }
 
 impl TypedValue for WrappedMethod {
@@ -423,9 +419,6 @@ impl TypedValue for WrappedMethod {
     }
     fn get_type(&self) -> &'static str {
         "function"
-    }
-    fn to_bool(&self) -> bool {
-        true
     }
     fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
         self.method.compare_underlying(other, recursion)
@@ -450,7 +443,7 @@ impl TypedValue for WrappedMethod {
             .call(call_stack, env, positional, named, args, kwargs)
     }
 
-    not_supported!(to_int, get_hash);
-    not_supported!(binop);
-    not_supported!(container);
+    fn is_descendant(&self, _other: &TypedValue) -> bool {
+        false
+    }
 }

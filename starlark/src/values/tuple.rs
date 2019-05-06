@@ -270,7 +270,11 @@ impl TypedValue for Tuple {
         }
     }
 
-    fn to_str(&self) -> String {
+    fn freeze_for_iteration(&mut self) {}
+
+    fn unfreeze_for_iteration(&mut self) {}
+
+    fn to_repr(&self) -> String {
         format!(
             "({}{})",
             self.content
@@ -285,12 +289,6 @@ impl TypedValue for Tuple {
             if self.content.len() == 1 { "," } else { "" }
         )
     }
-
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-
-    not_supported!(to_int);
     fn get_type(&self) -> &'static str {
         "tuple"
     }
@@ -433,11 +431,6 @@ impl TypedValue for Tuple {
             Err(ValueError::IncorrectParameterType)
         }
     }
-
-    not_supported!(freeze_for_iteration);
-    not_supported!(set_indexable);
-    not_supported!(attr, function);
-    not_supported!(plus, minus, sub, div, pipe, percent, floor_div);
 }
 
 #[cfg(test)]
