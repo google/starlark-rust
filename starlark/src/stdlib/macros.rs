@@ -106,41 +106,35 @@ macro_rules! starlark_signature_extraction {
         let mut $t = $args.next().unwrap().into_normal()?;
     };
     ($args:ident $call_stack:ident $env:ident call_stack $e:ident, $($rest:tt)*) => {
-        let $e = $call_stack;
+        starlark_signature_extraction!($args $call_stack $env call_stack $e);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident env $e:ident, $($rest:tt)*) => {
-        let $e = $env;
+        starlark_signature_extraction!($args $call_stack $env env $e);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident * $t:ident, $($rest:tt)* ) => {
-        #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_args_array()?;
+        starlark_signature_extraction!($args $call_stack $env * $t);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident ** $t:ident,  $($rest:tt)* ) => {
-        #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_kw_args_dict()?;
+    ($args:ident $call_stack:ident $env:ident ** $t:ident, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env ** $t);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident # $t:ident, $($rest:tt)* ) => {
-        #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_normal()?;
+        starlark_signature_extraction!($args $call_stack $env # $t);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident $t:ident, $($rest:tt)* ) => {
-        #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_normal()?;
+        starlark_signature_extraction!($args $call_stack $env $t);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident # $t:ident = $e:expr, $($rest:tt)* ) => {
-        #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_normal()?;
+        starlark_signature_extraction!($args $call_stack $env # $t = $e);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident $t:ident = $e:expr, $($rest:tt)* ) => {
-        #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_normal()?;
+        starlark_signature_extraction!($args $call_stack $env $t = $e);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
 }
