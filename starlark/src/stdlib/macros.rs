@@ -83,27 +83,27 @@ macro_rules! starlark_signature_extraction {
     ($args:ident $call_stack:ident $env:ident env $e:ident ) => { let $e = $env; };
     ($args:ident $call_stack:ident $env:ident * $t:ident) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_args_array()?;
     };
     ($args:ident $call_stack:ident $env:ident ** $t:ident) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_kw_args_dict()?;
     };
     ($args:ident $call_stack:ident $env:ident # $t:ident) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
     };
     ($args:ident $call_stack:ident $env:ident $t:ident) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
     };
     ($args:ident $call_stack:ident $env:ident # $t:ident = $e:expr) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
     };
     ($args:ident $call_stack:ident $env:ident $t:ident = $e:expr) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
     };
     ($args:ident $call_stack:ident $env:ident call_stack $e:ident, $($rest:tt)*) => {
         let $e = $call_stack;
@@ -115,32 +115,32 @@ macro_rules! starlark_signature_extraction {
     };
     ($args:ident $call_stack:ident $env:ident * $t:ident, $($rest:tt)* ) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_args_array()?;
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident ** $t:ident,  $($rest:tt)* ) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_kw_args_dict()?;
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident # $t:ident, $($rest:tt)* ) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident $t:ident, $($rest:tt)* ) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident # $t:ident = $e:expr, $($rest:tt)* ) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
     ($args:ident $call_stack:ident $env:ident $t:ident = $e:expr, $($rest:tt)* ) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap();
+        let mut $t = $args.next().unwrap().into_normal()?;
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
 }
@@ -153,9 +153,9 @@ macro_rules! starlark_fun {
         pub fn $fn(
             __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
-            args: Vec<$crate::values::Value>
+            args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
-            let mut __args = args.iter();
+            let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
         }
@@ -165,7 +165,7 @@ macro_rules! starlark_fun {
         pub fn $fn(
             __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
-            args: Vec<$crate::values::Value>
+            args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
@@ -180,7 +180,7 @@ macro_rules! starlark_fun {
         pub fn $fn(
             __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
-            args: Vec<$crate::values::Value>
+            args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
@@ -193,7 +193,7 @@ macro_rules! starlark_fun {
         pub fn $fn(
             __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
-            args: Vec<$crate::values::Value>
+            args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
