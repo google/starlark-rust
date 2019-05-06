@@ -1060,12 +1060,18 @@ macro_rules! define_iterable_mutability {
 }
 
 impl Value {
-    pub fn any_apply<Return>(&self, f: &dyn Fn(&dyn Any) -> Return) -> Return {
+    pub fn any_apply<F, Return>(&self, f: F) -> Return
+    where
+        F: FnOnce(&dyn Any) -> Return,
+    {
         let borrowed = self.0.borrow();
         f(borrowed.as_any())
     }
 
-    pub fn any_apply_mut<Return>(&mut self, f: &dyn Fn(&mut dyn Any) -> Return) -> Return {
+    pub fn any_apply_mut<F, Return>(&mut self, f: F) -> Return
+    where
+        F: FnOnce(&mut dyn Any) -> Return,
+    {
         let mut borrowed = self.0.borrow_mut();
         f(borrowed.as_any_mut())
     }
@@ -1301,6 +1307,21 @@ impl TypedValue for Option<()> {
     not_supported!(function);
 }
 
+fn i64_arith_bin_op<F>(left: i64, right: Value, op: &'static str, f: F) -> ValueResult
+where
+    F: FnOnce(i64, i64) -> Result<i64, ValueError>,
+{
+    right
+        .downcast_apply(move |right: &i64| Ok(Value::new(f(left, *right)?)))
+        .unwrap_or_else(|| {
+            Err(ValueError::OperationNotSupported {
+                op: op.to_owned(),
+                left: left.get_type().to_owned(),
+                right: Some(right.get_type().to_owned()),
+            })
+        })
+}
+
 /// Define the int type
 impl TypedValue for i64 {
     immutable!();
@@ -1334,81 +1355,56 @@ impl TypedValue for i64 {
         }
     }
     fn add(&self, other: Value) -> ValueResult {
-        match other.get_type() {
-            "int" | "bool" => {
-                let other_int = other.to_int().unwrap();
-                match self.checked_add(other_int) {
-                    Some(r) => Ok(Value::new(r)),
-                    None => Err(ValueError::IntegerOverflow),
-                }
-            }
-            _ => other.add(Value::new(*self)),
-        }
+        i64_arith_bin_op(*self, other, "+", |a, b| {
+            a.checked_add(b).ok_or(ValueError::IntegerOverflow)
+        })
     }
     fn sub(&self, other: Value) -> ValueResult {
-        match other.get_type() {
-            "int" | "bool" => {
-                let other_int = other.to_int().unwrap();
-                match self.checked_sub(other_int) {
-                    Some(r) => Ok(Value::new(r)),
-                    None => Err(ValueError::IntegerOverflow),
-                }
-            }
-            _ => Err(ValueError::OperationNotSupported {
-                op: "-".to_owned(),
-                left: "int".to_owned(),
-                right: Some(other.get_type().to_owned()),
-            }),
-        }
+        i64_arith_bin_op(*self, other, "-", |a, b| {
+            a.checked_sub(b).ok_or(ValueError::IntegerOverflow)
+        })
     }
     fn mul(&self, other: Value) -> ValueResult {
-        match other.get_type() {
-            "int" | "bool" => {
-                let other_int = other.to_int().unwrap();
-                match self.checked_mul(other_int) {
-                    Some(r) => Ok(Value::new(r)),
-                    None => Err(ValueError::IntegerOverflow),
-                }
-            }
-            _ => other.mul(Value::new(*self)),
+        let other_i64 = other.downcast_apply(|other: &i64| {
+            self.checked_mul(*other).ok_or(ValueError::IntegerOverflow)
+        });
+        match other_i64 {
+            Some(r) => r.map(Value::new),
+            None => other.mul(Value::new(*self)),
         }
     }
     fn percent(&self, other: Value) -> ValueResult {
-        let other = other.to_int()?;
-        if other == 0 {
-            return Err(ValueError::DivisionByZero);
-        }
-        // In Rust `i64::min_value() % -1` is overflow, but we should eval it to zero.
-        if *self == Self::min_value() && other == -1 {
-            return Ok(Value::new(0));
-        }
-        let me = self.to_int()?;
-        let r = me % other;
-        if r == 0 {
-            Ok(Value::new(0))
-        } else {
-            Ok(Value::new(if other.signum() != r.signum() {
-                r + other
+        i64_arith_bin_op(*self, other, "%", |a, b| {
+            if b == 0 {
+                return Err(ValueError::DivisionByZero);
+            }
+            // In Rust `i64::min_value() % -1` is overflow, but we should eval it to zero.
+            if *self == i64::min_value() && b == -1 {
+                return Ok(0);
+            }
+            let r = a % b;
+            if r == 0 {
+                Ok(0)
             } else {
-                r
-            }))
-        }
+                Ok(if b.signum() != r.signum() { r + b } else { r })
+            }
+        })
     }
     fn div(&self, other: Value) -> ValueResult {
         self.floor_div(other)
     }
     fn floor_div(&self, other: Value) -> ValueResult {
-        let other = other.to_int()?;
-        if other == 0 {
-            return Err(ValueError::DivisionByZero);
-        }
-        let me = self.to_int()?;
-        let sig = other.signum() * me.signum();
-        let offset = if sig < 0 && me % other != 0 { 1 } else { 0 };
-        match me.checked_div(other) {
-            Some(div) => Ok(Value::new(div - offset)),
-            None => Err(ValueError::IntegerOverflow),
-        }
+        i64_arith_bin_op(*self, other, "//", |a, b| {
+            if b == 0 {
+                return Err(ValueError::DivisionByZero);
+            }
+            let sig = b.signum() * a.signum();
+            let offset = if sig < 0 && a % b != 0 { 1 } else { 0 };
+            match a.checked_div(b) {
+                Some(div) => Ok(div - offset),
+                None => Err(ValueError::IntegerOverflow),
+            }
+        })
     }
     not_supported!(container);
     not_supported!(function);
@@ -1442,33 +1438,10 @@ impl TypedValue for bool {
         Ok(self.to_int().unwrap() as u64)
     }
     default_compare!();
-    fn plus(&self) -> ValueResult {
-        Value::new(self.to_int()?).plus()
-    }
-    fn minus(&self) -> ValueResult {
-        Value::new(self.to_int()?).minus()
-    }
-    fn add(&self, other: Value) -> ValueResult {
-        Value::new(self.to_int()?).add(other)
-    }
-    fn sub(&self, other: Value) -> ValueResult {
-        Value::new(self.to_int()?).sub(other)
-    }
-    fn mul(&self, other: Value) -> ValueResult {
-        Value::new(self.to_int()?).mul(other)
-    }
-    fn percent(&self, other: Value) -> ValueResult {
-        Value::new(self.to_int()?).percent(other)
-    }
-    fn div(&self, other: Value) -> ValueResult {
-        Value::new(self.to_int()?).div(other)
-    }
-    fn floor_div(&self, other: Value) -> ValueResult {
-        Value::new(self.to_int()?).floor_div(other)
-    }
     not_supported!(container);
     not_supported!(function);
     not_supported!(pipe);
+    not_supported!(plus, minus, add, sub, mul, div, floor_div, percent);
 }
 
 impl dyn TypedValue {
@@ -1609,9 +1582,9 @@ impl Value {
     /// A convenient wrapper around any_apply to actually operate on the underlying type
     pub fn downcast_apply<T: Any + TypedValue, F, Return>(&self, f: F) -> Option<Return>
     where
-        F: Fn(&T) -> Return,
+        F: FnOnce(&T) -> Return,
     {
-        self.any_apply(&move |x| match x.downcast_ref() {
+        self.any_apply(move |x| match x.downcast_ref() {
             Some(x) => Some(f(x)),
             None => None,
         })
@@ -1620,9 +1593,9 @@ impl Value {
     /// A convenient wrapper around any_apply_mut to actually operate on the underlying type
     pub fn downcast_apply_mut<T: Any + TypedValue, F, Return>(&mut self, f: F) -> Option<Return>
     where
-        F: Fn(&mut T) -> Return,
+        F: FnOnce(&mut T) -> Return,
     {
-        self.any_apply_mut(&move |x| match x.downcast_mut() {
+        self.any_apply_mut(move |x| match x.downcast_mut() {
             Some(x) => Some(f(x)),
             None => None,
         })
