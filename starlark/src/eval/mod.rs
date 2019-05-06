@@ -620,12 +620,16 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
             Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
                 eval_compare(self, l, r, |x| x != Ordering::Less, context)
             }
-            Expr::Op(BinOp::In, ref l, ref r) => {
-                t!(r.eval(context)?.is_in(&l.eval(context)?), self)
-            }
-            Expr::Op(BinOp::NotIn, ref l, ref r) => Ok(Value::new(
-                !t!(r.eval(context)?.is_in(&l.eval(context)?), self)?.to_bool(),
-            )),
+            Expr::Op(BinOp::In, ref l, ref r) => t!(
+                r.eval(context)?.is_in(&l.eval(context)?).map(Value::new),
+                self
+            ),
+            Expr::Op(BinOp::NotIn, ref l, ref r) => t!(
+                r.eval(context)?
+                    .is_in(&l.eval(context)?)
+                    .map(|r| Value::new(!r)),
+                self
+            ),
             Expr::Op(BinOp::Substraction, ref l, ref r) => {
                 t!(l.eval(context)?.sub(r.eval(context)?), self)
             }

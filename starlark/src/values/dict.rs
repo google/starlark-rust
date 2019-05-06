@@ -182,10 +182,8 @@ impl TypedValue for Dictionary {
         Ok(self.content.len() as i64)
     }
 
-    fn is_in(&self, other: &Value) -> ValueResult {
-        Ok(Value::new(
-            self.content.contains_key(&HashedValue::new(other.clone())?),
-        ))
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+        Ok(self.content.contains_key(&HashedValue::new(other.clone())?))
     }
 
     fn is_descendant(&self, other: &dyn TypedValue) -> bool {
