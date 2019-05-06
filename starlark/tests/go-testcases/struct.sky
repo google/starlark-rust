@@ -1,0 +1,20 @@
+# Tests of Starlark 'struct' extension.
+# This is not a standard feature and the Go and Starlark APIs may yet change.
+
+assert_(str(struct), "<built-in function struct>")
+
+# struct is a constructor for "unbranded" structs.
+s = struct(host = "localhost", port = 80)
+assert_(s, s)
+assert_(s, struct(host = "localhost", port = 80))
+assert_(s != struct(host = "localhost", port = 81))
+assert_(type(s), "struct")
+assert_(str(s), 'struct(host = "localhost", port = 80)')
+assert_(s.host, "localhost")
+assert_(s.port, 80)
+s.protocol  ###   protocol
+---
+s = struct(host = "localhost", port = 80)
+assert_(dir(s), ["host", "port"])
+
+# The rest are tests for `gensym` which is not implemented
