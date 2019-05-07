@@ -375,7 +375,7 @@ impl PartialEq for ValueError {
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value(pub Rc<RefCell<dyn TypedValue>>);
+pub struct Value(Rc<RefCell<dyn TypedValue>>);
 
 pub type ValueResult = Result<Value, ValueError>;
 
