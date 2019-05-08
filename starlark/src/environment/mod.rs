@@ -17,6 +17,7 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
 use std::cell::RefCell;
 use std::collections::HashMap;

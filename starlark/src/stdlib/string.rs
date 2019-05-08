@@ -14,6 +14,7 @@
 
 //! Methods for the `string` type.
 
+use crate::values::error::*;
 use crate::values::*;
 use std::convert::TryFrom;
 use std::str::FromStr;

@@ -17,6 +17,7 @@ use super::*;
 use crate::environment::Environment;
 use crate::eval::eval_def;
 use crate::syntax::ast::AstStatement;
+use crate::values::error::RuntimeError;
 use codemap::CodeMap;
 use std::convert::TryInto;
 use std::mem;

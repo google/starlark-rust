@@ -398,7 +398,7 @@ macro_rules! starlark_module {
 #[macro_export]
 macro_rules! starlark_err {
     ($code:expr, $message:expr, $label:expr) => {
-        return Err(RuntimeError {
+        return Err($crate::values::error::RuntimeError {
             code: $code,
             message: $message,
             label: $label,

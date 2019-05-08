@@ -14,6 +14,7 @@
 
 //! Methods for the `dict` type.
 
+use crate::values::error::*;
 use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;

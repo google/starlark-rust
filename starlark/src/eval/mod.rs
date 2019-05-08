@@ -26,6 +26,7 @@ use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::dict::Dictionary;
+use crate::values::error::ValueError;
 use crate::values::function::{FunctionArg, FunctionParameter};
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};

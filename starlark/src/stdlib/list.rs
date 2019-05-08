@@ -14,6 +14,7 @@
 
 //! Methods for the `list` type.
 
+use crate::values::error::*;
 use crate::values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).

@@ -14,7 +14,8 @@
 
 //! Error-safe value and hash pair.
 
-use crate::values::{Value, ValueError};
+use crate::values::error::ValueError;
+use crate::values::Value;
 use core::borrow::BorrowMut;
 use std::hash::{Hash, Hasher};
 
