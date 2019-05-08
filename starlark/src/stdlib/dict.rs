@@ -309,36 +309,37 @@ starlark_module! {global =>
     /// x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
     /// # )"#).unwrap());
     /// ```
-    dict.update(this, #pairs=None, **kwargs) {
-        match pairs.get_type() {
-            "NoneType" => (),
-            "list" => for v in pairs.iter()? {
-                if v.length()? != 2 {
-                    starlark_err!(
-                        INCORRECT_PARAMETER_TYPE_ERROR_CODE,
+    dict.update(this, ?#pairs, **kwargs) {
+        if let Some(pairs) = pairs {
+            match pairs.get_type() {
+                "list" => for v in pairs.iter()? {
+                    if v.length()? != 2 {
+                        starlark_err!(
+                            INCORRECT_PARAMETER_TYPE_ERROR_CODE,
+                            concat!(
+                                "dict.update expect a list of pairsor a dictionary as first ",
+                                "argument, got a list of non-pairs."
+                            ).to_owned(),
+                            "list of non-pairs".to_owned()
+                        )
+                    }
+                    this.set_at(v.at(Value::new(0))?, v.at(Value::new(1))?)?;
+                },
+                "dict" => for k in pairs.iter()? {
+                    this.set_at(k.clone(), pairs.at(k)?)?
+                },
+                x => starlark_err!(
+                    INCORRECT_PARAMETER_TYPE_ERROR_CODE,
+                    format!(
                         concat!(
-                            "dict.update expect a list of pairsor a dictionary as first ",
-                            "argument, got a list of non-pairs."
-                        ).to_owned(),
-                        "list of non-pairs".to_owned()
-                    )
-                }
-                this.set_at(v.at(Value::new(0))?, v.at(Value::new(1))?)?;
-            },
-            "dict" => for k in pairs.iter()? {
-                this.set_at(k.clone(), pairs.at(k)?)?
-            },
-            x => starlark_err!(
-                INCORRECT_PARAMETER_TYPE_ERROR_CODE,
-                format!(
-                    concat!(
-                        "dict.update expect a list or a dictionary as first argument, ",
-                        "got a value of type {}."
+                            "dict.update expect a list or a dictionary as first argument, ",
+                            "got a value of type {}."
+                        ),
+                        x
                     ),
-                    x
-                ),
-                format!("type {} while expected list or dict", x)
-            )
+                    format!("type {} while expected list or dict", x)
+                )
+            }
         }
 
         for (k, v) in kwargs {

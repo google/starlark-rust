@@ -35,9 +35,9 @@ starlark_module! {global =>
     /// iterable sequence x.
     ///
     /// With no argument, `set()` returns a new empty set.
-    set(#a = None) {
+    set(?#a) {
         let s = Set::empty();
-        if a.get_type() != "NoneType" {
+        if let Some(a) = a {
             for x in a.iter()? {
                 Set::insert_if_absent(&s, x)?;
             }

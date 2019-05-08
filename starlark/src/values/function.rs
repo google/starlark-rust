@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex};
 #[doc(hidden)]
 pub enum FunctionParameter {
     Normal(String),
+    Optional(String),
     WithDefaultValue(String, Value),
     ArgsArray(String),
     KWArgsDict(String),
@@ -42,6 +43,7 @@ pub enum FunctionType {
 #[derive(Debug, Clone)]
 pub enum FunctionArg {
     Normal(Value),
+    Optional(Option<Value>),
     ArgsArray(Vec<Value>),
     KWArgsDict(LinkedHashMap<String, Value>),
 }
@@ -50,6 +52,13 @@ impl FunctionArg {
     pub fn into_normal(self) -> Result<Value, ValueError> {
         match self {
             FunctionArg::Normal(v) => Ok(v),
+            _ => Err(ValueError::IncorrectParameterType),
+        }
+    }
+
+    pub fn into_optional(self) -> Result<Option<Value>, ValueError> {
+        match self {
+            FunctionArg::Optional(v) => Ok(v),
             _ => Err(ValueError::IncorrectParameterType),
         }
     }
@@ -74,6 +83,10 @@ impl From<FunctionArg> for Value {
         match a {
             FunctionArg::Normal(v) => v,
             FunctionArg::ArgsArray(v) => v.into(),
+            FunctionArg::Optional(v) => match v {
+                Some(v) => v,
+                None => Value::new(None),
+            },
             FunctionArg::KWArgsDict(v) => {
                 // `unwrap` does not panic, because key is a string which hashable
                 v.try_into().unwrap()
@@ -257,6 +270,7 @@ fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String
         .map(|x| -> String {
             match x {
                 FunctionParameter::Normal(ref name) => name.clone(),
+                FunctionParameter::Optional(ref name) => format!("?{}", name),
                 FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     format!("{} = {}", name, value.to_repr())
                 }
@@ -274,6 +288,7 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
         .map(|x| -> String {
             match x {
                 FunctionParameter::Normal(ref name) => name.clone(),
+                FunctionParameter::Optional(ref name) => name.clone(),
                 FunctionParameter::WithDefaultValue(ref name, ref value) => {
                     format!("{} = {}", name, value.to_repr())
                 }
@@ -366,6 +381,15 @@ impl TypedValue for Function {
                             signature: self.signature.clone(),
                         }
                         .into());
+                    }
+                }
+                FunctionParameter::Optional(ref name) => {
+                    if let Some(x) = args_iter.next() {
+                        v.push(FunctionArg::Optional(Some(x)))
+                    } else if let Some(ref r) = kwargs_dict.remove(name) {
+                        v.push(FunctionArg::Optional(Some(r.clone())));
+                    } else {
+                        v.push(FunctionArg::Optional(None));
                     }
                 }
                 FunctionParameter::WithDefaultValue(ref name, ref value) => {

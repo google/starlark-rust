@@ -229,43 +229,44 @@ starlark_module! {global_functions =>
     /// dict([(1, 2)], x=3) == {1: 2, 'x': 3}
     /// # )").unwrap());
     /// ```
-    dict(#a = None, **kwargs) {
+    dict(?#a, **kwargs) {
         let mut map = Dictionary::new();
-        match a.get_type() {
-            "NoneType" => (),
-            "dict" => {
-                for k in a.iter()? {
-                    let v = a.at(k.clone())?;
-                    map.set_at(k, v)?;
-                }
-            },
-            _ => {
-               for el in a.iter()? {
-                   match el.iter() {
-                       Ok(mut it) => {
-                            let first = it.next();
-                            let second = it.next();
-                            if first.is_none() || second.is_none() || it.next().is_some() {
-                                starlark_err!(
-                                    DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
-                                    format!(
-                                        "Found a non-pair element in the positional argument of dict(): {}",
-                                        el.to_repr(),
-                                    ),
-                                    "Non-pair element in first argument".to_owned()
-                                );
-                            }
-                            map.set_at(first.unwrap(), second.unwrap())?;
-                       }
-                       Err(..) =>
-                           starlark_err!(
-                               DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
-                               format!(
-                                   "Found a non-pair element in the positional argument of dict(): {}",
-                                   el.to_repr(),
+        if let Some(a) = a {
+            match a.get_type() {
+                "dict" => {
+                    for k in a.iter()? {
+                        let v = a.at(k.clone())?;
+                        map.set_at(k, v)?;
+                    }
+                },
+                _ => {
+                   for el in a.iter()? {
+                       match el.iter() {
+                           Ok(mut it) => {
+                                let first = it.next();
+                                let second = it.next();
+                                if first.is_none() || second.is_none() || it.next().is_some() {
+                                    starlark_err!(
+                                        DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
+                                        format!(
+                                            "Found a non-pair element in the positional argument of dict(): {}",
+                                            el.to_repr(),
+                                        ),
+                                        "Non-pair element in first argument".to_owned()
+                                    );
+                                }
+                                map.set_at(first.unwrap(), second.unwrap())?;
+                           }
+                           Err(..) =>
+                               starlark_err!(
+                                   DICT_ITERABLE_NOT_PAIRS_ERROR_CODE,
+                                   format!(
+                                       "Found a non-pair element in the positional argument of dict(): {}",
+                                       el.to_repr(),
+                                   ),
+                                   "Non-pair element in first argument".to_owned()
                                ),
-                               "Non-pair element in first argument".to_owned()
-                           ),
+                       }
                    }
                }
            }
@@ -436,10 +437,13 @@ starlark_module! {global_functions =>
     /// specified by name.
     ///
     /// `int()` with no arguments returns 0.
-    int(#a, base = None) {
+    int(#a, ?base) {
         if a.get_type() == "string" {
             let s = a.to_str();
-            let base = if base.get_type() == "NoneType" { 0 } else { base.to_int()? };
+            let base = match base {
+                Some(base) => base.to_int()?,
+                None => 0,
+            };
             if base == 1 || base < 0 || base > 36 {
                 starlark_err!(
                     INT_CONVERSION_FAILED_ERROR_CODE,
@@ -496,14 +500,16 @@ starlark_module! {global_functions =>
                 ),
             }
         } else {
-            if base.get_type() != "NoneType" {
-                starlark_err!(
-                    INT_CONVERSION_FAILED_ERROR_CODE,
-                    "int() cannot convert non-string with explicit base".to_owned(),
-                    format!("Explict base '{}' provided with non-string", base.to_repr())
-                )
+            match base {
+                Some(base) => {
+                    starlark_err!(
+                        INT_CONVERSION_FAILED_ERROR_CODE,
+                        "int() cannot convert non-string with explicit base".to_owned(),
+                        format!("Explict base '{}' provided with non-string", base.to_repr())
+                    )
+                }
+                None => Ok(Value::new(a.to_int()?)),
             }
-            Ok(Value::new(a.to_int()?))
         }
     }
 
@@ -526,9 +532,9 @@ starlark_module! {global_functions =>
     /// iterable sequence x.
     ///
     /// With no argument, `list()` returns a new empty list.
-    list(#a = None) {
+    list(?#a) {
         let mut l = Vec::new();
-        if a.get_type() != "NoneType" {
+        if let Some(a) = a {
             for x in a.iter()? {
                 l.push(x.clone())
             }
@@ -558,7 +564,7 @@ starlark_module! {global_functions =>
     /// max("two", "three", "four", key=len)  == "three"  # the longest
     /// # )"#).unwrap());
     /// ```
-    max(call_stack cs, env e, *args, key=None) {
+    max(call_stack cs, env e, *args, ?key) {
         let args = if args.len() == 1 {
             args.swap_remove(0)
         } else {
@@ -573,22 +579,25 @@ starlark_module! {global_functions =>
                 "Empty".to_owned()
             )
         };
-        if key.get_type() == "NoneType" {
-            for i in it {
-                if max < i {
-                    max = i;
+        match key {
+            None => {
+                for i in it {
+                    if max < i {
+                        max = i;
+                    }
                 }
             }
-        } else {
-            let mut cached = key.call(cs, e.child("max"), vec![max.clone()], LinkedHashMap::new(), None, None)?;
-            for i in it {
-                let keyi = key.call(cs, e.child("max"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
-                if cached < keyi {
-                    max = i;
-                    cached = keyi;
+            Some(key) => {
+                let mut cached = key.call(cs, e.child("max"), vec![max.clone()], LinkedHashMap::new(), None, None)?;
+                for i in it {
+                    let keyi = key.call(cs, e.child("max"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
+                    if cached < keyi {
+                        max = i;
+                        cached = keyi;
+                    }
                 }
             }
-        }
+        };
         Ok(max)
     }
 
@@ -611,7 +620,7 @@ starlark_module! {global_functions =>
     /// min("two", "three", "four", key=len)    == "two"   # the shortest
     /// # )"#).unwrap());
     /// ```
-    min(call_stack cs, env e, *args, key=None) {
+    min(call_stack cs, env e, *args, ?key) {
         let args = if args.len() == 1 {
             args.swap_remove(0)
         } else {
@@ -626,22 +635,25 @@ starlark_module! {global_functions =>
                 "Empty".to_owned()
             )
         };
-        if key.get_type() == "NoneType" {
-            for i in it {
-                if min > i {
-                    min = i;
+        match key {
+            None => {
+                for i in it {
+                    if min > i {
+                        min = i;
+                    }
                 }
             }
-        } else {
-            let mut cached = key.call(cs, e.child("min"), vec![min.clone()], LinkedHashMap::new(), None, None)?;
-            for i in it {
-                let keyi = key.call(cs, e.child("min"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
-                if cached > keyi {
-                    min = i;
-                    cached = keyi;
+            Some(key) => {
+                let mut cached = key.call(cs, e.child("min"), vec![min.clone()], LinkedHashMap::new(), None, None)?;
+                for i in it {
+                    let keyi = key.call(cs, e.child("min"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
+                    if cached > keyi {
+                        min = i;
+                        cached = keyi;
+                    }
                 }
             }
-        }
+        };
         Ok(min)
     }
 
@@ -717,10 +729,19 @@ starlark_module! {global_functions =>
     /// list(range(10, 3, -2))                  == [10, 8, 6, 4]
     /// # )"#).unwrap());
     /// ```
-    range(#a1, #a2 = None, #a3 = None) {
-        let start = if a2.get_type() == "NoneType" { 0 } else { a1.to_int()? };
-        let stop = if a2.get_type() == "NoneType" { a1.to_int()? } else { a2.to_int()? };
-        let step = if a3.get_type() == "NoneType" { 1 } else { a3.to_int()? };
+    range(#a1, ?#a2, ?#a3) {
+        let start = match a2 {
+            None => 0,
+            Some(_) => a1.to_int()?,
+        };
+        let stop = match a2 {
+            None => a1.to_int()?,
+            Some(a2) => a2.to_int()?,
+        };
+        let step = match a3 {
+            None => 1,
+            Some(a3) => a3.to_int()?,
+        };
         let mut r = Vec::new();
         let mut idx : i64 = start;
         if step == 0 {
@@ -814,19 +835,22 @@ starlark_module! {global_functions =>
     /// sorted(["two", "three", "four"], key=len, reverse=True)  == ["three", "four", "two"] # longest to shortest
     /// # )"#).unwrap());
     /// ```
-    sorted(call_stack cs, env e, #x, key = None, reverse = false) {
+    sorted(call_stack cs, env e, #x, ?key, reverse = false) {
         let x = x.iter()?;
-        let mut it : Vec<(Value, Value)> = if key.get_type() == "NoneType" {
-            x.map(|x| (x.clone(), x)).collect()
-        } else {
-            let mut v = Vec::new();
-            for el in x {
-                v.push((
-                    el.clone(),
-                    key.call(cs, e.child("sorted"), vec![el], LinkedHashMap::new(), None, None)?
-                ));
+        let mut it = match key {
+            None => {
+                x.map(|x| (x.clone(), x)).collect()
             }
-            v
+            Some(key) => {
+                let mut v = Vec::new();
+                for el in x {
+                    v.push((
+                        el.clone(),
+                        key.call(cs, e.child("sorted"), vec![el], LinkedHashMap::new(), None, None)?
+                    ));
+                }
+                v
+            }
         };
         let reverse = reverse.to_bool();
         it.sort_by(
@@ -868,9 +892,9 @@ starlark_module! {global_functions =>
     /// ): returns a tuple containing the elements of the iterable x.
     ///
     /// With no arguments, `tuple()` returns the empty tuple.
-    tuple(#a = None) {
+    tuple(?#a) {
         let mut l = Vec::new();
-        if a.get_type() != "NoneType" {
+        if let Some(a) = a {
             for x in a.iter()? {
                 l.push(x.clone())
             }

@@ -913,15 +913,14 @@ starlark_module! {global =>
     /// "banana".replace("a", "o", 2)	 == "bonona"
     /// # )"#).unwrap());
     /// ```
-    string.replace(this, #old, #new, #count = None) {
+    string.replace(this, #old, #new, ?#count) {
         check_string!(old, replace);
         check_string!(new, replace);
         let (this, old, new) = (this.to_str(), old.to_str(), new.to_str());
         ok!(
-            if count.get_type() == "NoneType" {
-                this.replace(old.as_str(), new.as_str())
-            } else {
-                this.replacen(old.as_str(), new.as_str(), count.to_int()? as usize)
+            match count {
+                None => this.replace(old.as_str(), new.as_str()),
+                Some(count) => this.replacen(old.as_str(), new.as_str(), count.to_int()? as usize),
             }
         )
     }
