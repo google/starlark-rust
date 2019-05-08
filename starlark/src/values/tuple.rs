@@ -433,6 +433,56 @@ impl TypedValue for Tuple {
     }
 }
 
+impl From<()> for Value {
+    fn from(_a: ()) -> Value {
+        Value::new(Tuple::from(()))
+    }
+}
+
+macro_rules! from_tuple {
+    ($x: ty) => {
+        impl From<$x> for Value {
+            fn from(a: $x) -> Value {
+                Value::new(a)
+            }
+        }
+    };
+    ($x: ty, $y: tt) => {
+        impl<T: Into<Value> + Clone> From<$x> for Value {
+            fn from(a: $x) -> Value {
+                Value::new($y::from(a))
+            }
+        }
+    };
+    ($x: ty, $y: tt, noT) => {
+        impl From<$x> for Value {
+            fn from(a: $x) -> Value {
+                #[allow(clippy::cast_lossless)]
+                Value::new(a as $y)
+            }
+        }
+    };
+    ($y: tt, $($x: tt),+) => {
+        impl<$($x: Into<Value> + Clone),+> From<($($x),+)> for Value {
+            fn from(a: ($($x),+)) -> Value {
+                Value::new($y::from(a))
+            }
+        }
+
+    };
+}
+
+from_tuple!((T,), Tuple);
+from_tuple!(Tuple, T1, T2);
+from_tuple!(Tuple, T1, T2, T3);
+from_tuple!(Tuple, T1, T2, T3, T4);
+from_tuple!(Tuple, T1, T2, T3, T4, T5);
+from_tuple!(Tuple, T1, T2, T3, T4, T5, T6);
+from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7);
+from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8);
+from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+
 #[cfg(test)]
 mod tests {
     use super::*;

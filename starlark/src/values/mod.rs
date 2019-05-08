@@ -82,9 +82,7 @@ use linked_hash_map::LinkedHashMap;
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt;
-use std::hash::Hash;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -1220,163 +1218,6 @@ impl PartialOrd for Value {
     }
 }
 
-/// Define the NoneType type
-impl TypedValue for Option<()> {
-    immutable!();
-    any!();
-    default_compare!();
-    fn to_repr(&self) -> String {
-        "None".to_owned()
-    }
-    fn get_type(&self) -> &'static str {
-        "NoneType"
-    }
-    fn to_bool(&self) -> bool {
-        false
-    }
-    // just took the result of hash(None) in macos python 2.7.10 interpreter.
-    fn get_hash(&self) -> Result<u64, ValueError> {
-        Ok(9_223_380_832_852_120_682)
-    }
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
-    }
-}
-
-fn i64_arith_bin_op<F>(left: i64, right: Value, op: &'static str, f: F) -> ValueResult
-where
-    F: FnOnce(i64, i64) -> Result<i64, ValueError>,
-{
-    right
-        .downcast_apply(move |right: &i64| Ok(Value::new(f(left, *right)?)))
-        .unwrap_or_else(|| {
-            Err(ValueError::OperationNotSupported {
-                op: op.to_owned(),
-                left: left.get_type().to_owned(),
-                right: Some(right.get_type().to_owned()),
-            })
-        })
-}
-
-/// Define the int type
-impl TypedValue for i64 {
-    immutable!();
-    any!();
-    default_compare!();
-    fn to_str(&self) -> String {
-        format!("{}", self)
-    }
-    fn to_repr(&self) -> String {
-        self.to_str()
-    }
-    fn to_int(&self) -> Result<i64, ValueError> {
-        Ok(*self)
-    }
-    fn get_type(&self) -> &'static str {
-        "int"
-    }
-    fn to_bool(&self) -> bool {
-        *self != 0
-    }
-    fn get_hash(&self) -> Result<u64, ValueError> {
-        Ok(*self as u64)
-    }
-    fn plus(&self) -> ValueResult {
-        Ok(Value::new(*self))
-    }
-    fn minus(&self) -> ValueResult {
-        match self.checked_neg() {
-            Some(r) => Ok(Value::new(r)),
-            None => Err(ValueError::IntegerOverflow),
-        }
-    }
-    fn add(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "+", |a, b| {
-            a.checked_add(b).ok_or(ValueError::IntegerOverflow)
-        })
-    }
-    fn sub(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "-", |a, b| {
-            a.checked_sub(b).ok_or(ValueError::IntegerOverflow)
-        })
-    }
-    fn mul(&self, other: Value) -> ValueResult {
-        let other_i64 = other.downcast_apply(|other: &i64| {
-            self.checked_mul(*other).ok_or(ValueError::IntegerOverflow)
-        });
-        match other_i64 {
-            Some(r) => r.map(Value::new),
-            None => other.mul(Value::new(*self)),
-        }
-    }
-    fn percent(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "%", |a, b| {
-            if b == 0 {
-                return Err(ValueError::DivisionByZero);
-            }
-            // In Rust `i64::min_value() % -1` is overflow, but we should eval it to zero.
-            if *self == i64::min_value() && b == -1 {
-                return Ok(0);
-            }
-            let r = a % b;
-            if r == 0 {
-                Ok(0)
-            } else {
-                Ok(if b.signum() != r.signum() { r + b } else { r })
-            }
-        })
-    }
-    fn div(&self, other: Value) -> ValueResult {
-        self.floor_div(other)
-    }
-    fn floor_div(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "//", |a, b| {
-            if b == 0 {
-                return Err(ValueError::DivisionByZero);
-            }
-            let sig = b.signum() * a.signum();
-            let offset = if sig < 0 && a % b != 0 { 1 } else { 0 };
-            match a.checked_div(b) {
-                Some(div) => Ok(div - offset),
-                None => Err(ValueError::IntegerOverflow),
-            }
-        })
-    }
-
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
-    }
-}
-
-/// Define the bool type
-impl TypedValue for bool {
-    immutable!();
-    any!();
-    default_compare!();
-    fn to_repr(&self) -> String {
-        if *self {
-            "True".to_owned()
-        } else {
-            "False".to_owned()
-        }
-    }
-    fn to_int(&self) -> Result<i64, ValueError> {
-        Ok(if *self { 1 } else { 0 })
-    }
-    fn get_type(&self) -> &'static str {
-        "bool"
-    }
-    fn to_bool(&self) -> bool {
-        *self
-    }
-    fn get_hash(&self) -> Result<u64, ValueError> {
-        Ok(self.to_int().unwrap() as u64)
-    }
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
-    }
-}
-
 impl dyn TypedValue {
     // To be calleds by convert_slice_indices only
     fn convert_index_aux(
@@ -1550,116 +1391,15 @@ impl Value {
 }
 
 // Submodules
+pub mod boolean;
 pub mod dict;
 pub mod function;
 pub mod hashed_value;
+pub mod int;
 pub mod list;
+pub mod none;
 pub mod string;
 pub mod tuple;
-
-// Converters
-use self::list::List;
-use self::tuple::Tuple;
-use std::convert::TryFrom;
-macro_rules! from_X {
-    ($x: ty) => {
-        impl From<$x> for Value {
-            fn from(a: $x) -> Value {
-                Value::new(a)
-            }
-        }
-    };
-    ($x: ty, $y: tt) => {
-        impl<T: Into<Value> + Clone> From<$x> for Value {
-            fn from(a: $x) -> Value {
-                Value::new($y::from(a))
-            }
-        }
-    };
-    ($x: ty, $y: tt, noT) => {
-        impl From<$x> for Value {
-            fn from(a: $x) -> Value {
-                #[allow(clippy::cast_lossless)]
-                Value::new(a as $y)
-            }
-        }
-    };
-    ($y: tt, $($x: tt),+) => {
-        impl<$($x: Into<Value> + Clone),+> From<($($x),+)> for Value {
-            fn from(a: ($($x),+)) -> Value {
-                Value::new($y::from(a))
-            }
-        }
-
-    };
-}
-
-from_X!(i8, i64, noT);
-from_X!(i16, i64, noT);
-from_X!(i32, i64, noT);
-from_X!(u8, i64, noT);
-from_X!(u16, i64, noT);
-from_X!(u32, i64, noT);
-from_X!(u64, i64, noT);
-from_X!(i64);
-from_X!(bool);
-from_X!(String);
-impl From<Option<()>> for Value {
-    fn from(_a: Option<()>) -> Value {
-        Value::new(None)
-    }
-}
-impl From<()> for Value {
-    fn from(_a: ()) -> Value {
-        Value::new(Tuple::from(()))
-    }
-}
-from_X!((T,), Tuple);
-from_X!(Tuple, T1, T2);
-from_X!(Tuple, T1, T2, T3);
-from_X!(Tuple, T1, T2, T3, T4);
-from_X!(Tuple, T1, T2, T3, T4, T5);
-from_X!(Tuple, T1, T2, T3, T4, T5, T6);
-from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7);
-from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8);
-from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9);
-from_X!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone> TryFrom<HashMap<T1, T2>>
-    for Value
-{
-    type Error = ValueError;
-
-    fn try_from(a: HashMap<T1, T2>) -> Result<Value, ValueError> {
-        Ok(Value::new(dict::Dictionary::try_from(a)?))
-    }
-}
-impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone>
-    TryFrom<LinkedHashMap<T1, T2>> for Value
-{
-    type Error = ValueError;
-
-    fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Value, ValueError> {
-        Ok(Value::new(dict::Dictionary::try_from(a)?))
-    }
-}
-from_X!(Vec<T>, List);
-impl<'a> From<&'a str> for Value {
-    fn from(a: &'a str) -> Value {
-        Value::new(a.to_owned())
-    }
-}
-
-// A convenient macro for testing and documentation.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! int_op {
-    ($v1:tt. $op:ident($v2:expr)) => {
-        $v1.$op(Value::new($v2)).unwrap().to_int().unwrap()
-    };
-    ($v1:tt. $op:ident()) => {
-        $v1.$op().unwrap().to_int().unwrap()
-    };
-}
 
 #[cfg(test)]
 mod tests {
@@ -1694,18 +1434,6 @@ mod tests {
             Err(ValueError::IndexOutOfBound(-1)),
             Value::new(-8).convert_index(7)
         );
-    }
-
-    #[test]
-    fn test_arithmetic_operators() {
-        assert_eq!(1, int_op!(1.plus())); // 1.plus() = +1 = 1
-        assert_eq!(-1, int_op!(1.minus())); // 1.minus() = -1
-        assert_eq!(3, int_op!(1.add(2))); // 1.add(2) = 1 + 2 = 3
-        assert_eq!(-1, int_op!(1.sub(2))); // 1.sub(2) = 1 - 2 = -1
-        assert_eq!(6, int_op!(2.mul(3))); // 2.mul(3) = 2 * 3 = 6
-                                          // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
-        assert_eq!(2, int_op!(5.percent(3)));
-        assert_eq!(3, int_op!(7.div(2))); // 7.div(2) = 7 / 2 = 3
     }
 
     #[test]
