@@ -20,9 +20,15 @@ use std::hash::Hash;
 /// `LinkedHashSet` is a tiny wrapper around `LinkedHashMap`.
 ///
 /// Using `LinkedHashMap` directly to avoid adding extra dependency.
-#[derive(PartialEq, Eq, Debug, Clone, Default)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub(crate) struct LinkedHashSet<K: Eq + Hash> {
     map: LinkedHashMap<K, ()>,
+}
+
+impl<K: Eq + Hash> Default for LinkedHashSet<K> {
+    fn default() -> Self {
+        LinkedHashSet::new()
+    }
 }
 
 impl<K: Eq + Hash> LinkedHashSet<K> {

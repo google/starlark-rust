@@ -29,16 +29,15 @@
 //!
 //! Defining a new Starlark type can be done by implenting the [TypedValue](trait.TypedValue.html)
 //! trait. All method of that trait are operation needed by Starlark interpreter to understand the
-//! type. The [not_supported!](macro.not_supported.html) macro let us tell which operation is not
-//! supported by the current type.
+//! type. Most of `TypedValue` methods are optional with default implementations returning error.
 //!
 //! For example the `NoneType` trait implementation is the following:
 //!
 //! ```rust
-//! # use starlark::{any, immutable};
-//! # use starlark::values::{TypedValue, Value};
+//! # use starlark::values::{TypedValue, Value, Immutable};
 //! # use starlark::values::error::ValueError;
-//! use std::cmp::Ordering;
+//! # use std::cmp::Ordering;
+//! # use std::iter;
 //!
 //! /// Define the NoneType type
 //! pub enum NoneType {
@@ -46,18 +45,20 @@
 //! }
 //!
 //! impl TypedValue for NoneType {
-//!     immutable!();
-//!     any!();
-//!     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-//!         // assert type
-//!         other.downcast_ref::<NoneType>().unwrap();
+//!     type Holder = Immutable<Self>;
+//!     const TYPE: &'static str = "NoneType";
+//!
+//!     fn compare(&self, _other: &NoneType) -> Result<Ordering, ValueError> {
 //!         Ok(Ordering::Equal)
+//!     }
+//!     fn equals(&self, _other: &NoneType) -> Result<bool, ValueError> {
+//!         Ok(true)
+//!     }
+//!     fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item=Value> + 'a> {
+//!         Box::new(iter::empty())
 //!     }
 //!     fn to_repr(&self) -> String {
 //!         "None".to_owned()
-//!     }
-//!     fn get_type(&self) -> &'static str {
-//!         "NoneType"
 //!     }
 //!     fn to_bool(&self) -> bool {
 //!         false
@@ -65,9 +66,6 @@
 //!     // just took the result of hash(None) in macos python 2.7.10 interpreter.
 //!     fn get_hash(&self) -> Result<u64, ValueError> {
 //!         Ok(9_223_380_832_852_120_682)
-//!     }
-//!     fn is_descendant(&self, _other: &TypedValue) -> bool {
-//!         false
 //!     }
 //! }
 //! ```
@@ -91,30 +89,30 @@ use crate::values::iter::{FakeTypedIterable, RefIterable, TypedIterable};
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
 use std::any::Any;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{RefCell, RefMut};
 use std::cmp::Ordering;
 use std::fmt;
-use std::ops::Deref;
+use std::marker;
 use std::rc::Rc;
 
 /// A value in Starlark.
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value(Rc<RefCell<dyn TypedValue>>);
+pub struct Value(Rc<dyn ValueHolderDyn>);
 
 pub type ValueResult = Result<Value, ValueError>;
 
 impl Value {
     /// Create a new `Value` from a static value.
-    pub fn new<T: 'static + TypedValue>(t: T) -> Value {
-        Value(Rc::new(RefCell::new(t)))
+    pub fn new<T: TypedValue>(t: T) -> Value {
+        Value(Rc::new(ValueHolder::new(t)))
     }
 
     /// Clone for inserting into the other container, using weak reference if we do a
     /// recursive insertion.
-    pub fn clone_for_container(&self, other: &dyn TypedValue) -> Result<Value, ValueError> {
-        if self.is_descendant(other) {
+    pub fn clone_for_container<T: TypedValue>(&self, container: &T) -> Result<Value, ValueError> {
+        if self.is_descendant(DataPtr::from(container)) {
             Err(ValueError::UnsupportedRecursiveDataStructure)
         } else {
             Ok(self.clone())
@@ -122,7 +120,7 @@ impl Value {
     }
 
     pub fn clone_for_container_value(&self, other: &Value) -> Result<Value, ValueError> {
-        if self.is_descendant(other.0.borrow().deref()) {
+        if self.is_descendant_value(other) {
             Err(ValueError::UnsupportedRecursiveDataStructure)
         } else {
             Ok(self.clone())
@@ -131,43 +129,438 @@ impl Value {
 
     /// Determine if the value pointed by other is a descendant of self
     pub fn is_descendant_value(&self, other: &Value) -> bool {
-        let borrowed = other.0.borrow();
-        self.is_descendant(borrowed.deref())
+        self.0.is_descendant(other.0.data_ptr())
+    }
+}
+
+pub trait Mutability {
+    type Content: TypedValue;
+
+    /// This type is mutable or immutable.
+    const MUTABLE: bool;
+
+    /// Type of cell which contains the object.
+    type Cell: RefCellOrImmutable<Content = Self::Content>;
+
+    /// Type of cell which contains mutability flag.
+    type MutabilityCell: MutabilityCell;
+}
+
+struct ValueHolder<T: TypedValue> {
+    mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell,
+    content: <<T as TypedValue>::Holder as Mutability>::Cell,
+}
+
+impl<T: TypedValue> ValueHolder<T> {
+    fn new(value: T) -> ValueHolder<T> {
+        ValueHolder {
+            mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell::new(),
+            content: <<T as TypedValue>::Holder as Mutability>::Cell::new(value),
+        }
+    }
+}
+
+/// Type parameter for immutable types.
+pub struct Immutable<T>(marker::PhantomData<T>);
+/// Type parameter for mutable types.
+pub struct Mutable<T>(marker::PhantomData<T>);
+
+impl<T: TypedValue> Mutability for Mutable<T> {
+    type Content = T;
+    const MUTABLE: bool = true;
+    type Cell = RefCell<T>;
+    type MutabilityCell = MutableMutability;
+}
+
+impl<T: TypedValue> Mutability for Immutable<T> {
+    type Content = T;
+    const MUTABLE: bool = false;
+    type Cell = ImmutableCell<T>;
+    type MutabilityCell = ImmutableMutability;
+}
+
+/// Pointer to data, used for cycle checks.
+#[derive(Copy, Clone)]
+pub struct DataPtr(*const ());
+
+impl<T: TypedValue> From<*const T> for DataPtr {
+    fn from(p: *const T) -> Self {
+        DataPtr(p as *const ())
+    }
+}
+
+impl<T: TypedValue> From<&'_ T> for DataPtr {
+    fn from(p: &T) -> Self {
+        DataPtr::from(p as *const T)
+    }
+}
+
+impl From<Value> for DataPtr {
+    fn from(v: Value) -> Self {
+        v.0.data_ptr()
+    }
+}
+
+impl PartialEq for DataPtr {
+    fn eq(&self, other: &DataPtr) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
+    fn as_any_mut(&self) -> Result<Option<RefMut<'_, dyn Any>>, ValueError> {
+        self.mutability.get().test()?;
+        Ok(if T::Holder::MUTABLE {
+            Some(RefMut::map(self.content.borrow_mut(), |v| {
+                v as &mut dyn Any
+            }))
+        } else {
+            None
+        })
     }
 
-    /// Return true if other is pointing to the same value as self
-    pub fn same_as(&self, other: &dyn TypedValue) -> bool {
-        // We use raw pointers..
-        let p: *const dyn TypedValue = other;
-        let p1: *const dyn TypedValue = self.0.as_ptr();
-        p1 == p
+    fn as_any_ref(&self) -> RefOrRef<'_, dyn Any> {
+        RefOrRef::map(self.content.borrow(), |v| v as &dyn Any)
     }
+
+    fn data_ptr(&self) -> DataPtr {
+        DataPtr::from(self.content.as_ptr())
+    }
+
+    /// Freezes the current value.
+    fn freeze(&self) {
+        self.mutability.freeze();
+        for mut value in self
+            .content
+            .borrow()
+            .values_for_descendant_check_and_freeze()
+        {
+            value.freeze();
+        }
+    }
+
+    /// Freezes the current value for iterating over.
+    fn freeze_for_iteration(&self) {
+        self.mutability.freeze_for_iteration();
+    }
+
+    /// Unfreezes the current value for iterating over.
+    fn unfreeze_for_iteration(&self) {
+        self.mutability.unfreeze_for_iteration();
+    }
+
+    fn to_str(&self) -> String {
+        self.content.borrow().to_str()
+    }
+
+    fn to_repr(&self) -> String {
+        self.content.borrow().to_repr()
+    }
+
+    fn get_type(&self) -> &'static str {
+        T::TYPE
+    }
+
+    fn to_bool(&self) -> bool {
+        self.content.borrow().to_bool()
+    }
+
+    fn to_int(&self) -> Result<i64, ValueError> {
+        self.content.borrow().to_int()
+    }
+
+    fn get_hash(&self) -> Result<u64, ValueError> {
+        self.content.borrow().get_hash()
+    }
+
+    fn is_descendant(&self, other: DataPtr) -> bool {
+        if self.data_ptr() == other {
+            return true;
+        }
+        if let Ok(borrow) = self.content.try_borrow() {
+            borrow
+                .values_for_descendant_check_and_freeze()
+                .any(|x| x.is_descendant(other))
+        } else {
+            // We have already borrowed mutably this value,
+            // which means we are trying to mutate it, assigning other to it.
+            true
+        }
+    }
+
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        let _stack_depth_guard = call_stack::try_inc()?;
+
+        match other.downcast_ref::<T>() {
+            Some(other) => self.content.borrow().equals(&*other),
+            None => Ok(false),
+        }
+    }
+
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+        let _stack_depth_guard = call_stack::try_inc()?;
+
+        match other.downcast_ref::<T>() {
+            Some(other) => self.content.borrow().compare(&*other),
+            None => Err(ValueError::OperationNotSupported {
+                op: "compare".to_owned(),
+                left: self.get_type().to_owned(),
+                right: Some(other.get_type().to_owned()),
+            }),
+        }
+    }
+
+    fn call(
+        &self,
+        call_stack: &CallStack,
+        env: Environment,
+        positional: Vec<Value>,
+        named: LinkedHashMap<String, Value>,
+        args: Option<Value>,
+        kwargs: Option<Value>,
+    ) -> ValueResult {
+        self.content
+            .borrow()
+            .call(call_stack, env, positional, named, args, kwargs)
+    }
+
+    fn at(&self, index: Value) -> Result<Value, ValueError> {
+        self.content.borrow().at(index)
+    }
+
+    fn set_at(&self, index: Value, new_value: Value) -> Result<(), ValueError> {
+        // must explicitly check for mutability, otherwise `borrow_mut` below will fail
+        if !T::Holder::MUTABLE {
+            return Err(ValueError::OperationNotSupported {
+                op: "[] =".to_owned(),
+                left: self.get_type().to_owned(),
+                right: Some(index.get_type().to_owned()),
+            });
+        }
+        self.mutability.get().test()?;
+        self.content.borrow_mut().set_at(index, new_value)
+    }
+
+    fn slice(
+        &self,
+        start: Option<Value>,
+        stop: Option<Value>,
+        stride: Option<Value>,
+    ) -> Result<Value, ValueError> {
+        self.content.borrow().slice(start, stop, stride)
+    }
+
+    fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
+        let borrowed: RefOrRef<'_, T> = self.content.borrow();
+        let mut err = Ok(());
+        let typed_into_iter = RefOrRef::map(borrowed, |t| match t.iter() {
+            Ok(r) => r,
+            Err(e) => {
+                err = Err(e);
+                &FakeTypedIterable
+            }
+        });
+        err?;
+        Ok(RefIterable::new(typed_into_iter))
+    }
+
+    fn length(&self) -> Result<i64, ValueError> {
+        self.content.borrow().length()
+    }
+
+    fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {
+        self.content.borrow().get_attr(attribute)
+    }
+
+    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
+        self.content.borrow().has_attr(attribute)
+    }
+
+    fn set_attr(&self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
+        // must explicitly check for mutability, otherwise `borrow_mut` below will fail
+        if !T::Holder::MUTABLE {
+            return Err(ValueError::OperationNotSupported {
+                op: format!(".{} =", attribute),
+                left: self.get_type().to_owned(),
+                right: None,
+            });
+        }
+        self.mutability.get().test()?;
+        self.content.borrow_mut().set_attr(attribute, new_value)
+    }
+
+    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+        self.content.borrow().dir_attr()
+    }
+
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+        self.content.borrow().is_in(other)
+    }
+
+    fn plus(&self) -> Result<Value, ValueError> {
+        self.content.borrow().plus().map(Value::new)
+    }
+
+    fn minus(&self) -> Result<Value, ValueError> {
+        self.content.borrow().minus().map(Value::new)
+    }
+
+    fn add(&self, other: Value) -> Result<Value, ValueError> {
+        match other.downcast_ref::<T>() {
+            Some(other) => self.content.borrow().add(&*other).map(Value::new),
+            None => Err(ValueError::IncorrectParameterType),
+        }
+    }
+
+    fn sub(&self, other: Value) -> Result<Value, ValueError> {
+        match other.downcast_ref() {
+            Some(other) => self.content.borrow().sub(&*other).map(Value::new),
+            None => Err(ValueError::IncorrectParameterType),
+        }
+    }
+
+    fn mul(&self, other: Value) -> Result<Value, ValueError> {
+        self.content.borrow().mul(other)
+    }
+
+    fn percent(&self, other: Value) -> Result<Value, ValueError> {
+        self.content.borrow().percent(other)
+    }
+
+    fn div(&self, other: Value) -> Result<Value, ValueError> {
+        self.content.borrow().div(other)
+    }
+
+    fn floor_div(&self, other: Value) -> Result<Value, ValueError> {
+        self.content.borrow().floor_div(other)
+    }
+
+    fn pipe(&self, other: Value) -> Result<Value, ValueError> {
+        self.content.borrow().pipe(other)
+    }
+}
+
+/// `ValueHolder` as virtual functions to put into `Value`.
+/// Should not be used or implemented directly.
+#[doc(hidden)]
+trait ValueHolderDyn {
+    /// This function panics is value is borrowed,
+    /// `None` is returned for immutable types,
+    /// and `Err` is returned when value is locked for iteration or frozen.
+    fn as_any_mut(&self) -> Result<Option<RefMut<'_, dyn Any>>, ValueError>;
+
+    /// This function panics if value is mutably borrowed.
+    fn as_any_ref(&self) -> RefOrRef<'_, dyn Any>;
+
+    /// Pointer to `TypedValue` object, used for cycle checks.
+    fn data_ptr(&self) -> DataPtr;
+
+    fn freeze(&self);
+
+    fn freeze_for_iteration(&self);
+
+    fn unfreeze_for_iteration(&self);
+
+    fn to_str(&self) -> String;
+
+    fn to_repr(&self) -> String;
+
+    fn get_type(&self) -> &'static str;
+
+    fn to_bool(&self) -> bool;
+
+    fn to_int(&self) -> Result<i64, ValueError>;
+
+    fn get_hash(&self) -> Result<u64, ValueError>;
+
+    fn is_descendant(&self, other: DataPtr) -> bool;
+
+    fn equals(&self, other: &Value) -> Result<bool, ValueError>;
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError>;
+
+    fn call(
+        &self,
+        call_stack: &CallStack,
+        env: Environment,
+        positional: Vec<Value>,
+        named: LinkedHashMap<String, Value>,
+        args: Option<Value>,
+        kwargs: Option<Value>,
+    ) -> ValueResult;
+
+    fn at(&self, index: Value) -> ValueResult;
+
+    fn set_at(&self, index: Value, _new_value: Value) -> Result<(), ValueError>;
+    fn slice(
+        &self,
+        start: Option<Value>,
+        stop: Option<Value>,
+        stride: Option<Value>,
+    ) -> ValueResult;
+
+    fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError>;
+
+    fn length(&self) -> Result<i64, ValueError>;
+
+    fn get_attr(&self, attribute: &str) -> ValueResult;
+
+    fn has_attr(&self, _attribute: &str) -> Result<bool, ValueError>;
+
+    fn set_attr(&self, attribute: &str, _new_value: Value) -> Result<(), ValueError>;
+
+    fn dir_attr(&self) -> Result<Vec<String>, ValueError>;
+
+    fn is_in(&self, other: &Value) -> Result<bool, ValueError>;
+
+    fn plus(&self) -> ValueResult;
+
+    fn minus(&self) -> ValueResult;
+
+    fn add(&self, other: Value) -> ValueResult;
+
+    fn sub(&self, other: Value) -> ValueResult;
+
+    fn mul(&self, other: Value) -> ValueResult;
+
+    fn percent(&self, other: Value) -> ValueResult;
+
+    fn div(&self, other: Value) -> ValueResult;
+
+    fn floor_div(&self, other: Value) -> ValueResult;
+
+    fn pipe(&self, other: Value) -> ValueResult;
 }
 
 /// A trait for a value with a type that all variable container
 /// will implement.
-pub trait TypedValue: 'static {
-    /// Return the state of object mutability.
-    fn mutability(&self) -> IterableMutability;
+pub trait TypedValue: Sized + 'static {
+    /// Must be either `MutableHolder<Self>` or `ImmutableHolder<Self>`
+    type Holder: Mutability<Content = Self>;
 
-    /// Convert to an Any. This allows for operation on the native type.
-    /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
-    fn as_any(&self) -> &dyn Any;
+    /// Return a string describing the type of self, as returned by the type() function.
+    const TYPE: &'static str;
 
-    /// Convert to a mutable Any. This allows for operation on the native type.
-    /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-
-    /// Freeze, i.e. make the value immutable.
-    fn freeze(&mut self);
-
-    /// Freeze for interation, i.e. make the value temporary immutable. This does not
-    /// propage to child element commpared to the freeze() function.
-    fn freeze_for_iteration(&mut self);
-
-    /// Unfreeze after a call to freeze_for_iteration(), i.e. make the value mutable
-    /// again.
-    fn unfreeze_for_iteration(&mut self);
+    /// Return a list of values to be used in freeze or descendant check operations.
+    ///
+    /// Objects which do not contain references to other Starlark objects typically
+    /// implement it by returning an empty iterator:
+    ///
+    /// ```
+    /// # use starlark::values::*;
+    /// # use std::iter;
+    /// # struct MyType;
+    ///
+    /// # impl TypedValue for MyType {
+    /// #    type Holder = Immutable<MyType>;
+    /// #    const TYPE: &'static str = "MyType";
+    /// #
+    /// fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item=Value> + 'a> {
+    ///     Box::new(iter::empty())
+    /// }
+    /// #
+    /// # }
+    /// ```
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a>;
 
     /// Return a string describing of self, as returned by the str() function.
     fn to_str(&self) -> String {
@@ -176,11 +569,8 @@ pub trait TypedValue: 'static {
 
     /// Return a string representation of self, as returned by the repr() function.
     fn to_repr(&self) -> String {
-        format!("<{}>", self.get_type())
+        format!("<{}>", Self::TYPE)
     }
-
-    /// Return a string describing the type of self, as returned by the type() function.
-    fn get_type(&self) -> &'static str;
 
     /// Convert self to a Boolean truth value, as returned by the bool() function.
     fn to_bool(&self) -> bool {
@@ -194,7 +584,7 @@ pub trait TypedValue: 'static {
     fn to_int(&self) -> Result<i64, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "int()".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -205,9 +595,6 @@ pub trait TypedValue: 'static {
         Err(ValueError::NotHashableValue)
     }
 
-    /// Returns true if `other` is a descendent of the current value, used for sanity checks.
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool;
-
     /// Compare `self` with `other` for equality.
     ///
     /// `other` parameter is of type `Self` so it is safe to downcast it.
@@ -217,9 +604,9 @@ pub trait TypedValue: 'static {
     /// Note: `==` in Starlark should work for arbitary objects,
     /// so implementation should avoid returning errors except for
     //  unrecoverable runtime errors.
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+    fn equals(&self, other: &Self) -> Result<bool, ValueError> {
         let self_ptr = self as *const Self as *const ();
-        let other_ptr = &*other.0.borrow() as *const dyn TypedValue as *const ();
+        let other_ptr = other as *const Self as *const ();
         Ok(self_ptr == other_ptr)
     }
 
@@ -235,11 +622,11 @@ pub trait TypedValue: 'static {
     /// __Note__: This does not use the
     ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
     ///       the trait needs to know the actual type of the value we compare.
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+    fn compare(&self, _other: &Self) -> Result<Ordering, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "compare".to_owned(),
-            left: self.get_type().to_owned(),
-            right: Some(other.get_type().to_owned()),
+            left: Self::TYPE.to_owned(),
+            right: Some(Self::TYPE.to_owned()),
         })
     }
 
@@ -268,7 +655,7 @@ pub trait TypedValue: 'static {
     ) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "call()".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -279,7 +666,7 @@ pub trait TypedValue: 'static {
     fn at(&self, index: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "[]".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(index.get_type().to_owned()),
         })
     }
@@ -292,7 +679,7 @@ pub trait TypedValue: 'static {
     fn set_at(&mut self, index: Value, _new_value: Value) -> Result<(), ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "[] =".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(index.get_type().to_owned()),
         })
     }
@@ -346,7 +733,7 @@ pub trait TypedValue: 'static {
     ) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "[::]".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -355,7 +742,7 @@ pub trait TypedValue: 'static {
     /// container.
     fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
         Err(ValueError::TypeNotX {
-            object_type: self.get_type().to_owned(),
+            object_type: Self::TYPE.to_owned(),
             op: "iterable".to_owned(),
         })
     }
@@ -364,7 +751,7 @@ pub trait TypedValue: 'static {
     fn length(&self) -> Result<i64, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "len()".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -376,7 +763,7 @@ pub trait TypedValue: 'static {
     fn get_attr(&self, attribute: &str) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: format!(".{}", attribute),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -387,7 +774,7 @@ pub trait TypedValue: 'static {
     fn has_attr(&self, _attribute: &str) -> Result<bool, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "has_attr()".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -402,7 +789,7 @@ pub trait TypedValue: 'static {
     fn set_attr(&mut self, attribute: &str, _new_value: Value) -> Result<(), ValueError> {
         Err(ValueError::OperationNotSupported {
             op: format!(".{} =", attribute),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -412,7 +799,7 @@ pub trait TypedValue: 'static {
     fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "dir()".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -437,7 +824,7 @@ pub trait TypedValue: 'static {
         Err(ValueError::OperationNotSupported {
             op: "in".to_owned(),
             left: other.get_type().to_owned(),
-            right: Some(self.get_type().to_owned()),
+            right: Some(Self::TYPE.to_owned()),
         })
     }
 
@@ -452,10 +839,10 @@ pub trait TypedValue: 'static {
     /// assert_eq!(1, int_op!(1.plus()));  // 1.plus() = +1 = 1
     /// # }
     /// ```
-    fn plus(&self) -> ValueResult {
+    fn plus(&self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "+".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -471,10 +858,10 @@ pub trait TypedValue: 'static {
     /// assert_eq!(-1, int_op!(1.minus()));  // 1.minus() = -1
     /// # }
     /// ```
-    fn minus(&self) -> ValueResult {
+    fn minus(&self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "-".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: None,
         })
     }
@@ -490,11 +877,11 @@ pub trait TypedValue: 'static {
     /// assert_eq!(3, int_op!(1.add(2)));  // 1.add(2) = 1 + 2 = 3
     /// # }
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
+    fn add(&self, _other: &Self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "+".to_owned(),
-            left: self.get_type().to_owned(),
-            right: Some(other.get_type().to_owned()),
+            left: Self::TYPE.to_owned(),
+            right: Some(Self::TYPE.to_owned()),
         })
     }
 
@@ -509,11 +896,11 @@ pub trait TypedValue: 'static {
     /// assert_eq!(-1, int_op!(1.sub(2)));  // 1.sub(2) = 1 - 2 = -1
     /// # }
     /// ```
-    fn sub(&self, other: Value) -> ValueResult {
+    fn sub(&self, _other: &Self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "-".to_owned(),
-            left: self.get_type().to_owned(),
-            right: Some(other.get_type().to_owned()),
+            left: Self::TYPE.to_owned(),
+            right: Some(Self::TYPE.to_owned()),
         })
     }
 
@@ -531,7 +918,7 @@ pub trait TypedValue: 'static {
     fn mul(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "*".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
     }
@@ -554,7 +941,7 @@ pub trait TypedValue: 'static {
     fn percent(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "%".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
     }
@@ -573,7 +960,7 @@ pub trait TypedValue: 'static {
     fn div(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "/".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
     }
@@ -592,7 +979,7 @@ pub trait TypedValue: 'static {
     fn floor_div(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "//".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
     }
@@ -603,211 +990,55 @@ pub trait TypedValue: 'static {
     fn pipe(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "|".to_owned(),
-            left: self.get_type().to_owned(),
+            left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
     }
 }
 
-impl fmt::Debug for dyn TypedValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Value[{}]({})", self.get_type(), self.to_repr())
-    }
-}
-
-#[macro_export]
-macro_rules! any {
-    () => {
-        fn as_any(&self) -> &dyn ::std::any::Any {
-            self
-        }
-
-        fn as_any_mut(&mut self) -> &mut dyn ::std::any::Any {
-            self
-        }
-    }
-}
-
-/// Declare the value as immutable.
-#[macro_export]
-macro_rules! immutable {
-    () => {
-        fn mutability(&self) -> $crate::values::IterableMutability {
-            $crate::values::IterableMutability::Immutable
-        }
-        fn freeze(&mut self) {}
-        fn freeze_for_iteration(&mut self) {}
-        fn unfreeze_for_iteration(&mut self) {}
-    }
-}
-
-/// A helper enum for defining the level of mutability of an iterable.
-///
-/// # Examples
-///
-/// It is made to be used together with default_iterable_mutability! macro, e.g.:
-///
-/// ```rust,ignore
-/// pub struct MyIterable {
-///   IterableMutability mutability;
-///   // ...
-/// }
-///
-/// impl Value for MyIterable {
-///    // define freeze* functions
-///    define_iterable_mutability!(mutability)
-///    
-///    // Later you can use mutability.test()? to
-///    // return an error if trying to mutate a frozen object.
-/// }
-/// ```
-#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
-pub enum IterableMutability {
-    Mutable,
-    Immutable,
-    FrozenForIteration,
-}
-
-impl IterableMutability {
-    /// Tests the mutability value and return the appropriate error
-    ///
-    /// This method is to be called simply `mutability.test()?` to return
-    /// an error if the current container is no longer mutable.
-    pub fn test(self) -> Result<(), ValueError> {
-        match self {
-            IterableMutability::Mutable => Ok(()),
-            IterableMutability::Immutable => Err(ValueError::CannotMutateImmutableValue),
-            IterableMutability::FrozenForIteration => Err(ValueError::MutationDuringIteration),
-        }
-    }
-
-    /// Freezes the current value, can be used when implementing the `freeze` function
-    /// of the [TypedValue] trait.
-    pub fn freeze(&mut self) {
-        match *self {
-            IterableMutability::Immutable => {}
-            IterableMutability::Mutable => {
-                *self = IterableMutability::Immutable;
-            }
-            IterableMutability::FrozenForIteration => {
-                panic!("attempt to freeze during iteration");
-            }
-        }
-    }
-
-    /// Freezes the current value for iterating over, to be used to implement the
-    /// `freeze_for_iteration` function of the [TypedValue] trait.
-    pub fn freeze_for_iteration(&mut self) {
-        match *self {
-            IterableMutability::Immutable => {}
-            IterableMutability::Mutable => *self = IterableMutability::FrozenForIteration,
-            IterableMutability::FrozenForIteration => panic!("already frozen"),
-        }
-    }
-
-    /// Unfreezes the current value for iterating over, to be used to implement the
-    /// `unfreeze_for_iteration` function of the [TypedValue] trait.
-    pub fn unfreeze_for_iteration(&mut self) {
-        match *self {
-            IterableMutability::Immutable => {}
-            IterableMutability::Mutable => {
-                panic!("not frozen");
-            }
-            IterableMutability::FrozenForIteration => *self = IterableMutability::Mutable,
-        }
-    }
-}
-
-/// Define functions *freeze_for_iteration/immutable for type using [IterableMutability].
-///
-/// E.g., if `mutability` is a field of type [IterableMutability], then
-/// `define_iterable_mutability(mutability)` would define the four function
-/// `immutable`, `freeze_for_iteration` and `unfreeze_for_iteration`
-/// for the current trait implementation.
-#[macro_export]
-macro_rules! define_iterable_mutability {
-    ($name: ident) => {
-        fn mutability(&self) -> $crate::values::IterableMutability { self.$name }
-        fn freeze_for_iteration(&mut self) { self.$name.freeze_for_iteration() }
-        fn unfreeze_for_iteration(&mut self) { self.$name.unfreeze_for_iteration() }
     }
 }
 
 impl Value {
     pub fn freeze(&mut self) {
-        let mut borrowed = self.0.borrow_mut();
-        borrowed.freeze()
+        self.0.freeze()
     }
     pub fn freeze_for_iteration(&mut self) {
-        let mut borrowed = self.0.borrow_mut();
-        borrowed.freeze_for_iteration()
+        self.0.freeze_for_iteration()
     }
     pub fn unfreeze_for_iteration(&mut self) {
-        let mut borrowed = self.0.borrow_mut();
-        borrowed.unfreeze_for_iteration()
+        self.0.unfreeze_for_iteration()
     }
     pub fn to_str(&self) -> String {
-        self.0.borrow().to_str()
+        self.0.to_str()
     }
     pub fn to_repr(&self) -> String {
-        self.0.borrow().to_repr()
+        self.0.to_repr()
     }
     pub fn get_type(&self) -> &'static str {
-        let borrowed = self.0.borrow();
-        borrowed.get_type()
+        self.0.get_type()
     }
     pub fn to_bool(&self) -> bool {
-        let borrowed = self.0.borrow();
-        borrowed.to_bool()
+        self.0.to_bool()
     }
     pub fn to_int(&self) -> Result<i64, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.to_int()
+        self.0.to_int()
     }
     pub fn get_hash(&self) -> Result<u64, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.get_hash()
+        self.0.get_hash()
     }
     pub fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        let _stack_depth_guard = call_stack::try_inc()?;
-
-        let self_borrow = self.0.borrow();
-        let other_borrow = other.0.borrow();
-
-        if self_borrow.as_any().type_id() != other_borrow.as_any().type_id() {
-            Ok(false)
-        } else {
-            self_borrow.equals(other)
-        }
+        self.0.equals(other)
     }
     pub fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        let _stack_depth_guard = call_stack::try_inc()?;
-
-        let self_borrow = self.0.borrow();
-        let other_borrow = other.0.borrow();
-
-        if self_borrow.as_any().type_id() != other_borrow.as_any().type_id() {
-            Err(ValueError::OperationNotSupported {
-                op: "compare".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(other.get_type().to_owned()),
-            })
-        } else {
-            self_borrow.compare(other)
-        }
+        self.0.compare(other)
     }
 
-    pub fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        if self.same_as(other) {
-            return true;
-        }
-        let try_borrowed = self.0.try_borrow();
-        if let Ok(borrowed) = try_borrowed {
-            borrowed.is_descendant(other)
-        } else {
-            // We have already borrowed mutably this value, which means we are trying to mutate it, assigning other to it.
-            true
-        }
+    pub fn is_descendant(&self, other: DataPtr) -> bool {
+        self.0.is_descendant(other)
     }
 
     pub fn call(
@@ -819,34 +1050,16 @@ impl Value {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.call(call_stack, globals, positional, named, args, kwargs)
-    }
-    pub fn at(&self, index: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.at(index)
+        self.0
+            .call(call_stack, globals, positional, named, args, kwargs)
     }
 
-    fn borrow_mut_check_mutability(&self) -> Result<RefMut<dyn TypedValue>, ValueError> {
-        // `borrow_mut` might fail because value is borrowed immutably for iteration.
-        // In that case we should not `panic` inside `borrow_mut`
-        // but return proper error instead.
-        // So we borrow immutably to query for mutability.
-        let borrowed = match self.0.try_borrow_mut() {
-            Ok(borrowed) => borrowed,
-            Err(..) => {
-                self.0.borrow().mutability().test()?;
-                panic!("Not frozen, but cannot be mutably borrowed");
-            }
-        };
-        // Still need to check for mutability because value can be frozen.
-        borrowed.mutability().test()?;
-        Ok(borrowed)
+    pub fn at(&self, index: Value) -> ValueResult {
+        self.0.at(index)
     }
 
     pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        let mut borrowed = self.borrow_mut_check_mutability()?;
-        borrowed.set_at(index, new_value)
+        self.0.set_at(index, new_value)
     }
     pub fn slice(
         &self,
@@ -854,88 +1067,55 @@ impl Value {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.slice(start, stop, stride)
+        self.0.slice(start, stop, stride)
     }
     pub fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
-        let borrowed: Ref<'_, dyn TypedValue> = self.0.borrow();
-        let mut err = Ok(());
-        let typed_into_iter = Ref::map(borrowed, |t| match t.iter() {
-            Ok(r) => r,
-            Err(e) => {
-                err = Err(e);
-                &FakeTypedIterable
-            }
-        });
-        err?;
-        Ok(RefIterable::new(typed_into_iter))
+        self.0.iter()
     }
     pub fn length(&self) -> Result<i64, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.length()
+        self.0.length()
     }
     pub fn get_attr(&self, attribute: &str) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.get_attr(attribute)
+        self.0.get_attr(attribute)
     }
     pub fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.has_attr(attribute)
+        self.0.has_attr(attribute)
     }
     pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        let mut borrowed = self.borrow_mut_check_mutability()?;
-        borrowed.set_attr(attribute, new_value)
+        self.0.set_attr(attribute, new_value)
     }
     pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.dir_attr()
+        self.0.dir_attr()
     }
     pub fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.is_in(other)
+        self.0.is_in(other)
     }
     pub fn plus(&self) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.plus()
+        self.0.plus()
     }
     pub fn minus(&self) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.minus()
+        self.0.minus()
     }
     pub fn add(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.add(other)
+        self.0.add(other)
     }
     pub fn sub(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.sub(other)
+        self.0.sub(other)
     }
     pub fn mul(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.mul(other)
+        self.0.mul(other)
     }
     pub fn percent(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.percent(other)
+        self.0.percent(other)
     }
     pub fn div(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.div(other)
+        self.0.div(other)
     }
     pub fn floor_div(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.floor_div(other)
+        self.0.floor_div(other)
     }
     pub fn pipe(&self, other: Value) -> ValueResult {
-        let borrowed = self.0.borrow();
-        borrowed.pipe(other)
-    }
-}
-
-impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        let borrowed = self.0.borrow();
-        write!(f, "{:?}", borrowed)
+        self.0.pipe(other)
     }
 }
 
@@ -952,7 +1132,7 @@ impl PartialEq for Value {
 }
 impl Eq for Value {}
 
-impl dyn TypedValue {
+impl dyn ValueHolderDyn {
     // To be calleds by convert_slice_indices only
     fn convert_index_aux(
         len: i64,
@@ -1029,7 +1209,9 @@ impl dyn TypedValue {
             Err(..) => Err(ValueError::IncorrectParameterType),
         }
     }
+}
 
+impl Value {
     /// Parse indices for slicing.
     ///
     /// Takes the object length and 3 optional values and returns `(i64, i64, i64)`
@@ -1045,14 +1227,14 @@ impl dyn TypedValue {
     /// let ten      = Some(Value::new(10));
     ///
     /// # assert!(
-    /// TypedValue::convert_slice_indices(7, six, None, None).unwrap() == (6, 7, 1)
+    /// Value::convert_slice_indices(7, six, None, None).unwrap() == (6, 7, 1)
     /// # );
     /// # assert!(
-    /// TypedValue::convert_slice_indices(7, minusone.clone(), None, minusone.clone()).unwrap()
+    /// Value::convert_slice_indices(7, minusone.clone(), None, minusone.clone()).unwrap()
     ///        == (6, -1, -1)
     /// # );
     /// # assert!(
-    /// TypedValue::convert_slice_indices(7, minusone, ten, None).unwrap() == (6, 7, 1)
+    /// Value::convert_slice_indices(7, minusone, ten, None).unwrap() == (6, 7, 1)
     /// # );
     /// ```
     pub fn convert_slice_indices(
@@ -1074,8 +1256,9 @@ impl dyn TypedValue {
                 let def_end = if stride < 0 { -1 } else { len };
                 let clamp = if stride < 0 { -1 } else { 0 };
                 let start =
-                    TypedValue::convert_index_aux(len, start, def_start, clamp, len + clamp);
-                let stop = TypedValue::convert_index_aux(len, stop, def_end, clamp, len + clamp);
+                    ValueHolderDyn::convert_index_aux(len, start, def_start, clamp, len + clamp);
+                let stop =
+                    ValueHolderDyn::convert_index_aux(len, stop, def_end, clamp, len + clamp);
                 match (start, stop) {
                     (Ok(s1), Ok(s2)) => Ok((s1, s2, stride)),
                     (Err(x), ..) => Err(x),
@@ -1092,10 +1275,10 @@ impl Value {
     /// if contained object has different type than requested.
     ///
     /// This function panics if the `Value` is borrowed mutably.
-    pub fn downcast_ref<T: Any + TypedValue>(&self) -> Option<Ref<T>> {
-        let borrow = self.0.borrow();
-        if borrow.as_any().is::<T>() {
-            Some(Ref::map(borrow, |r| r.as_any().downcast_ref().unwrap()))
+    pub fn downcast_ref<T: TypedValue>(&self) -> Option<RefOrRef<'_, T>> {
+        let any = self.0.as_any_ref();
+        if any.is::<T>() {
+            Some(RefOrRef::map(any, |any| any.downcast_ref().unwrap()))
         } else {
             None
         }
@@ -1107,29 +1290,22 @@ impl Value {
     /// This function panics if the `Value` is borrowed.
     ///
     /// Error is returned if the value is frozen or frozen for iteration.
-    pub fn downcast_mut<T: Any + TypedValue>(&self) -> Result<Option<RefMut<T>>, ValueError> {
-        let borrow = self.borrow_mut_check_mutability()?;
-        if borrow.as_any().is::<T>() {
-            Ok(Some(RefMut::map(borrow, |r| {
-                r.as_any_mut().downcast_mut().unwrap()
-            })))
+    pub fn downcast_mut<T: TypedValue<Holder = Mutable<T>>>(
+        &self,
+    ) -> Result<Option<RefMut<'_, T>>, ValueError> {
+        let any = match self.0.as_any_mut()? {
+            Some(any) => any,
+            None => return Ok(None),
+        };
+        Ok(if any.is::<T>() {
+            Some(RefMut::map(any, |any| any.downcast_mut().unwrap()))
         } else {
-            Ok(None)
-        }
+            None
+        })
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
-        let borrowed = self.0.borrow();
-        borrowed.convert_index(len)
-    }
-
-    pub fn convert_slice_indices(
-        len: i64,
-        start: Option<Value>,
-        stop: Option<Value>,
-        stride: Option<Value>,
-    ) -> Result<(i64, i64, i64), ValueError> {
-        TypedValue::convert_slice_indices(len, start, stop, stride)
+        self.0.convert_index(len)
     }
 }
 
@@ -1142,13 +1318,20 @@ pub mod hashed_value;
 pub mod int;
 pub mod iter;
 pub mod list;
+pub mod mutability;
 pub mod none;
 pub mod string;
 pub mod tuple;
 
+use crate::values::mutability::{
+    ImmutableCell, ImmutableMutability, MutabilityCell, MutableMutability, RefCellOrImmutable,
+    RefOrRef,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::iter;
 
     #[test]
     fn test_convert_index() {
@@ -1156,15 +1339,15 @@ mod tests {
         assert_eq!(Ok(6), Value::new(-1).convert_index(7));
         assert_eq!(
             Ok((6, 7, 1)),
-            TypedValue::convert_slice_indices(7, Some(Value::new(6)), None, None)
+            Value::convert_slice_indices(7, Some(Value::new(6)), None, None)
         );
         assert_eq!(
             Ok((6, -1, -1)),
-            TypedValue::convert_slice_indices(7, Some(Value::new(-1)), None, Some(Value::new(-1)))
+            Value::convert_slice_indices(7, Some(Value::new(-1)), None, Some(Value::new(-1)))
         );
         assert_eq!(
             Ok((6, 7, 1)),
-            TypedValue::convert_slice_indices(7, Some(Value::new(-1)), Some(Value::new(10)), None)
+            Value::convert_slice_indices(7, Some(Value::new(-1)), Some(Value::new(10)), None)
         );
         // Errors
         assert_eq!(
@@ -1188,27 +1371,26 @@ mod tests {
 
         /// Define the NoneType type
         impl TypedValue for WrappedNumber {
-            immutable!();
-            any!();
             fn to_repr(&self) -> String {
                 format!("{:?}", self)
             }
-            fn get_type(&self) -> &'static str {
-                "WrappedNumber"
-            }
+            const TYPE: &'static str = "WrappedNumber";
             fn to_bool(&self) -> bool {
                 false
             }
             fn get_hash(&self) -> Result<u64, ValueError> {
                 Ok(self.0)
             }
-            fn compare<'a>(&'a self, other: &Value) -> Result<std::cmp::Ordering, ValueError> {
-                let other = other.downcast_ref::<WrappedNumber>().unwrap();
-                Ok(std::cmp::Ord::cmp(self, &*other))
+            fn compare(&self, other: &WrappedNumber) -> Result<std::cmp::Ordering, ValueError> {
+                Ok(std::cmp::Ord::cmp(self, other))
             }
 
-            fn is_descendant(&self, _other: &TypedValue) -> bool {
-                false
+            type Holder = Immutable<WrappedNumber>;
+
+            fn values_for_descendant_check_and_freeze<'a>(
+                &'a self,
+            ) -> Box<Iterator<Item = Value> + 'a> {
+                Box::new(iter::empty())
             }
         }
 

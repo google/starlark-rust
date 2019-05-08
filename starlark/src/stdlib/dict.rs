@@ -104,9 +104,7 @@ starlark_module! {global =>
     /// ```
     dict.items(this) {
         let this = this.downcast_ref::<Dictionary>().unwrap();
-        let v : Vec<Value> =
-            this.get_content().iter().map(|x| Value::from((x.0.get_value().clone(), x.1.clone()))).collect();
-        ok!(v)
+        ok!(this.items())
     }
 
     /// [dict.keys](
@@ -170,7 +168,7 @@ starlark_module! {global =>
                 let key_error = format!("Key '{}' not found in '{}'", key.to_repr(), this.to_repr());
                 starlark_err!(
                     DICT_KEY_NOT_FOUND_ERROR_CODE,
-                    key_error.clone(),
+                    key_error,
                     "not found".to_owned()
                 );
             } else {
@@ -346,8 +344,7 @@ starlark_module! {global =>
     /// ```
     dict.values(this) {
         let this = this.downcast_ref::<Dictionary>().unwrap();
-        let v : Vec<Value> = this.get_content().iter().map(|x| x.1.clone()).collect();
-        ok!(v)
+        ok!(this.values())
     }
 }
 
@@ -372,10 +369,9 @@ mod tests {
 
     #[test]
     fn test_get() {
-        starlark_ok!(
-            r#"x = {"one": 1, "two": 2}; (
-            x.get("one") == 1 and x.get("three") == None and x.get("three", 0) == 0)"#
-        );
+        starlark_ok!(r#"x = {"one": 1, "two": 2}; (x.get("one") == 1)"#);
+        starlark_ok!(r#"x = {"one": 1, "two": 2}; (x.get("three") == None)"#);
+        starlark_ok!(r#"x = {"one": 1, "two": 2}; (x.get("three", 0) == 0)"#);
     }
 
     #[test]

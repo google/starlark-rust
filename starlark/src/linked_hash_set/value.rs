@@ -20,18 +20,9 @@ use crate::values::iter::TypedIterable;
 use crate::values::*;
 use std::num::Wrapping;
 
+#[derive(Default, Clone)]
 pub(crate) struct Set {
-    mutability: IterableMutability,
     content: LinkedHashSet<HashedValue>,
-}
-
-impl Default for Set {
-    fn default() -> Self {
-        Set {
-            mutability: IterableMutability::Mutable,
-            content: LinkedHashSet::new(),
-        }
-    }
 }
 
 impl Set {
@@ -67,6 +58,10 @@ impl Set {
         }
     }
 
+    /// Get a reference to underlying set.
+    ///
+    /// Must not expose `content` directly, because `Set` must hold
+    /// certain invariants like no cyclic references.
     pub(crate) fn get_content(&self) -> &LinkedHashSet<HashedValue> {
         &self.content
     }
@@ -77,7 +72,6 @@ impl Set {
 
     pub fn copy(&self) -> Set {
         Set {
-            mutability: IterableMutability::Mutable,
             content: self.content.clone(),
         }
     }
@@ -92,6 +86,14 @@ impl Set {
         let value = HashedValue::new(value)?;
         self.content.insert(value);
         Ok(())
+    }
+
+    pub fn insert_hashed(&mut self, v: HashedValue) {
+        self.content.insert(v);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
     }
 
     pub fn pop_front(&mut self) -> Option<Value> {
@@ -114,19 +116,10 @@ impl From<Set> for Value {
 }
 
 impl TypedValue for Set {
-    any!();
+    type Holder = Mutable<Set>;
 
-    define_iterable_mutability!(mutability);
-
-    fn freeze(&mut self) {
-        self.mutability.freeze();
-        let mut new = LinkedHashSet::with_capacity(self.content.len());
-        while !self.content.is_empty() {
-            let mut value = self.content.pop_front().unwrap();
-            value.freeze();
-            new.insert(value);
-        }
-        self.content = new;
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.content.iter().map(|v| v.get_value().clone()))
     }
 
     /// Returns a string representation for the set
@@ -156,16 +149,12 @@ impl TypedValue for Set {
         )
     }
 
-    fn get_type(&self) -> &'static str {
-        "set"
-    }
+    const TYPE: &'static str = "set";
     fn to_bool(&self) -> bool {
         !self.content.is_empty()
     }
 
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        let other = other.downcast_ref::<Self>().unwrap();
-
+    fn equals(&self, other: &Set) -> Result<bool, ValueError> {
         if self.content.len() != other.content.len() {
             return Ok(false);
         }
@@ -197,12 +186,6 @@ impl TypedValue for Set {
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         Ok(self.content.contains(&HashedValue::new(other.clone())?))
-    }
-
-    fn is_descendant(&self, other: &TypedValue) -> bool {
-        self.content
-            .iter()
-            .any(|x| x.get_value().same_as(other) || x.get_value().is_descendant(other))
     }
 
     fn slice(
@@ -240,24 +223,17 @@ impl TypedValue for Set {
     ///     == Value::from(vec![1, 2, 3, 2, 3])
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "set" {
-            let mut result = Set {
-                mutability: IterableMutability::Mutable,
-                content: LinkedHashSet::new(),
-            };
-            for x in self.content.iter() {
-                result.content.insert(x.clone());
-            }
-            for x in &other.iter()? {
-                result
-                    .content
-                    .insert_if_absent(HashedValue::new(x.clone())?);
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+    fn add(&self, other: &Set) -> Result<Self, ValueError> {
+        let mut result = Set {
+            content: LinkedHashSet::new(),
+        };
+        for x in &self.content {
+            result.content.insert(x.clone());
         }
+        for x in &other.content {
+            result.content.insert_if_absent(x.clone());
+        }
+        Ok(result)
     }
 
     fn get_hash(&self) -> Result<u64, ValueError> {

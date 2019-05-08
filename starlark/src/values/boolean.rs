@@ -17,6 +17,7 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::iter;
 
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
@@ -26,14 +27,8 @@ impl From<bool> for Value {
 
 /// Define the bool type
 impl TypedValue for bool {
-    immutable!();
-    any!();
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        Ok(*self == *other.downcast_ref::<bool>().unwrap())
-    }
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        Ok(self.cmp(&*other.downcast_ref::<bool>().unwrap()))
-    }
+    type Holder = Immutable<Self>;
+    const TYPE: &'static str = "bool";
     fn to_repr(&self) -> String {
         if *self {
             "True".to_owned()
@@ -44,16 +39,21 @@ impl TypedValue for bool {
     fn to_int(&self) -> Result<i64, ValueError> {
         Ok(if *self { 1 } else { 0 })
     }
-    fn get_type(&self) -> &'static str {
-        "bool"
-    }
     fn to_bool(&self) -> bool {
         *self
     }
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(self.to_int().unwrap() as u64)
     }
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(iter::empty())
+    }
+
+    fn equals(&self, other: &bool) -> Result<bool, ValueError> {
+        Ok(self == other)
+    }
+    fn compare(&self, other: &bool) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(other))
     }
 }

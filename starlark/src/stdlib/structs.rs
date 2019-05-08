@@ -24,21 +24,11 @@ pub struct StarlarkStruct {
 }
 
 impl TypedValue for StarlarkStruct {
-    any!();
+    type Holder = Immutable<StarlarkStruct>;
 
-    fn mutability(&self) -> IterableMutability {
-        IterableMutability::Immutable
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.fields.values().cloned())
     }
-
-    fn freeze(&mut self) {
-        for x in self.fields.values() {
-            x.clone().freeze();
-        }
-    }
-
-    fn freeze_for_iteration(&mut self) {}
-
-    fn unfreeze_for_iteration(&mut self) {}
 
     fn to_repr(&self) -> String {
         let mut r = "struct(".to_owned();
@@ -54,19 +44,9 @@ impl TypedValue for StarlarkStruct {
         r
     }
 
-    fn get_type(&self) -> &'static str {
-        "struct"
-    }
+    const TYPE: &'static str = "struct";
 
-    fn is_descendant(&self, other: &TypedValue) -> bool {
-        self.fields
-            .values()
-            .any(|x| x.same_as(other) || x.is_descendant(other))
-    }
-
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        let other = other.downcast_ref::<StarlarkStruct>().unwrap();
-
+    fn equals(&self, other: &StarlarkStruct) -> Result<bool, ValueError> {
         if self.fields.len() != other.fields.len() {
             return Ok(false);
         }

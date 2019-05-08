@@ -17,6 +17,7 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::iter;
 
 // A convenient macro for testing and documentation.
 #[macro_export]
@@ -72,7 +73,7 @@ where
         Some(right) => Ok(Value::new(f(left, *right)?)),
         None => Err(ValueError::OperationNotSupported {
             op: op.to_owned(),
-            left: left.get_type().to_owned(),
+            left: i64::TYPE.to_owned(),
             right: Some(right.get_type().to_owned()),
         }),
     }
@@ -80,25 +81,19 @@ where
 
 /// Define the int type
 impl TypedValue for i64 {
-    immutable!();
-    any!();
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        Ok(*self == *other.downcast_ref::<i64>().unwrap())
-    }
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        Ok(self.cmp(&*other.downcast_ref::<i64>().unwrap()))
+    type Holder = Immutable<Self>;
+    const TYPE: &'static str = "int";
+    fn equals(&self, other: &i64) -> Result<bool, ValueError> {
+        Ok(self == other)
     }
     fn to_str(&self) -> String {
         format!("{}", self)
     }
     fn to_repr(&self) -> String {
-        self.to_str()
+        format!("{}", self)
     }
     fn to_int(&self) -> Result<i64, ValueError> {
         Ok(*self)
-    }
-    fn get_type(&self) -> &'static str {
-        "int"
     }
     fn to_bool(&self) -> bool {
         *self != 0
@@ -106,24 +101,17 @@ impl TypedValue for i64 {
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(*self as u64)
     }
-    fn plus(&self) -> ValueResult {
-        Ok(Value::new(*self))
+    fn plus(&self) -> Result<i64, ValueError> {
+        Ok(*self)
     }
-    fn minus(&self) -> ValueResult {
-        match self.checked_neg() {
-            Some(r) => Ok(Value::new(r)),
-            None => Err(ValueError::IntegerOverflow),
-        }
+    fn minus(&self) -> Result<i64, ValueError> {
+        self.checked_neg().ok_or(ValueError::IntegerOverflow)
     }
-    fn add(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "+", |a, b| {
-            a.checked_add(b).ok_or(ValueError::IntegerOverflow)
-        })
+    fn add(&self, other: &i64) -> Result<i64, ValueError> {
+        self.checked_add(*other).ok_or(ValueError::IntegerOverflow)
     }
-    fn sub(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "-", |a, b| {
-            a.checked_sub(b).ok_or(ValueError::IntegerOverflow)
-        })
+    fn sub(&self, other: &i64) -> Result<i64, ValueError> {
+        self.checked_sub(*other).ok_or(ValueError::IntegerOverflow)
     }
     fn mul(&self, other: Value) -> ValueResult {
         match other.downcast_ref::<i64>() {
@@ -168,8 +156,12 @@ impl TypedValue for i64 {
         })
     }
 
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(iter::empty())
+    }
+
+    fn compare(&self, other: &i64) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(other))
     }
 }
 

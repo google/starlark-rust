@@ -17,18 +17,16 @@ use crate::stdlib::list::LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE;
 use crate::values::error::{RuntimeError, ValueError};
 use crate::values::iter::TypedIterable;
 use crate::values::*;
-use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 
+#[derive(Clone, Default)]
 pub struct List {
-    mutability: IterableMutability,
     content: Vec<Value>,
 }
 
 impl<T: Into<Value>> From<Vec<T>> for List {
     fn from(a: Vec<T>) -> List {
         List {
-            mutability: IterableMutability::Mutable,
             content: a.into_iter().map(Into::into).collect(),
         }
     }
@@ -44,7 +42,6 @@ impl List {
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Value {
         Value::new(List {
-            mutability: IterableMutability::Mutable,
             content: Vec::new(),
         })
     }
@@ -97,18 +94,17 @@ impl List {
         self.content.remove(position);
         Ok(())
     }
+
+    pub fn remove_at(&mut self, index: usize) -> Value {
+        self.content.remove(index)
+    }
 }
 
 impl TypedValue for List {
-    any!();
+    type Holder = Mutable<List>;
 
-    define_iterable_mutability!(mutability);
-
-    fn freeze(&mut self) {
-        self.mutability.freeze();
-        for x in self.content.iter_mut() {
-            x.borrow_mut().freeze();
-        }
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.content.iter().cloned())
     }
 
     /// Returns a string representation for the list
@@ -138,16 +134,12 @@ impl TypedValue for List {
         )
     }
 
-    fn get_type(&self) -> &'static str {
-        "list"
-    }
+    const TYPE: &'static str = "list";
     fn to_bool(&self) -> bool {
         !self.content.is_empty()
     }
 
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        let other = other.downcast_ref::<List>().unwrap();
-
+    fn equals(&self, other: &List) -> Result<bool, ValueError> {
         if self.content.len() != other.content.len() {
             return Ok(false);
         }
@@ -170,8 +162,7 @@ impl TypedValue for List {
         }
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        let other = other.downcast_ref::<List>().unwrap();
+    fn compare(&self, other: &List) -> Result<Ordering, ValueError> {
         let mut iter1 = self.content.iter();
         let mut iter2 = other.content.iter();
         loop {
@@ -205,12 +196,6 @@ impl TypedValue for List {
             }
         }
         Ok(false)
-    }
-
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        self.content
-            .iter()
-            .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
     fn slice(
@@ -248,22 +233,17 @@ impl TypedValue for List {
     ///     == Value::from(vec![1, 2, 3, 2, 3])
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "list" {
-            let mut result = List {
-                mutability: IterableMutability::Mutable,
-                content: Vec::new(),
-            };
-            for x in self.content.iter() {
-                result.content.push(x.clone());
-            }
-            for x in &other.iter()? {
-                result.content.push(x.clone());
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+    fn add(&self, other: &List) -> Result<List, ValueError> {
+        let mut result = List {
+            content: Vec::new(),
+        };
+        for x in &self.content {
+            result.content.push(x.clone());
         }
+        for x in &other.content {
+            result.content.push(x.clone());
+        }
+        Ok(result)
     }
 
     /// Repeat `other` times this tuple.
@@ -285,7 +265,6 @@ impl TypedValue for List {
         if other.get_type() == "int" || other.get_type() == "boolean" {
             let l = other.to_int()?;
             let mut result = List {
-                mutability: IterableMutability::Mutable,
                 content: Vec::new(),
             };
             for _i in 0..l {
@@ -311,7 +290,6 @@ impl TypedValue for List {
     /// assert_eq!(&v.to_repr(), "[1, 1, [2, 3]]");
     /// ```
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.mutability.test()?;
         let i = index.convert_index(self.length()?)? as usize;
         self.content[i] = new_value.clone_for_container(self)?;
         Ok(())
