@@ -17,30 +17,32 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::iter;
 
 /// Define the NoneType type
+#[derive(Debug)]
 pub enum NoneType {
     None,
 }
 
+/// Define the NoneType type
 impl TypedValue for NoneType {
-    immutable!();
-    any!();
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        // assert type
-        other.downcast_ref::<NoneType>().unwrap();
+    type Holder = Immutable<Self>;
+    const TYPE: &'static str = "NoneType";
+
+    fn equals(&self, _other: &NoneType) -> Result<bool, ValueError> {
         Ok(true)
     }
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        // assert type
-        other.downcast_ref::<NoneType>().unwrap();
+    fn compare(&self, _other: &NoneType) -> Result<Ordering, ValueError> {
         Ok(Ordering::Equal)
     }
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(iter::empty())
+    }
+
     fn to_repr(&self) -> String {
         "None".to_owned()
-    }
-    fn get_type(&self) -> &'static str {
-        "NoneType"
     }
     fn to_bool(&self) -> bool {
         false
@@ -48,9 +50,6 @@ impl TypedValue for NoneType {
     // just took the result of hash(None) in macos python 2.7.10 interpreter.
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(9_223_380_832_852_120_682)
-    }
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
     }
 }
 

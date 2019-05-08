@@ -85,7 +85,7 @@ assert_eq("abc"[2], "c")
 # x[i] = ...
 x2 = "abc"
 def f(): x2[1] = 'B'
-f() ### Immutable
+f() ### [] = not supported for types string and int
 ---
 
 # slicing, x[i:j]

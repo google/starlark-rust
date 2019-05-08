@@ -22,6 +22,7 @@ use crate::values::error::RuntimeError;
 use crate::values::none::NoneType;
 use codemap::CodeMap;
 use std::convert::TryInto;
+use std::iter;
 use std::mem;
 use std::sync::{Arc, Mutex};
 
@@ -349,8 +350,11 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
 
 /// Define the function type
 impl TypedValue for Function {
-    immutable!();
-    any!();
+    type Holder = Immutable<Function>;
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(iter::empty())
+    }
 
     fn to_str(&self) -> String {
         to_str(&self.function_type, &self.signature)
@@ -359,9 +363,7 @@ impl TypedValue for Function {
         repr(&self.function_type, &self.signature)
     }
 
-    fn get_type(&self) -> &'static str {
-        "function"
-    }
+    const TYPE: &'static str = "function";
 
     fn call(
         &self,
@@ -459,15 +461,14 @@ impl TypedValue for Function {
         // Finally call the function with a new child environment
         (*self.function)(call_stack, globals, v)
     }
-
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
-    }
 }
 
 impl TypedValue for WrappedMethod {
-    immutable!();
-    any!();
+    type Holder = Immutable<WrappedMethod>;
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(vec![self.method.clone(), self.self_obj.clone()].into_iter())
+    }
 
     fn to_str(&self) -> String {
         self.method.to_str()
@@ -475,9 +476,7 @@ impl TypedValue for WrappedMethod {
     fn to_repr(&self) -> String {
         self.method.to_repr()
     }
-    fn get_type(&self) -> &'static str {
-        "function"
-    }
+    const TYPE: &'static str = "function";
 
     fn call(
         &self,
@@ -496,9 +495,5 @@ impl TypedValue for WrappedMethod {
             .collect();
         self.method
             .call(call_stack, env, positional, named, args, kwargs)
-    }
-
-    fn is_descendant(&self, _other: &TypedValue) -> bool {
-        false
     }
 }

@@ -296,6 +296,7 @@ mod tests {
 
     #[test]
     fn test_pop() {
+        starlark_ok!(r#"x = [1, 2, 3]; x.pop() == 3"#);
         starlark_ok!(r#"x = [1, 2, 3]; (x.pop() == 3 and x.pop() == 2 and x == [1])"#);
     }
 

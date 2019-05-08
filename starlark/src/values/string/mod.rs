@@ -22,10 +22,14 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 pub mod interpolation;
+use std::iter;
 
 impl TypedValue for String {
-    immutable!();
-    any!();
+    type Holder = Immutable<String>;
+
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(iter::empty())
+    }
 
     fn to_str(&self) -> String {
         self.clone()
@@ -39,9 +43,7 @@ impl TypedValue for String {
         )
     }
 
-    fn get_type(&self) -> &'static str {
-        "string"
-    }
+    const TYPE: &'static str = "string";
     fn to_bool(&self) -> bool {
         !self.is_empty()
     }
@@ -52,12 +54,12 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        Ok(*self == *other.downcast_ref::<String>().unwrap())
+    fn equals(&self, other: &String) -> Result<bool, ValueError> {
+        Ok(*self == *other)
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        Ok(self.cmp(other.downcast_ref::<String>().unwrap().deref()))
+    fn compare(&self, other: &String) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(&other.to_str()))
     }
 
     fn at(&self, index: Value) -> ValueResult {
@@ -75,10 +77,6 @@ impl TypedValue for String {
         } else {
             Err(ValueError::IncorrectParameterType)
         }
-    }
-
-    fn is_descendant(&self, _other: &dyn TypedValue) -> bool {
-        false
     }
 
     fn slice(
@@ -144,13 +142,8 @@ impl TypedValue for String {
     /// Value::from("abc").add(Value::from("def")).unwrap() == Value::from("abcdef")
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "string" {
-            let s: String = self.chars().chain(other.to_str().chars()).collect();
-            Ok(Value::new(s))
-        } else {
-            Err(ValueError::IncorrectParameterType)
-        }
+    fn add(&self, other: &String) -> Result<String, ValueError> {
+        Ok(self.chars().chain(other.to_str().chars()).collect())
     }
 
     /// Repeat `other` times this string.

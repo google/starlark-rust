@@ -300,7 +300,6 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.count(this: String, #needle: String, #start = 0, #end = NoneType::None) {
-        check_string!(needle, count);
         convert_indices!(this, start, end);
         let n = needle.as_str();
         let mut counter = 0 as i64;
@@ -330,7 +329,6 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.endswith(this: String, #suffix: String) {
-        check_string!(suffix, endswith);
         ok!(this.ends_with(suffix.as_str()))
     }
 
@@ -514,7 +512,6 @@ starlark_module! {global =>
     /// # )"#).is_err());
     /// ```
     string.index(this: String, #needle: String, #start = 0, #end = NoneType::None) {
-        check_string!(needle, count);
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
             if let Some(offset) = substring.find(needle.as_str()) {
@@ -900,8 +897,6 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.replace(this: String, #old: String, #new: String, ?#count: Option<usize>) {
-        check_string!(old, replace);
-        check_string!(new, replace);
         ok!(
             match count {
                 None => this.replace(old.as_str(), new.as_str()),

@@ -16,23 +16,22 @@
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::iter::TypedIterable;
+use crate::values::none::NoneType;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
-use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::Hash;
 
 /// The Dictionary type
+#[derive(Default)]
 pub struct Dictionary {
-    mutability: IterableMutability,
     content: LinkedHashMap<HashedValue, Value>,
 }
 
 impl Dictionary {
     pub fn new_typed() -> Dictionary {
         Dictionary {
-            mutability: IterableMutability::Mutable,
             content: LinkedHashMap::new(),
         }
     }
@@ -47,8 +46,7 @@ impl Dictionary {
     }
 
     pub fn get(&self, key: &Value) -> Result<Option<&Value>, ValueError> {
-        let key = HashedValue::new(key.clone())?;
-        Ok(self.content.get(&key))
+        Ok(self.get_hashed(&HashedValue::new(key.clone())?))
     }
 
     pub fn clear(&mut self) {
@@ -56,20 +54,38 @@ impl Dictionary {
     }
 
     pub fn remove(&mut self, key: &Value) -> Result<Option<Value>, ValueError> {
-        let key = HashedValue::new(key.clone())?;
-        Ok(self.content.remove(&key))
+        Ok(self.remove_hashed(&HashedValue::new(key.clone())?))
     }
 
     pub fn pop_front(&mut self) -> Option<(HashedValue, Value)> {
         self.content.pop_front()
     }
 
-    pub fn insert(&mut self, key: Value, value: Value) -> Result<(), ValueError> {
+    pub fn items(&self) -> Vec<(Value, Value)> {
+        self.content
+            .iter()
+            .map(|(k, v)| (k.get_value().clone(), v.clone()))
+            .collect()
+    }
+
+    pub fn values(&self) -> Vec<Value> {
+        self.content.values().cloned().collect()
+    }
+
+    pub fn get_hashed(&self, key: &HashedValue) -> Option<&Value> {
+        self.content.get(key)
+    }
+
+    pub fn insert(&mut self, key: Value, value: Value) -> Result<Value, ValueError> {
         let key = key.clone_for_container(self)?;
         let key = HashedValue::new(key)?;
         let value = value.clone_for_container(self)?;
         self.content.insert(key, value);
-        Ok(())
+        Ok(Value::new(NoneType::None))
+    }
+
+    pub fn remove_hashed(&mut self, key: &HashedValue) -> Option<Value> {
+        self.content.remove(key)
     }
 }
 
@@ -80,7 +96,6 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone> TryFrom<
 
     fn try_from(a: HashMap<T1, T2>) -> Result<Dictionary, ValueError> {
         let mut result = Dictionary {
-            mutability: IterableMutability::Mutable,
             content: LinkedHashMap::new(),
         };
         for (k, v) in a.iter() {
@@ -99,7 +114,6 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone>
 
     fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Dictionary, ValueError> {
         let mut result = Dictionary {
-            mutability: IterableMutability::Mutable,
             content: LinkedHashMap::new(),
         };
         for (k, v) in a.iter() {
@@ -113,16 +127,16 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone>
 
 /// Define the Dictionary type
 impl TypedValue for Dictionary {
-    any!();
+    type Holder = Mutable<Dictionary>;
 
-    fn freeze(&mut self) {
-        self.mutability.freeze();
-        for (_, v) in self.content.iter_mut() {
-            // XXX: We cannot freeze the key because they are immutable in rust, is it important?
-            (*v).borrow_mut().freeze();
-        }
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        // XXX: We cannot freeze the key because they are immutable in rust, is it important?
+        Box::new(
+            self.content
+                .iter()
+                .flat_map(|(k, v)| vec![k.get_value().clone(), v.clone()].into_iter()),
+        )
     }
-    define_iterable_mutability!(mutability);
 
     fn to_repr(&self) -> String {
         format!(
@@ -139,17 +153,12 @@ impl TypedValue for Dictionary {
         )
     }
 
-    fn get_type(&self) -> &'static str {
-        "dict"
-    }
+    const TYPE: &'static str = "dict";
     fn to_bool(&self) -> bool {
         !self.content.is_empty()
     }
 
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        // assert type
-        let other = other.downcast_ref::<Dictionary>().unwrap();
-
+    fn equals(&self, other: &Dictionary) -> Result<bool, ValueError> {
         if self.content.len() != other.content.len() {
             return Ok(false);
         }
@@ -183,21 +192,11 @@ impl TypedValue for Dictionary {
         Ok(self.content.contains_key(&HashedValue::new(other.clone())?))
     }
 
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        self.content.iter().any(|(k, v)| {
-            k.get_value().same_as(other)
-                || v.same_as(other)
-                || k.get_value().is_descendant(other)
-                || v.is_descendant(other)
-        })
-    }
-
     fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
         Ok(self)
     }
 
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.mutability.test()?;
         let index_key = HashedValue::new(index)?;
         let new_value = new_value.clone_for_container(self)?;
         {
@@ -210,24 +209,17 @@ impl TypedValue for Dictionary {
         Ok(())
     }
 
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "dict" {
-            let mut result = Dictionary {
-                mutability: IterableMutability::Mutable,
-                content: LinkedHashMap::new(),
-            };
-            for (k, v) in self.content.iter() {
-                result.content.insert(k.clone(), v.clone());
-            }
-            for k in &other.iter()? {
-                result
-                    .content
-                    .insert(HashedValue::new(k.clone())?, other.at(k)?.clone());
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+    fn add(&self, other: &Dictionary) -> Result<Dictionary, ValueError> {
+        let mut result = Dictionary {
+            content: LinkedHashMap::new(),
+        };
+        for (k, v) in &self.content {
+            result.content.insert(k.clone(), v.clone());
         }
+        for (k, v) in &other.content {
+            result.content.insert(k.clone(), v.clone());
+        }
+        Ok(result)
     }
 }
 

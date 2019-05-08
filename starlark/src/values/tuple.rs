@@ -16,12 +16,12 @@
 use crate::values::error::ValueError;
 use crate::values::iter::TypedIterable;
 use crate::values::*;
-use std::borrow::BorrowMut;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 
 /// A starlark tuple
+#[derive(Debug, Clone)]
 pub struct Tuple {
     content: Vec<Value>,
 }
@@ -260,22 +260,12 @@ impl<
 }
 
 impl TypedValue for Tuple {
-    any!();
+    type Holder = Immutable<Tuple>;
 
-    fn mutability(&self) -> IterableMutability {
-        IterableMutability::Immutable
-    }
-
-    fn freeze(&mut self) {
+    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
         // Tuple are weird, immutable but with potentially mutable
-        for x in self.content.iter_mut() {
-            x.borrow_mut().freeze();
-        }
+        Box::new(self.content.iter().cloned())
     }
-
-    fn freeze_for_iteration(&mut self) {}
-
-    fn unfreeze_for_iteration(&mut self) {}
 
     fn to_repr(&self) -> String {
         format!(
@@ -292,9 +282,7 @@ impl TypedValue for Tuple {
             if self.content.len() == 1 { "," } else { "" }
         )
     }
-    fn get_type(&self) -> &'static str {
-        "tuple"
-    }
+    const TYPE: &'static str = "tuple";
     fn to_bool(&self) -> bool {
         !self.content.is_empty()
     }
@@ -306,9 +294,7 @@ impl TypedValue for Tuple {
         Ok(s.finish())
     }
 
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        let other = other.downcast_ref::<Tuple>().unwrap();
-
+    fn equals(&self, other: &Tuple) -> Result<bool, ValueError> {
         if self.content.len() != other.content.len() {
             return Ok(false);
         }
@@ -331,8 +317,7 @@ impl TypedValue for Tuple {
         }
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        let other = other.downcast_ref::<Tuple>().unwrap();
+    fn compare(&self, other: &Tuple) -> Result<Ordering, ValueError> {
         let mut iter1 = self.content.iter();
         let mut iter2 = other.content.iter();
         loop {
@@ -366,12 +351,6 @@ impl TypedValue for Tuple {
             }
         }
         Ok(false)
-    }
-
-    fn is_descendant(&self, other: &dyn TypedValue) -> bool {
-        self.content
-            .iter()
-            .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
     fn slice(
@@ -408,21 +387,17 @@ impl TypedValue for Tuple {
     /// Value::from((1,2,3)).add(Value::from((2,3))).unwrap() == Value::from((1, 2, 3, 2, 3))
     /// # );
     /// ```
-    fn add(&self, other: Value) -> ValueResult {
-        if other.get_type() == "tuple" {
-            let mut result = Tuple {
-                content: Vec::new(),
-            };
-            for x in self.content.iter() {
-                result.content.push(x.clone());
-            }
-            for x in &other.iter()? {
-                result.content.push(x.clone());
-            }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+    fn add(&self, other: &Tuple) -> Result<Tuple, ValueError> {
+        let mut result = Tuple {
+            content: Vec::with_capacity(self.content.len() + other.content.len()),
+        };
+        for x in &self.content {
+            result.content.push(x.clone());
         }
+        for x in &other.content {
+            result.content.push(x.clone());
+        }
+        Ok(result)
     }
 
     /// Repeat `other` times this tuple.
