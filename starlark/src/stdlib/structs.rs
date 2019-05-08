@@ -36,11 +36,9 @@ impl TypedValue for StarlarkStruct {
         }
     }
 
-    not_supported!(freeze_for_iteration);
+    fn freeze_for_iteration(&mut self) {}
 
-    fn to_str(&self) -> String {
-        self.to_repr()
-    }
+    fn unfreeze_for_iteration(&mut self) {}
 
     fn to_repr(&self) -> String {
         let mut r = "struct(".to_owned();
@@ -60,33 +58,10 @@ impl TypedValue for StarlarkStruct {
         "struct"
     }
 
-    fn to_bool(&self) -> bool {
-        true
-    }
-
     fn is_descendant(&self, other: &TypedValue) -> bool {
         self.fields
             .values()
             .any(|x| x.same_as(other) || x.is_descendant(other))
-    }
-
-    fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {
-        match self.fields.get(attribute) {
-            Some(v) => Ok(v.clone()),
-            None => Err(ValueError::OperationNotSupported {
-                op: attribute.to_owned(),
-                left: self.to_repr(),
-                right: None,
-            }),
-        }
-    }
-
-    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        Ok(self.fields.contains_key(attribute))
-    }
-
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        Ok(self.fields.keys().cloned().collect())
     }
 
     fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
@@ -118,10 +93,24 @@ impl TypedValue for StarlarkStruct {
         }
     }
 
-    not_supported!(binop);
-    not_supported!(is_in, call);
-    not_supported!(set_attr);
-    not_supported!(iter, length, slice, set_at, at, get_hash, to_int);
+    fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {
+        match self.fields.get(attribute) {
+            Some(v) => Ok(v.clone()),
+            None => Err(ValueError::OperationNotSupported {
+                op: attribute.to_owned(),
+                left: self.to_repr(),
+                right: None,
+            }),
+        }
+    }
+
+    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
+        Ok(self.fields.contains_key(attribute))
+    }
+
+    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+        Ok(self.fields.keys().cloned().collect())
+    }
 }
 
 starlark_module! { global =>

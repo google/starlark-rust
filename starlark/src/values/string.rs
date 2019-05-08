@@ -35,7 +35,6 @@ impl TypedValue for String {
         )
     }
 
-    not_supported!(to_int);
     fn get_type(&self) -> &'static str {
         "string"
     }
@@ -316,11 +315,6 @@ impl TypedValue for String {
             Ok(Value::new(res))
         }
     }
-
-    not_supported!(iterable);
-    not_supported!(set_indexable);
-    not_supported!(attr, function);
-    not_supported!(plus, minus, sub, div, pipe, floor_div);
 }
 
 #[cfg(test)]

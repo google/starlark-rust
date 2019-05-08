@@ -117,7 +117,7 @@ impl TypedValue for Dictionary {
     }
     define_iterable_mutability!(mutability);
 
-    fn to_str(&self) -> String {
+    fn to_repr(&self) -> String {
         format!(
             "{{{}}}",
             self.content
@@ -130,10 +130,6 @@ impl TypedValue for Dictionary {
                     accum + ", " + &s.1
                 })
         )
-    }
-
-    fn to_repr(&self) -> String {
-        self.to_str()
     }
 
     fn get_type(&self) -> &'static str {
@@ -238,9 +234,6 @@ impl TypedValue for Dictionary {
             Err(ValueError::IncorrectParameterType)
         }
     }
-
-    not_supported!(plus, minus, sub, mul, div, pipe, percent, floor_div);
-    not_supported!(to_int, get_hash, slice, attr, function);
 }
 
 #[cfg(test)]
