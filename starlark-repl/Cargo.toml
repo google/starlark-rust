@@ -31,9 +31,11 @@ predicates = "1"
 tempfile = ">=3, <3.0.5"
 
 [lib]
+bench = false
 
 [[bin]]
 name = "starlark-repl"
+bench = false
 
 [features]
 default = ["linked_hash_set"]
