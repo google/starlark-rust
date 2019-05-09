@@ -397,8 +397,7 @@ macro_rules! check_type {
                         $fn,
                         "() expect a ",
                         stringify!($ty),
-                        " as first parameter while",
-                        "got a value of type {}."
+                        " as first parameter while got a value of type {}."
                     ),
                     $e.get_type()
                 ),
