@@ -13,7 +13,8 @@
 // limitations under the License.
 
 //! Define the string type for Starlark.
-use crate::values::string::interpolation::StringInterpolationError;
+use crate::values::error::ValueError;
+use crate::values::string::interpolation::ArgsFormat;
 use crate::values::*;
 use std;
 use std::cmp::Ordering;
@@ -212,119 +213,7 @@ impl TypedValue for String {
     /// # );
     /// ```
     fn percent(&self, other: Value) -> ValueResult {
-        let mut split_it = self.split('%');
-        let mut res = String::new();
-        let mut idx = 0;
-        let mut len = 0;
-        res += split_it.next().unwrap_or("");
-        let mut last_percent = false;
-        for s in split_it {
-            if s.is_empty() {
-                last_percent = !last_percent;
-                res.push('%');
-            } else if !last_percent {
-                let mut chars = s.chars().peekable();
-                let var = if let Some(&'(') = chars.peek() {
-                    let mut varname = String::new();
-                    chars.next();
-                    loop {
-                        match chars.next() {
-                            Some(')') => break,
-                            Some(ref x) => varname.push(*x),
-                            None => {
-                                return Err(
-                                    StringInterpolationError::UnexpectedEOFClosingParen.into()
-                                )
-                            }
-                        }
-                    }
-                    other.at(Value::new(varname))?.clone()
-                } else {
-                    match other.iter() {
-                        Ok(..) => {
-                            let val = other.at(Value::new(idx));
-                            idx += 1;
-                            match val {
-                                Ok(v) => {
-                                    len = other.length()?;
-                                    v.clone()
-                                }
-                                Err(..) => {
-                                    return Err(
-                                        StringInterpolationError::NotEnoughParameters.into()
-                                    );
-                                }
-                            }
-                        }
-                        Err(..) => {
-                            if idx == 0 {
-                                idx += 1;
-                                len = 1;
-                                other.clone()
-                            } else {
-                                // We need more than one argument.
-                                return Err(StringInterpolationError::NotEnoughParameters.into());
-                            }
-                        }
-                    }
-                };
-                match chars.next() {
-                    Some('s') => res += &var.to_str(),  // str(x)
-                    Some('r') => res += &var.to_repr(), // repr(x)
-                    // signed integer decimal
-                    Some('d') | Some('i') => res += &var.to_int()?.to_string(),
-                    // signed octal
-                    Some('o') => {
-                        let x = var.to_int()?;
-                        res += &format!("{}{:o}", if x.is_negative() { "-" } else { "" }, x.abs());
-                    }
-                    // signed hexadecimal, lowercase
-                    Some('x') => {
-                        let x = var.to_int()?;
-                        res += &format!("{}{:x}", if x.is_negative() { "-" } else { "" }, x.abs());
-                    }
-                    // signed hexadecimal, uppercase
-                    Some('X') => {
-                        let x = var.to_int()?;
-                        res += &format!("{}{:X}", if x.is_negative() { "-" } else { "" }, x.abs());
-                    }
-                    // x for string, chr(x) for int
-                    Some('c') => match var.get_type() {
-                        "string" => {
-                            if var.length()? != 1 {
-                                return Err(StringInterpolationError::ValueNotChar.into());
-                            } else {
-                                res += &var.to_str();
-                            }
-                        }
-                        _ => {
-                            let codepoint = var.to_int()? as u32;
-                            match std::char::from_u32(codepoint) {
-                                Some(c) => res.push(c),
-                                None => {
-                                    return Err(StringInterpolationError::ValueNotInUTFRange(
-                                        codepoint,
-                                    )
-                                    .into());
-                                }
-                            }
-                        }
-                    },
-                    Some(c) => return Err(StringInterpolationError::UnknownSpecifier(c).into()),
-                    None => return Err(StringInterpolationError::UnexpectedEOFPercent.into()),
-                }
-                let s: String = chars.collect();
-                res += &s;
-            } else {
-                last_percent = false;
-                res += s;
-            }
-        }
-        if idx < len {
-            Err(StringInterpolationError::TooManyParameters.into())
-        } else {
-            Ok(Value::new(res))
-        }
+        Ok(Value::new(ArgsFormat::parse(&self)?.format(other)?))
     }
 }
 
@@ -343,8 +232,6 @@ impl<'a> From<&'a str> for Value {
 #[cfg(test)]
 mod tests {
     use super::super::Value;
-    use std::collections::HashMap;
-    use std::convert::TryFrom;
 
     #[test]
     fn test_to_repr() {
@@ -419,36 +306,5 @@ mod tests {
         assert!(Value::from("abc").is_in(&Value::from("b")).unwrap());
         // "z" in "abc" == False
         assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap());
-    }
-
-    #[test]
-    fn test_string_interpolation() {
-        // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
-        assert_eq!(
-            Value::from("Hello %s, your score is %d")
-                .percent(Value::from(("Bob", 75)))
-                .unwrap(),
-            Value::from("Hello Bob, your score is 75")
-        );
-        // "%d %o %x %c" % (65, 65, 65, 65) == "65 101 41 A"
-        assert_eq!(
-            Value::from("%d %o %x %c")
-                .percent(Value::from((65, 65, 65, 65)))
-                .unwrap(),
-            Value::from("65 101 41 A")
-        );
-        // "%(greeting)s, %(audience)s" % {"greeting": "Hello", "audience": "world"} ==
-        //      "Hello, world"
-        let mut d = Value::try_from(HashMap::<String, Value>::new()).unwrap();
-        d.set_at(Value::from("greeting"), Value::from("Hello"))
-            .unwrap();
-        d.set_at(Value::from("audience"), Value::from("world"))
-            .unwrap();
-        assert_eq!(
-            Value::from("%(greeting)s, %(audience)s")
-                .percent(d)
-                .unwrap(),
-            Value::from("Hello, world")
-        );
     }
 }
