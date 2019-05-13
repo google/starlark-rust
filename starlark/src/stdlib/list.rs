@@ -217,11 +217,10 @@ starlark_module! {global =>
     /// x == [1]
     /// # )"#).unwrap());
     /// ```
-    list.pop(this, #index = None) {
-        let index = if index.get_type() == "NoneType" {
-            this.length()? - 1
-        } else {
-            index.to_int()?
+    list.pop(this, ?#index) {
+        let index = match index {
+            Some(index) => index.to_int()?,
+            None => this.length()? - 1,
         };
         if index < 0 || index >= this.length()? {
             return Err(ValueError::IndexOutOfBound(index));

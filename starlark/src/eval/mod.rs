@@ -903,6 +903,9 @@ pub fn eval_def(
                     return Err(x.into());
                 }
             }
+            FunctionParameter::Optional(..) => {
+                unreachable!("optional parameters only exist in native functions")
+            }
         }
     }
     let mut ctx = EvaluationContext {
