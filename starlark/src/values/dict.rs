@@ -236,6 +236,26 @@ impl TypedValue for Dictionary {
     }
 }
 
+impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone> TryFrom<HashMap<T1, T2>>
+    for Value
+{
+    type Error = ValueError;
+
+    fn try_from(a: HashMap<T1, T2>) -> Result<Value, ValueError> {
+        Ok(Value::new(dict::Dictionary::try_from(a)?))
+    }
+}
+
+impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone>
+    TryFrom<LinkedHashMap<T1, T2>> for Value
+{
+    type Error = ValueError;
+
+    fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Value, ValueError> {
+        Ok(Value::new(dict::Dictionary::try_from(a)?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

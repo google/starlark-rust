@@ -17,7 +17,7 @@ use crate::values::*;
 use std;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 
 impl TypedValue for String {
     immutable!();
@@ -314,6 +314,18 @@ impl TypedValue for String {
         } else {
             Ok(Value::new(res))
         }
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::new(s)
+    }
+}
+
+impl<'a> From<&'a str> for Value {
+    fn from(a: &'a str) -> Value {
+        Value::new(a.to_owned())
     }
 }
 

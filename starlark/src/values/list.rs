@@ -22,17 +22,18 @@ pub struct List {
     content: Vec<Value>,
 }
 
-impl<T: Into<Value> + Clone> From<Vec<T>> for List {
+impl<T: Into<Value>> From<Vec<T>> for List {
     fn from(a: Vec<T>) -> List {
-        let mut result = List {
+        List {
             mutability: IterableMutability::Mutable,
-            content: Vec::new(),
-        };
-        for x in a.iter() {
-            let v: Value = x.clone().into();
-            result.content.push(v);
+            content: a.into_iter().map(Into::into).collect(),
         }
-        result
+    }
+}
+
+impl<T: Into<Value>> From<Vec<T>> for Value {
+    fn from(a: Vec<T>) -> Value {
+        Value::new(List::from(a))
     }
 }
 
