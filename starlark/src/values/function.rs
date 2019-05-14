@@ -16,6 +16,7 @@
 use super::*;
 use crate::environment::Environment;
 use crate::eval::eval_def;
+use crate::stdlib::macros::param::TryParamConvertFromValue;
 use crate::syntax::ast::AstStatement;
 use crate::values::error::RuntimeError;
 use codemap::CodeMap;
@@ -50,30 +51,63 @@ pub enum FunctionArg {
 }
 
 impl FunctionArg {
-    pub fn into_normal(self) -> Result<Value, ValueError> {
+    pub fn into_normal<T: TryParamConvertFromValue>(
+        self,
+        param_name: &'static str,
+    ) -> Result<T, ValueError> {
         match self {
-            FunctionArg::Normal(v) => Ok(v),
+            FunctionArg::Normal(v) => {
+                T::try_from(v).map_err(|_| ValueError::IncorrectParameterTypeNamed(param_name))
+            }
             _ => Err(ValueError::IncorrectParameterType),
         }
     }
 
-    pub fn into_optional(self) -> Result<Option<Value>, ValueError> {
+    pub fn into_optional<T: TryParamConvertFromValue>(
+        self,
+        param_name: &'static str,
+    ) -> Result<Option<T>, ValueError> {
         match self {
-            FunctionArg::Optional(v) => Ok(v),
+            FunctionArg::Optional(Some(v)) => {
+                Ok(Some(T::try_from(v).map_err(|_| {
+                    ValueError::IncorrectParameterTypeNamed(param_name)
+                })?))
+            }
+            FunctionArg::Optional(None) => Ok(None),
             _ => Err(ValueError::IncorrectParameterType),
         }
     }
 
-    pub fn into_args_array(self) -> Result<Vec<Value>, ValueError> {
+    pub fn into_args_array<T: TryParamConvertFromValue>(
+        self,
+        param_name: &'static str,
+    ) -> Result<Vec<T>, ValueError> {
         match self {
-            FunctionArg::ArgsArray(v) => Ok(v),
+            FunctionArg::ArgsArray(v) => Ok(v
+                .into_iter()
+                .map(T::try_from)
+                .collect::<Result<Vec<T>, _>>()
+                .map_err(|_| ValueError::IncorrectParameterTypeNamed(param_name))?),
             _ => Err(ValueError::IncorrectParameterType),
         }
     }
 
-    pub fn into_kw_args_dict(self) -> Result<LinkedHashMap<String, Value>, ValueError> {
+    pub fn into_kw_args_dict<T: TryParamConvertFromValue>(
+        self,
+        param_name: &'static str,
+    ) -> Result<LinkedHashMap<String, T>, ValueError> {
         match self {
-            FunctionArg::KWArgsDict(v) => Ok(v),
+            FunctionArg::KWArgsDict(dict) => Ok({
+                let mut r = LinkedHashMap::new();
+                for (k, v) in dict {
+                    r.insert(
+                        k,
+                        T::try_from(v)
+                            .map_err(|_| ValueError::IncorrectParameterTypeNamed(param_name))?,
+                    );
+                }
+                r
+            }),
             _ => Err(ValueError::IncorrectParameterType),
         }
     }

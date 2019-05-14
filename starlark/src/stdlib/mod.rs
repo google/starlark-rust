@@ -29,7 +29,6 @@ use crate::values::*;
 // Errors -- CR = Critical Runtime
 const CHR_NOT_UTF8_CODEPOINT_ERROR_CODE: &str = "CR00";
 const DICT_ITERABLE_NOT_PAIRS_ERROR_CODE: &str = "CR01";
-const ATTR_NAME_NOT_STRING_ERROR_CODE: &str = "CR02";
 const INT_CONVERSION_FAILED_ERROR_CODE: &str = "CR03";
 const ORD_EXPECT_ONE_CHAR_ERROR_CODE: &str = "CR04";
 const EMPTY_ITERABLE_ERROR_CODE: &str = "CR05";
@@ -322,13 +321,12 @@ starlark_module! {global_functions =>
     /// enumerate(["one", "two"], 1) == [(1, "one"), (2, "two")]
     /// # )"#).unwrap());
     /// ```
-    enumerate(#it, #offset = 0) {
-        let v2 = offset.to_int()?;
+    enumerate(#it, #offset: i64 = 0) {
         let v : Vec<Value> =
             it
             .iter()?
             .enumerate()
-            .map(|(k, v)| Value::from((Value::new(k as i64 + v2), v)))
+            .map(|(k, v)| Value::from((Value::new(k as i64 + offset), v)))
             .collect();
         Ok(Value::from(v))
     }
@@ -348,29 +346,17 @@ starlark_module! {global_functions =>
     /// getattr("banana", "split")("a") == ["b", "n", "n", ""] # equivalent to "banana".split("a")
     /// # "#).unwrap());
     /// ```
-    getattr(env env, #a, #attr, #default=None) {
-        if attr.get_type() != "string" {
-            starlark_err!(
-                ATTR_NAME_NOT_STRING_ERROR_CODE,
-                format!(
-                    "Second arg of getattr() is of type {} while expecting type string",
-                    attr.get_type(),
-                ),
-                "Non string argument".to_owned()
-            );
-        } else {
-            let attr = attr.to_str();
-            match a.get_attr(&attr) {
-                Ok(v) => Ok(v),
-                x => match env.get_type_value(&a, &attr) {
-                    Some(v) => if v.get_type() == "function" {
-                        // Insert self so the method see the object it is acting on
-                        Ok(function::Function::new_self_call(a.clone(), v))
-                    } else {
-                        Ok(v)
-                    }
-                    None => if default.get_type() == "NoneType" { x } else { Ok(default) }
+    getattr(env env, #a, #attr: String, #default=None) {
+        match a.get_attr(&attr) {
+            Ok(v) => Ok(v),
+            x => match env.get_type_value(&a, &attr) {
+                Some(v) => if v.get_type() == "function" {
+                    // Insert self so the method see the object it is acting on
+                    Ok(function::Function::new_self_call(a.clone(), v))
+                } else {
+                    Ok(v)
                 }
+                None => if default.get_type() == "NoneType" { x } else { Ok(default) }
             }
         }
     }
@@ -380,28 +366,16 @@ starlark_module! {global_functions =>
     /// ): test if an object has an attribute
     ///
     /// `hasattr(x, name)` reports whether x has an attribute (field or method) named `name`.
-    hasattr(env env, #a, #attr) {
-        if attr.get_type() != "string" {
-            starlark_err!(
-                ATTR_NAME_NOT_STRING_ERROR_CODE,
-                format!(
-                    "Second arg of hasattr() is of type {} while expecting type string",
-                    attr.get_type(),
-                ),
-                "Non string argument".to_owned()
-            )
-        } else {
-            let attr = attr.to_str();
-            Ok(Value::new(
-                match env.get_type_value(&a, &attr) {
-                    Some(..) => true,
-                    None => match a.has_attr(&attr) {
-                        Ok(v) => v,
-                        _ => false,
-                    }
+    hasattr(env env, #a, #attr: String) {
+        Ok(Value::new(
+            match env.get_type_value(&a, &attr) {
+                Some(..) => true,
+                None => match a.has_attr(&attr) {
+                    Ok(v) => v,
+                    _ => false,
                 }
-            ))
-        }
+            }
+        ))
     }
 
     /// [hash](
@@ -729,18 +703,18 @@ starlark_module! {global_functions =>
     /// list(range(10, 3, -2))                  == [10, 8, 6, 4]
     /// # )"#).unwrap());
     /// ```
-    range(#a1, ?#a2, ?#a3) {
+    range(#a1: i64, ?#a2: Option<i64>, ?#a3: Option<i64>) {
         let start = match a2 {
             None => 0,
-            Some(_) => a1.to_int()?,
+            Some(_) => a1,
         };
         let stop = match a2 {
             None => a1.to_int()?,
-            Some(a2) => a2.to_int()?,
+            Some(a2) => a2,
         };
         let step = match a3 {
             None => 1,
-            Some(a3) => a3.to_int()?,
+            Some(a3) => a3,
         };
         let mut r = Vec::new();
         let mut idx : i64 = start;
