@@ -14,6 +14,7 @@
 
 //! Implementation of `struct` function.
 
+use crate::values::error::ValueError;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;

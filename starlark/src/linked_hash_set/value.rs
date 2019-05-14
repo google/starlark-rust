@@ -13,6 +13,7 @@
 // limitations under the License.
 
 //! Define the set type of Starlark
+use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use linked_hash_set::LinkedHashSet;

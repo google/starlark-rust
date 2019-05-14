@@ -14,6 +14,7 @@
 
 //! Methods for the `set` type.
 
+use crate::values::error::*;
 use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 
