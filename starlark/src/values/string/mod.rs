@@ -13,11 +13,14 @@
 // limitations under the License.
 
 //! Define the string type for Starlark.
+use crate::values::string::interpolation::StringInterpolationError;
 use crate::values::*;
 use std;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+pub mod interpolation;
 
 impl TypedValue for String {
     immutable!();
@@ -228,7 +231,7 @@ impl TypedValue for String {
                         match chars.next() {
                             Some(')') => break,
                             Some(ref x) => varname.push(*x),
-                            None => return Err(ValueError::InterpolationFormat),
+                            None => return Err(StringInterpolationError::Format.into()),
                         }
                     }
                     other.at(Value::new(varname))?.clone()
@@ -243,7 +246,9 @@ impl TypedValue for String {
                                     v.clone()
                                 }
                                 Err(..) => {
-                                    return Err(ValueError::NotEnoughParametersForInterpolation);
+                                    return Err(
+                                        StringInterpolationError::NotEnoughParameters.into()
+                                    );
                                 }
                             }
                         }
@@ -254,7 +259,7 @@ impl TypedValue for String {
                                 other.clone()
                             } else {
                                 // We need more than one argument.
-                                return Err(ValueError::NotEnoughParametersForInterpolation);
+                                return Err(StringInterpolationError::NotEnoughParameters.into());
                             }
                         }
                     }
@@ -283,7 +288,7 @@ impl TypedValue for String {
                     Some('c') => match var.get_type() {
                         "string" => {
                             if var.length()? != 1 {
-                                return Err(ValueError::InterpolationValueNotChar);
+                                return Err(StringInterpolationError::ValueNotChar.into());
                             } else {
                                 res += &var.to_str();
                             }
@@ -293,14 +298,15 @@ impl TypedValue for String {
                             match std::char::from_u32(codepoint) {
                                 Some(c) => res.push(c),
                                 None => {
-                                    return Err(ValueError::InterpolationValueNotInUTFRange(
+                                    return Err(StringInterpolationError::ValueNotInUTFRange(
                                         codepoint,
-                                    ));
+                                    )
+                                    .into());
                                 }
                             }
                         }
                     },
-                    _ => return Err(ValueError::InterpolationFormat),
+                    _ => return Err(StringInterpolationError::Format.into()),
                 }
                 let s: String = chars.collect();
                 res += &s;
@@ -310,7 +316,7 @@ impl TypedValue for String {
             }
         }
         if idx < len {
-            Err(ValueError::TooManyParametersForInterpolation)
+            Err(StringInterpolationError::TooManyParameters.into())
         } else {
             Ok(Value::new(res))
         }

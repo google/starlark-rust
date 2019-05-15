@@ -15,6 +15,7 @@
 //! Module define the common engine error.
 
 use crate::syntax::errors::SyntaxError;
+use crate::values::string::interpolation::StringInterpolationError;
 use crate::values::*;
 use codemap::Span;
 use codemap_diagnostic::{Diagnostic, SpanLabel, SpanStyle};
@@ -48,10 +49,7 @@ pub enum ValueError {
         right: Option<String>,
     },
     /// The operation is not supported for this type because type is not of a certain category.
-    TypeNotX {
-        object_type: String,
-        op: String,
-    },
+    TypeNotX { object_type: String, op: String },
     /// Division by 0
     DivisionByZero,
     /// Arithmetic operation results in integer overflow.
@@ -70,15 +68,8 @@ pub enum ValueError {
     Runtime(RuntimeError),
     /// Wrapper around diagnosed errors to be bubbled up.
     DiagnosedError(Diagnostic),
-    /// Format of the interpolation string is incorrect.
-    InterpolationFormat,
-    /// Trying to interpolate with %c an integer that is not in the UTF-8 range.
-    InterpolationValueNotInUTFRange(u32),
-    /// Interpolation parameter is too big for the format string.
-    TooManyParametersForInterpolation,
-    /// Interpolation parameter is too small for the format string.
-    NotEnoughParametersForInterpolation,
-    InterpolationValueNotChar,
+    /// String interpolation errors
+    StringInterpolation(StringInterpolationError),
     /// Too many recursion in internal operation
     TooManyRecursionLevel,
     /// Recursive data structure are not allowed because they would allow infinite loop.
@@ -109,10 +100,17 @@ impl Into<ValueError> for RuntimeError {
     }
 }
 
+impl Into<ValueError> for StringInterpolationError {
+    fn into(self) -> ValueError {
+        ValueError::StringInterpolation(self)
+    }
+}
+
 impl SyntaxError for ValueError {
     fn to_diagnostic(self, file_span: Span) -> Diagnostic {
         match self {
             ValueError::DiagnosedError(d) => d,
+            ValueError::StringInterpolation(e) => e.to_diagnostic(file_span),
             _ => {
                 let sl = SpanLabel {
                     span: file_span,
@@ -142,21 +140,6 @@ impl SyntaxError for ValueError {
                         ValueError::IndexOutOfBound(..) => "Index out of bound".to_owned(),
                         ValueError::NotHashableValue => "Value is not hashable".to_owned(),
                         ValueError::KeyNotFound(..) => "Key not found".to_owned(),
-                        ValueError::InterpolationFormat => {
-                            "Interpolation string format incorrect".to_owned()
-                        }
-                        ValueError::InterpolationValueNotInUTFRange(ref c) => {
-                            format!("Invalid codepoint 0x{:x}", c)
-                        }
-                        ValueError::TooManyParametersForInterpolation => {
-                            "Too many arguments for format string".to_owned()
-                        }
-                        ValueError::NotEnoughParametersForInterpolation => {
-                            "Not enough arguments for format string".to_owned()
-                        }
-                        ValueError::InterpolationValueNotChar => {
-                            "'%c' formatter requires a single-character string".to_owned()
-                        }
                         ValueError::TooManyRecursionLevel => "Too many recursion".to_owned(),
                         ValueError::UnsupportedRecursiveDataStructure => {
                             "Unsupported recursive data structure".to_owned()
@@ -167,7 +150,10 @@ impl SyntaxError for ValueError {
                         ValueError::TypeNotSupported(ref t) => {
                             format!("Attempt to construct unsupported type ({})", t)
                         }
-                        ValueError::DiagnosedError(..) => unreachable!(),
+                        // handled above
+                        ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => {
+                            unreachable!()
+                        }
                     }),
                 };
                 Diagnostic {
@@ -199,27 +185,6 @@ impl SyntaxError for ValueError {
                         }
                         ValueError::NotHashableValue => "Value is not hashable".to_owned(),
                         ValueError::KeyNotFound(ref k) => format!("Key '{}' was not found", k),
-                        ValueError::InterpolationFormat => concat!(
-                            "Interpolation string format is incorrect:",
-                            " '%' must be followed by an optional name and a specifier ",
-                            "('s', 'r', 'd', 'i', 'o', 'x', 'X', 'c')"
-                        ).to_owned(),
-                        ValueError::InterpolationValueNotInUTFRange(ref c) => format!(
-                            concat!(
-                                "Value 0x{:x} passed for %c formattter is not a valid",
-                                " UTF-8 codepoint"
-                            ),
-                            c
-                        ),
-                        ValueError::TooManyParametersForInterpolation => {
-                            "Too many arguments for format string".to_owned()
-                        }
-                        ValueError::NotEnoughParametersForInterpolation => {
-                            "Not enough arguments for format string".to_owned()
-                        }
-                        ValueError::InterpolationValueNotChar => {
-                            "'%c' formatter requires a single-character string".to_owned()
-                        }
                         ValueError::TooManyRecursionLevel => "Too many recursion levels".to_owned(),
                         ValueError::UnsupportedRecursiveDataStructure => concat!(
                             "This operation create a recursive data structure. Recursive data",
@@ -231,7 +196,8 @@ impl SyntaxError for ValueError {
                         ValueError::TypeNotSupported(ref t) => {
                             format!("Type `{}` is not supported. Perhaps you need to enable some crate feature?", t)
                         }
-                        ValueError::DiagnosedError(..) => unreachable!(),
+                        // handled above
+                        ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => unreachable!(),
                     },
                     code: Some(
                         match self {
@@ -247,19 +213,6 @@ impl SyntaxError for ValueError {
                             ValueError::NotHashableValue => NOT_HASHABLE_VALUE_ERROR_CODE,
                             ValueError::KeyNotFound(..) => KEY_NOT_FOUND_ERROR_CODE,
                             ValueError::Runtime(e) => e.code,
-                            ValueError::InterpolationFormat => INTERPOLATION_FORMAT_ERROR_CODE,
-                            ValueError::InterpolationValueNotInUTFRange(..) => {
-                                INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE
-                            }
-                            ValueError::TooManyParametersForInterpolation => {
-                                INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE
-                            }
-                            ValueError::NotEnoughParametersForInterpolation => {
-                                INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE
-                            }
-                            ValueError::InterpolationValueNotChar => {
-                                INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE
-                            }
                             ValueError::TooManyRecursionLevel => {
                                 TOO_MANY_RECURSION_LEVEL_ERROR_CODE
                             }
@@ -269,7 +222,8 @@ impl SyntaxError for ValueError {
                             ValueError::MutationDuringIteration => {
                                 CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE
                             }
-                            ValueError::DiagnosedError(..) => "U999", // Unknown error
+                            // handled above
+                            ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => unreachable!(),
                         }.to_owned(),
                     ),
                     spans: vec![sl],
