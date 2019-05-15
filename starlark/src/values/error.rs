@@ -28,7 +28,6 @@ pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &str = "CV02";
 pub const OUT_OF_BOUND_ERROR_CODE: &str = "CV03";
 pub const NOT_HASHABLE_VALUE_ERROR_CODE: &str = "CV04";
 pub const KEY_NOT_FOUND_ERROR_CODE: &str = "CV05";
-pub const INTERPOLATION_FORMAT_ERROR_CODE: &str = "CV06";
 pub const INTERPOLATION_OUT_OF_UTF8_RANGE_ERROR_CODE: &str = "CV07";
 pub const DIVISION_BY_ZERO_ERROR_CODE: &str = "CV08";
 pub const INTERPOLATION_TOO_MANY_PARAMS_ERROR_CODE: &str = "CV09";
@@ -38,6 +37,9 @@ pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &str = "CV13";
 pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &str = "CV14";
 pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &str = "CV15";
 pub const INTEGER_OVERFLOW_ERROR_CODE: &str = "CV16";
+pub const INTERPOLATION_UNEXPECTED_EOF_CLOSING_PAREN: &str = "CV17";
+pub const INTERPOLATION_UNEXPECTED_EOF_PERCENT: &str = "CV18";
+pub const INTERPOLATION_UNKNOWN_SPECIFIER: &str = "CV19";
 
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Clone, Debug)]

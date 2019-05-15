@@ -231,7 +231,11 @@ impl TypedValue for String {
                         match chars.next() {
                             Some(')') => break,
                             Some(ref x) => varname.push(*x),
-                            None => return Err(StringInterpolationError::Format.into()),
+                            None => {
+                                return Err(
+                                    StringInterpolationError::UnexpectedEOFClosingParen.into()
+                                )
+                            }
                         }
                     }
                     other.at(Value::new(varname))?.clone()
@@ -306,7 +310,8 @@ impl TypedValue for String {
                             }
                         }
                     },
-                    _ => return Err(StringInterpolationError::Format.into()),
+                    Some(c) => return Err(StringInterpolationError::UnknownSpecifier(c).into()),
+                    None => return Err(StringInterpolationError::UnexpectedEOFPercent.into()),
                 }
                 let s: String = chars.collect();
                 res += &s;
