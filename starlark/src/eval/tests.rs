@@ -106,7 +106,7 @@ fn sets() {
     assert_eq!(err.level, codemap_diagnostic::Level::Error);
     assert_eq!(
         err.code,
-        Some(crate::values::NOT_SUPPORTED_ERROR_CODE.to_string())
+        Some(crate::values::error::NOT_SUPPORTED_ERROR_CODE.to_string())
     );
 }
 
