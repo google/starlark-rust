@@ -16,7 +16,7 @@
 
 use getopts::Options;
 use starlark::eval::interactive::{eval, eval_file, EvalError};
-use starlark::stdlib::{global_environment, structs};
+use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::Value;
 use starlark_repl::{print_function, repl};
@@ -83,9 +83,7 @@ fn main() {
                     exit(EXIT_CODE_USAGE);
                 }
 
-                let global = print_function(global_environment());
-                // `struct` is not a part of the Starlark spec, but may be useful in REPL.
-                let global = structs::global(global);
+                let global = print_function(global_environment_with_extensions());
                 global.freeze();
 
                 let dialect = if build_file {
