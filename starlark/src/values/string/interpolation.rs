@@ -22,8 +22,12 @@ use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 /// Operator `%` format or evaluation errors
 #[derive(Clone, Debug)]
 pub enum StringInterpolationError {
-    /// Format of the interpolation string is incorrect.
-    Format,
+    /// `)` is not found when parsing `%(name)` expression.
+    UnexpectedEOFClosingParen,
+    /// `%` must be followed by specifier.
+    UnexpectedEOFPercent,
+    /// `%z` where `z` is unknown specifier.
+    UnknownSpecifier(char),
     /// Trying to interpolate with %c an integer that is not in the UTF-8 range.
     ValueNotInUTFRange(u32),
     /// Interpolation parameter is too big for the format string.
@@ -37,21 +41,36 @@ pub enum StringInterpolationError {
 impl SyntaxError for StringInterpolationError {
     fn to_diagnostic(self, file_span: Span) -> Diagnostic {
         let (label, message, code) = match self {
-            StringInterpolationError::Format => (
-                "Interpolation string format incorrect".to_owned(),
+            StringInterpolationError::UnexpectedEOFClosingParen => (
+                "Unexpected EOF in format string when looking for closing paren".to_owned(),
+                "Could not found ')' when parsing '%(name)f' expression".to_owned(),
+                INTERPOLATION_UNEXPECTED_EOF_CLOSING_PAREN,
+            ),
+            StringInterpolationError::UnexpectedEOFPercent => (
+                "End of string while expecting format specifier".to_owned(),
                 concat!(
                     "Interpolation string format is incorrect:",
                     " '%' must be followed by an optional name and a specifier ",
-                    "('s', 'r', 'd', 'i', 'o', 'x', 'X', 'c')"
+                    "('s', 'r', 'd', 'i', 'o', 'x', 'X', 'c') or '%'",
                 )
                 .to_owned(),
-                INTERPOLATION_FORMAT_ERROR_CODE,
+                INTERPOLATION_UNEXPECTED_EOF_PERCENT,
+            ),
+            StringInterpolationError::UnknownSpecifier(c) => (
+                format!("Unknown format string specifier '{}'", c.escape_default()),
+                concat!(
+                    "Interpolation string format is incorrect:",
+                    " '%' must be followed by an optional name and a specifier ",
+                    "('s', 'r', 'd', 'i', 'o', 'x', 'X', 'c') or '%'",
+                )
+                .to_owned(),
+                INTERPOLATION_UNKNOWN_SPECIFIER,
             ),
             StringInterpolationError::ValueNotInUTFRange(ref c) => (
                 format!("Invalid codepoint 0x{:x}", c),
                 format!(
                     concat!(
-                        "Value 0x{:x} passed for %c formattter is not a valid",
+                        "Value 0x{:x} passed for %c formatter is not a valid",
                         " UTF-8 codepoint"
                     ),
                     c
