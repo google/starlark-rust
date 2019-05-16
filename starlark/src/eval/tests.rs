@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::environment::Environment;
 use crate::eval::testutil;
 use crate::eval::testutil::starlark_no_diagnostic;
 use crate::eval::RECURSION_ERROR_CODE;
@@ -94,9 +95,8 @@ def rec6(): rec2()
     starlark_fail!("def f(a, **kwargs, *args): pass");
 }
 
-#[cfg(not(feature = "linked_hash_set"))]
 #[test]
-fn sets() {
+fn sets_disabled() {
     let err = starlark_no_diagnostic(&mut crate::stdlib::global_environment(), "s = {1, 2, 3}")
         .unwrap_err();
     assert_eq!(
@@ -110,11 +110,15 @@ fn sets() {
     );
 }
 
-#[cfg(feature = "linked_hash_set")]
 #[test]
 fn sets() {
+    fn env_with_set() -> Environment {
+        let env = crate::stdlib::global_environment();
+        crate::linked_hash_set::global(env)
+    }
+
     fn starlark_ok_with_global_env(snippet: &str) {
-        assert!(starlark_no_diagnostic(&mut crate::stdlib::global_environment(), snippet).unwrap());
+        assert!(starlark_no_diagnostic(&mut env_with_set(), snippet).unwrap());
     }
 
     starlark_ok_with_global_env(
@@ -124,6 +128,6 @@ fn sets() {
     starlark_ok_with_global_env("list(set()) == []");
     starlark_ok_with_global_env("not set()");
 
-    let parent_env = crate::stdlib::global_environment();
+    let parent_env = env_with_set();
     assert!(starlark_no_diagnostic(&mut parent_env.child("child"), "len({1, 2}) == 2").unwrap());
 }

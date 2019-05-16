@@ -13,14 +13,14 @@
 // limitations under the License.
 
 //! Define the set type of Starlark
+use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::*;
-use linked_hash_set::LinkedHashSet;
 use std::cmp::Ordering;
 use std::num::Wrapping;
 
-pub struct Set {
+pub(crate) struct Set {
     mutability: IterableMutability,
     content: LinkedHashSet<HashedValue>,
 }
