@@ -939,22 +939,18 @@ starlark_module! {global_functions =>
 /// For example `stdlib::global_environment().freeze().child("test")` create a child environment
 /// of this global environment that have been frozen.
 pub fn global_environment() -> Environment {
-    let env = add_set(Environment::new("global"));
+    let env = Environment::new("global");
     env.set("None", Value::new(None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
     dict::global(list::global(string::global(global_functions(env))))
 }
 
-#[cfg(feature = "linked_hash_set")]
-fn add_set(env: Environment) -> Environment {
-    env.with_set_constructor(Box::new(crate::linked_hash_set::value::Set::from));
-    crate::linked_hash_set::stdlib::global(env)
-}
-
-#[cfg(not(feature = "linked_hash_set"))]
-fn add_set(env: Environment) -> Environment {
-    env
+/// Default global environment with added non-standard `struct` and `set` extensions.
+pub fn global_environment_with_extensions() -> Environment {
+    let env = global_environment();
+    let env = structs::global(env);
+    crate::linked_hash_set::global(env)
 }
 
 /// Execute a starlark snippet with the default environment for test and return the truth value
@@ -962,8 +958,7 @@ fn add_set(env: Environment) -> Environment {
 #[doc(hidden)]
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    let env = global_environment();
-    let env = structs::global(env);
+    let env = global_environment_with_extensions();
     let mut env = env.freeze().child("test");
     match eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
         Ok(v) => Ok(v.to_bool()),

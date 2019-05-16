@@ -16,7 +16,7 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Emitter};
 use linked_hash_map::LinkedHashMap;
 use starlark::eval::simple::eval;
-use starlark::stdlib::{global_environment, structs};
+use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::error::ValueError;
 use std::fs::File;
@@ -31,8 +31,7 @@ pub fn do_bench(bencher: &mut Bencher, path: &str) {
     drop(file);
 
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    let global = global_environment();
-    let global = structs::global(global);
+    let global = global_environment_with_extensions();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
     eval(
