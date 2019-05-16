@@ -348,7 +348,7 @@ starlark_module! {global_functions =>
     /// getattr("banana", "split")("a") == ["b", "n", "n", ""] # equivalent to "banana".split("a")
     /// # "#).unwrap());
     /// ```
-    getattr(env env, #a, #attr, #default=None) {
+    getattr(env env, #a, #attr, #default = ()) {
         if attr.get_type() != "string" {
             starlark_err!(
                 ATTR_NAME_NOT_STRING_ERROR_CODE,
@@ -966,7 +966,7 @@ starlark_module! {global_functions =>
 /// of this global environment that have been frozen.
 pub fn global_environment() -> Environment {
     let env = add_set(Environment::new("global"));
-    env.set("None", Value::new(None)).unwrap();
+    env.set("None", Value::new(())).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
     dict::global(list::global(string::global(global_functions(env))))

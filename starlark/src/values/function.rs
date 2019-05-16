@@ -86,7 +86,7 @@ impl From<FunctionArg> for Value {
             FunctionArg::ArgsArray(v) => v.into(),
             FunctionArg::Optional(v) => match v {
                 Some(v) => v,
-                None => Value::new(None),
+                None => Value::new(()),
             },
             FunctionArg::KWArgsDict(v) => {
                 // `unwrap` does not panic, because key is a string which hashable

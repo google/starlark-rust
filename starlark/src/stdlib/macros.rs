@@ -296,7 +296,7 @@ macro_rules! starlark_signatures {
 ///            if let Some(x) = environ.get_parent() { x.name() } else { "<root>".to_owned() },
 ///            cs.iter().skip(1).fold(String::new(), |a, x| format!("{}\n{}", a, x.1))
 ///        );
-///        Ok(Value::from(None))
+///        Ok(Value::from(()))
 ///     }
 /// }
 /// #

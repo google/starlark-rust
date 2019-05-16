@@ -51,7 +51,7 @@ impl Set {
         let v = v.clone_for_container_value(set)?;
         Self::mutate(set, &|hashset| {
             hashset.insert_if_absent(HashedValue::new(v.clone())?);
-            Ok(Value::from(None))
+            Ok(Value::from(()))
         })
     }
 

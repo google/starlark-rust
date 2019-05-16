@@ -56,7 +56,7 @@ starlark_module! {global =>
         let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &|x| {
             x.push(el.clone()?);
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -81,7 +81,7 @@ starlark_module! {global =>
     list.clear(this) {
         list::List::mutate(&this, &|x| {
             x.clear();
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -113,7 +113,7 @@ starlark_module! {global =>
         let other_cloned: Result<Vec<_>, _>  = other.iter()?.map(|v| v.clone_for_container_value(&this_cloned)).collect();
         list::List::mutate(&this, &|x| {
             x.extend(other_cloned.clone()?);
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -146,7 +146,7 @@ starlark_module! {global =>
     /// x.index("a", -2) == 5  # bananA
     /// # )"#).unwrap());
     /// ```
-    list.index(this, #needle, #start = 0, #end = None) {
+    list.index(this, #needle, #start = 0, #end = ()) {
         convert_indices!(this, start, end);
         let mut it = this.iter()?.skip(start).take(end - start);
         if let Some(offset) = it.position(|x| x == needle) {
@@ -190,7 +190,7 @@ starlark_module! {global =>
         let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &move |x| {
             x.insert(index, el.clone()?);
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -264,7 +264,7 @@ starlark_module! {global =>
         if let Some(offset) = it.position(|x| x == needle) {
             list::List::mutate(&this, &|x| {
                 x.remove(offset);
-                ok!(None)
+                ok!(())
             })
         } else {
             starlark_err!(

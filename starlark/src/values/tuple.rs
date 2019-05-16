@@ -433,12 +433,6 @@ impl TypedValue for Tuple {
     }
 }
 
-impl From<()> for Value {
-    fn from(_a: ()) -> Value {
-        Value::new(Tuple::from(()))
-    }
-}
-
 macro_rules! from_tuple {
     ($x: ty) => {
         impl From<$x> for Value {
@@ -492,7 +486,9 @@ mod tests {
         assert_eq!("(1, 2, 3)", Value::from((1, 2, 3)).to_str());
         assert_eq!("(1, (2, 3))", Value::from((1, (2, 3))).to_str());
         assert_eq!("(1,)", Value::from((1,)).to_str());
-        assert_eq!("()", Value::from(()).to_str());
+        assert_eq!("()", Tuple::new(&[]).to_str());
+        // Empty tuple (unit) represents `None` in Starlark
+        assert_eq!("None", Value::from(()).to_str());
     }
 
     #[test]

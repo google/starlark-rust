@@ -298,7 +298,7 @@ starlark_module! {global =>
     /// "hello, world!".count("o", 7, 12) == 1  # in "world"
     /// # )"#).unwrap());
     /// ```
-    string.count(this, #needle, #start = 0, #end = None) {
+    string.count(this, #needle, #start = 0, #end = ()) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         let this = this.to_str();
@@ -362,7 +362,7 @@ starlark_module! {global =>
     /// "bonbon".find("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.find(this, #needle, #start = 0, #end = None) {
+    string.find(this, #needle, #start = 0, #end = ()) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         let this = this.to_str();
@@ -517,7 +517,7 @@ starlark_module! {global =>
     /// "bonbon".index("on", 2, 5) # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.index(this, #needle, #start = 0, #end = None) {
+    string.index(this, #needle, #start = 0, #end = ()) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         let this = this.to_str();
@@ -948,7 +948,7 @@ starlark_module! {global =>
     /// "bonbon".rfind("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.rfind(this, #needle, #start = 0, #end = None) {
+    string.rfind(this, #needle, #start = 0, #end = ()) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         let this = this.to_str();
@@ -983,7 +983,7 @@ starlark_module! {global =>
     /// "bonbon".rindex("on", 2, 5)   # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.rindex(this, #needle, #start = 0, #end = None) {
+    string.rindex(this, #needle, #start = 0, #end = ()) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         let this = this.to_str();
@@ -1059,7 +1059,7 @@ starlark_module! {global =>
     /// "one two  three".rsplit(None, 1) == ["one two", "three"]
     /// # )"#).unwrap());
     /// ```
-    string.rsplit(this, #sep = None, #maxsplit = None) {
+    string.rsplit(this, #sep = (), #maxsplit = ()) {
         let this = this.to_str();
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None
@@ -1151,7 +1151,7 @@ starlark_module! {global =>
     /// "banana".split("n", 1) == ["ba", "ana"]
     /// # )"#).unwrap());
     /// ```
-    string.split(this, #sep = None, #maxsplit = None) {
+    string.split(this, #sep = (), #maxsplit = ()) {
         let this = this.to_str();
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None

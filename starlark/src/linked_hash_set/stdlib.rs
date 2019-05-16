@@ -72,7 +72,7 @@ starlark_module! {global =>
     /// ```
     set.add(this, #el) {
         Set::insert_if_absent(&this, el)?;
-        ok!(None)
+        ok!(())
     }
 
     /// set.clear: clear a set
@@ -96,7 +96,7 @@ starlark_module! {global =>
     set.clear(this) {
         Set::mutate(&this, &|x| {
             x.clear();
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -199,7 +199,7 @@ starlark_module! {global =>
             for value in values.into_iter() {
                 x.insert(value);
             }
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -226,7 +226,7 @@ starlark_module! {global =>
     set.discard(this, #needle) {
         Set::mutate(&this, &|x| {
             x.remove(&HashedValue::new(needle.clone())?);
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -305,7 +305,7 @@ starlark_module! {global =>
             for value in values.into_iter() {
                 x.insert(value);
             }
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -405,7 +405,7 @@ starlark_module! {global =>
     /// x == set([3])
     /// # )"#).unwrap());
     /// ```
-    set.pop(this, #index = None) {
+    set.pop(this, #index = ()) {
         let length = this.length()?;
         let index = if index.get_type() == "NoneType" {
             length - 1
@@ -460,7 +460,7 @@ starlark_module! {global =>
             ok!(x.remove(&HashedValue::new(needle.clone())?))
         });
         if did_remove?.to_bool() {
-            ok!(None)
+            ok!(())
         } else {
             starlark_err!(
                 SET_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE,
@@ -540,7 +540,7 @@ starlark_module! {global =>
             for item in symmetric_difference.iter()? {
                 s.insert(HashedValue::new(item)?);
             }
-            ok!(None)
+            ok!(())
         })
     }
 
@@ -610,6 +610,6 @@ starlark_module! {global =>
                 Set::insert_if_absent(&this, el)?;
             }
         }
-        ok!(None)
+        ok!(())
     }
 }

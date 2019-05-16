@@ -36,31 +36,27 @@
 //!
 //! ```rust,ignore
 //! /// Define the NoneType type
-//! impl TypedValue for Option<()> {
-//!     immutable!();
-//!     any!();  // Generally you don't want to implement as_any() and as_any_mut() yourself.
-//!     fn to_str(&self) -> String {
-//!         "None".to_owned()
-//!     }
-//!     fn to_repr(&self) -> String {
-//!         self.to_str()
-//!     }
-//!     not_supported!(to_int);
-//!     fn get_type(&self) -> &'static str {
-//!         "NoneType"
-//!     }
-//!     fn to_bool(&self) -> bool {
-//!         false
-//!     }
-//!     // just took the result of hash(None) in macos python 2.7.10 interpreter.
-//!     fn get_hash(&self) -> Result<u64, ValueError> {
-//!         Ok(9223380832852120682)
-//!     }
-//!     fn compare(&self, other: &Value) -> Ordering { default_compare(self, other) }
-//!     not_supported!(binop);
-//!     not_supported!(container);
-//!     not_supported!(function);
-//! }
+//! impl TypedValue for () {
+//!    immutable!();
+//!    any!();
+//!    default_compare!();
+//!    fn to_repr(&self) -> String {
+//!        "None".to_owned()
+//!    }
+//!    fn get_type(&self) -> &'static str {
+//!        "NoneType"
+//!    }
+//!    fn to_bool(&self) -> bool {
+//!        false
+//!    }
+//!    // just took the result of hash(None) in macos python 2.7.10 interpreter.
+//!    fn get_hash(&self) -> Result<u64, ValueError> {
+//!        Ok(9_223_380_832_852_120_682)
+//!    }
+//!    fn is_descendant(&self, _other: &TypedValue) -> bool {
+//!        false
+//!    }
+//!}
 //! ```
 //!
 //! In addition to the `TypedValue` trait, it is recommended to implement the `From` trait

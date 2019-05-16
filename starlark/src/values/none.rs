@@ -17,7 +17,7 @@
 use crate::values::*;
 
 /// Define the NoneType type
-impl TypedValue for Option<()> {
+impl TypedValue for () {
     immutable!();
     any!();
     default_compare!();
@@ -39,8 +39,8 @@ impl TypedValue for Option<()> {
     }
 }
 
-impl From<Option<()>> for Value {
-    fn from(_a: Option<()>) -> Value {
-        Value::new(None)
+impl From<()> for Value {
+    fn from((): ()) -> Self {
+        Value::new(())
     }
 }

@@ -97,7 +97,7 @@ starlark_module! {print_function =>
             r.push_str(&arg.to_str());
         }
         eprintln!("{}", r);
-        Ok(Value::new(None))
+        Ok(Value::new(()))
     }
 }
 
