@@ -49,20 +49,23 @@ impl Dictionary {
         v: &Value,
         f: &dyn Fn(&LinkedHashMap<HashedValue, Value>) -> Result<Return, ValueError>,
     ) -> Result<Return, ValueError> {
-        v.downcast_apply(|x: &Dictionary| -> Result<Return, ValueError> { f(&x.content) })
-            .unwrap_or(Err(ValueError::IncorrectParameterType))
+        match v.downcast_ref::<Dictionary>() {
+            Some(x) => f(&x.content),
+            None => Err(ValueError::IncorrectParameterType),
+        }
     }
 
     pub fn mutate(
         v: &Value,
         f: &dyn Fn(&mut LinkedHashMap<HashedValue, Value>) -> ValueResult,
     ) -> ValueResult {
-        let mut v = v.clone();
-        v.downcast_apply_mut(|x: &mut Dictionary| -> ValueResult {
-            x.mutability.test()?;
-            f(&mut x.content)
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
+        match v.downcast_mut::<Dictionary>() {
+            Some(mut x) => {
+                x.mutability.test()?;
+                f(&mut x.content)
+            }
+            None => Err(ValueError::IncorrectParameterType),
+        }
     }
 }
 
