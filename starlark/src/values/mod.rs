@@ -34,18 +34,23 @@
 //!
 //! For example the `NoneType` trait implementation is the following:
 //!
-//! ```rust,ignore
+//! ```rust
+//! # use starlark::{default_compare, any, immutable};
+//! # use starlark::values::TypedValue;
+//! # use starlark::values::error::ValueError;
+//!
 //! /// Define the NoneType type
-//! impl TypedValue for Option<()> {
+//! pub enum NoneType {
+//!     None
+//! }
+//!
+//! impl TypedValue for NoneType {
 //!     immutable!();
-//!     any!();  // Generally you don't want to implement as_any() and as_any_mut() yourself.
-//!     fn to_str(&self) -> String {
+//!     any!();
+//!     default_compare!();
+//!     fn to_repr(&self) -> String {
 //!         "None".to_owned()
 //!     }
-//!     fn to_repr(&self) -> String {
-//!         self.to_str()
-//!     }
-//!     not_supported!(to_int);
 //!     fn get_type(&self) -> &'static str {
 //!         "NoneType"
 //!     }
@@ -54,12 +59,11 @@
 //!     }
 //!     // just took the result of hash(None) in macos python 2.7.10 interpreter.
 //!     fn get_hash(&self) -> Result<u64, ValueError> {
-//!         Ok(9223380832852120682)
+//!         Ok(9_223_380_832_852_120_682)
 //!     }
-//!     fn compare(&self, other: &Value) -> Ordering { default_compare(self, other) }
-//!     not_supported!(binop);
-//!     not_supported!(container);
-//!     not_supported!(function);
+//!     fn is_descendant(&self, _other: &TypedValue) -> bool {
+//!         false
+//!     }
 //! }
 //! ```
 //!
@@ -618,9 +622,12 @@ pub fn default_compare(v1: &dyn TypedValue, v2: &dyn TypedValue) -> Result<Order
     })
 }
 
+#[macro_export]
 macro_rules! default_compare {
     () => {
-        fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> { default_compare(self, other) }
+        fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<::std::cmp::Ordering, ValueError> {
+            $crate::values::default_compare(self, other)
+        }
     }
 }
 

@@ -16,6 +16,7 @@
 
 use crate::values::error::*;
 use crate::values::hashed_value::HashedValue;
+use crate::values::none::NoneType;
 use crate::values::*;
 
 use crate::linked_hash_set::value::Set;
@@ -72,7 +73,7 @@ starlark_module! {global =>
     /// ```
     set.add(this, #el) {
         Set::insert_if_absent(&this, el)?;
-        ok!(None)
+        Ok(Value::new(NoneType::None))
     }
 
     /// set.clear: clear a set
@@ -96,7 +97,7 @@ starlark_module! {global =>
     set.clear(this) {
         Set::mutate(&this, &|x| {
             x.clear();
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -199,7 +200,7 @@ starlark_module! {global =>
             for value in values.into_iter() {
                 x.insert(value);
             }
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -226,7 +227,7 @@ starlark_module! {global =>
     set.discard(this, #needle) {
         Set::mutate(&this, &|x| {
             x.remove(&HashedValue::new(needle.clone())?);
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -305,7 +306,7 @@ starlark_module! {global =>
             for value in values.into_iter() {
                 x.insert(value);
             }
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -405,7 +406,7 @@ starlark_module! {global =>
     /// x == set([3])
     /// # )"#).unwrap());
     /// ```
-    set.pop(this, #index = None) {
+    set.pop(this, #index = NoneType::None) {
         let length = this.length()?;
         let index = if index.get_type() == "NoneType" {
             length - 1
@@ -460,7 +461,7 @@ starlark_module! {global =>
             ok!(x.remove(&HashedValue::new(needle.clone())?))
         });
         if did_remove?.to_bool() {
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         } else {
             starlark_err!(
                 SET_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE,
@@ -540,7 +541,7 @@ starlark_module! {global =>
             for item in symmetric_difference.iter()? {
                 s.insert(HashedValue::new(item)?);
             }
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -610,6 +611,6 @@ starlark_module! {global =>
                 Set::insert_if_absent(&this, el)?;
             }
         }
-        ok!(None)
+        Ok(Value::new(NoneType::None))
     }
 }

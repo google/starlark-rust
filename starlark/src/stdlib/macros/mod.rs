@@ -263,6 +263,7 @@ macro_rules! starlark_signatures {
 /// ```rust
 /// # #[macro_use] extern crate starlark;
 /// # use starlark::values::*;
+/// # use starlark::values::none::NoneType;
 /// # use starlark::environment::Environment;
 /// starlark_module!{ my_starlark_module =>
 ///     // Declare a 'str' function (_ are trimmed away and just here to avoid collision with
@@ -299,7 +300,7 @@ macro_rules! starlark_signatures {
 ///            if let Some(x) = environ.get_parent() { x.name() } else { "<root>".to_owned() },
 ///            cs.iter().skip(1).fold(String::new(), |a, x| format!("{}\n{}", a, x.1))
 ///        );
-///        Ok(Value::from(None))
+///        Ok(Value::from(NoneType::None))
 ///     }
 /// }
 /// #

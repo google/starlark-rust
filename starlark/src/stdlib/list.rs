@@ -15,17 +15,12 @@
 //! Methods for the `list` type.
 
 use crate::values::error::*;
+use crate::values::none::NoneType;
 use crate::values::*;
 
 // Errors -- UF = User Failure -- Failure that should be expected by the user (e.g. from a fail()).
 pub const LIST_INDEX_FAILED_ERROR_CODE: &str = "UF10";
 pub const LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE: &str = "UF11";
-
-macro_rules! ok {
-    ($e:expr) => {
-        return Ok(Value::from($e));
-    };
-}
 
 starlark_module! {global =>
     /// [list.append](
@@ -56,7 +51,7 @@ starlark_module! {global =>
         let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &|x| {
             x.push(el.clone()?);
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -81,7 +76,7 @@ starlark_module! {global =>
     list.clear(this) {
         list::List::mutate(&this, &|x| {
             x.clear();
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -113,7 +108,7 @@ starlark_module! {global =>
         let other_cloned: Result<Vec<_>, _>  = other.iter()?.map(|v| v.clone_for_container_value(&this_cloned)).collect();
         list::List::mutate(&this, &|x| {
             x.extend(other_cloned.clone()?);
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -146,11 +141,11 @@ starlark_module! {global =>
     /// x.index("a", -2) == 5  # bananA
     /// # )"#).unwrap());
     /// ```
-    list.index(this, #needle, #start = 0, #end = None) {
+    list.index(this, #needle, #start = 0, #end = NoneType::None) {
         convert_indices!(this, start, end);
         let mut it = this.iter()?.skip(start).take(end - start);
         if let Some(offset) = it.position(|x| x == needle) {
-            ok!((offset + start) as i64)
+            Ok(Value::new((offset + start) as i64))
         } else {
             starlark_err!(
                 LIST_INDEX_FAILED_ERROR_CODE,
@@ -190,7 +185,7 @@ starlark_module! {global =>
         let el = el.clone_for_container_value(&this);
         list::List::mutate(&this, &move |x| {
             x.insert(index, el.clone()?);
-            ok!(None)
+            Ok(Value::new(NoneType::None))
         })
     }
 
@@ -227,7 +222,7 @@ starlark_module! {global =>
             return Err(ValueError::IndexOutOfBound(index));
         }
         list::List::mutate(&this, &|x| {
-            ok!(x.remove(index as usize));
+            Ok(x.remove(index as usize))
         })
     }
 
@@ -264,7 +259,7 @@ starlark_module! {global =>
         if let Some(offset) = it.position(|x| x == needle) {
             list::List::mutate(&this, &|x| {
                 x.remove(offset);
-                ok!(None)
+                Ok(Value::new(NoneType::None))
             })
         } else {
             starlark_err!(

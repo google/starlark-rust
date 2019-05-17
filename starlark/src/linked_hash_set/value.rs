@@ -16,6 +16,7 @@
 use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
+use crate::values::none::NoneType;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::num::Wrapping;
@@ -51,7 +52,7 @@ impl Set {
         let v = v.clone_for_container_value(set)?;
         Self::mutate(set, &|hashset| {
             hashset.insert_if_absent(HashedValue::new(v.clone())?);
-            Ok(Value::from(None))
+            Ok(Value::new(NoneType::None))
         })
     }
 
