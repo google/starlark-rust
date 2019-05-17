@@ -59,9 +59,10 @@ impl TryParamConvertFromValue for Value {
 
 impl<T: TypedValue + Clone + 'static> TryParamConvertFromValue for T {
     fn try_from(source: Value) -> Result<Self, ValueError> {
-        source
-            .downcast_apply(T::clone)
-            .ok_or(ValueError::IncorrectParameterType)
+        match source.downcast_ref::<T>() {
+            Some(t) => Ok(t.clone()),
+            None => Err(ValueError::IncorrectParameterType),
+        }
     }
 }
 
