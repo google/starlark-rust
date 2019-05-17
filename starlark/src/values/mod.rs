@@ -79,7 +79,7 @@ use crate::values::error::ValueError;
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
 use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Deref;
@@ -142,7 +142,7 @@ impl Value {
 
 /// A trait for a value with a type that all variable container
 /// will implement.
-pub trait TypedValue {
+pub trait TypedValue: 'static {
     /// Return true if the value is immutable.
     fn immutable(&self) -> bool;
 
@@ -722,22 +722,6 @@ macro_rules! define_iterable_mutability {
 }
 
 impl Value {
-    pub fn any_apply<F, Return>(&self, f: F) -> Return
-    where
-        F: FnOnce(&dyn Any) -> Return,
-    {
-        let borrowed = self.0.borrow();
-        f(borrowed.as_any())
-    }
-
-    pub fn any_apply_mut<F, Return>(&mut self, f: F) -> Return
-    where
-        F: FnOnce(&mut dyn Any) -> Return,
-    {
-        let mut borrowed = self.0.borrow_mut();
-        f(borrowed.as_any_mut())
-    }
-
     pub fn immutable(&self) -> bool {
         let borrowed = self.0.borrow();
         borrowed.immutable()
@@ -1078,26 +1062,32 @@ impl dyn TypedValue {
 }
 
 impl Value {
-    /// A convenient wrapper around any_apply to actually operate on the underlying type
-    pub fn downcast_apply<T: Any + TypedValue, F, Return>(&self, f: F) -> Option<Return>
-    where
-        F: FnOnce(&T) -> Return,
-    {
-        self.any_apply(move |x| match x.downcast_ref() {
-            Some(x) => Some(f(x)),
-            None => None,
-        })
+    /// Get a reference to underlying data or `None`
+    /// if contained object has different type than requested.
+    ///
+    /// This function panics if the `Value` is borrowed mutably.
+    pub fn downcast_ref<T: Any + TypedValue>(&self) -> Option<Ref<T>> {
+        let borrow = self.0.borrow();
+        if borrow.as_any().is::<T>() {
+            Some(Ref::map(borrow, |r| r.as_any().downcast_ref().unwrap()))
+        } else {
+            None
+        }
     }
 
-    /// A convenient wrapper around any_apply_mut to actually operate on the underlying type
-    pub fn downcast_apply_mut<T: Any + TypedValue, F, Return>(&mut self, f: F) -> Option<Return>
-    where
-        F: FnOnce(&mut T) -> Return,
-    {
-        self.any_apply_mut(move |x| match x.downcast_mut() {
-            Some(x) => Some(f(x)),
-            None => None,
-        })
+    /// Get a mutable reference to underlying data or `None`
+    /// if contained object has different type than requested.
+    ///
+    /// This function panics if the `Value` is borrowed.
+    pub fn downcast_mut<T: Any + TypedValue>(&self) -> Option<RefMut<T>> {
+        let borrow = self.0.borrow_mut();
+        if borrow.as_any().is::<T>() {
+            Some(RefMut::map(borrow, |r| {
+                r.as_any_mut().downcast_mut().unwrap()
+            }))
+        } else {
+            None
+        }
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {

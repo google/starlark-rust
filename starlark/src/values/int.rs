@@ -66,15 +66,14 @@ fn i64_arith_bin_op<F>(left: i64, right: Value, op: &'static str, f: F) -> Value
 where
     F: FnOnce(i64, i64) -> Result<i64, ValueError>,
 {
-    right
-        .downcast_apply(move |right: &i64| Ok(Value::new(f(left, *right)?)))
-        .unwrap_or_else(|| {
-            Err(ValueError::OperationNotSupported {
-                op: op.to_owned(),
-                left: left.get_type().to_owned(),
-                right: Some(right.get_type().to_owned()),
-            })
-        })
+    match right.downcast_ref::<i64>() {
+        Some(right) => Ok(Value::new(f(left, *right)?)),
+        None => Err(ValueError::OperationNotSupported {
+            op: op.to_owned(),
+            left: left.get_type().to_owned(),
+            right: Some(right.get_type().to_owned()),
+        }),
+    }
 }
 
 /// Define the int type
@@ -120,11 +119,11 @@ impl TypedValue for i64 {
         })
     }
     fn mul(&self, other: Value) -> ValueResult {
-        let other_i64 = other.downcast_apply(|other: &i64| {
-            self.checked_mul(*other).ok_or(ValueError::IntegerOverflow)
-        });
-        match other_i64 {
-            Some(r) => r.map(Value::new),
+        match other.downcast_ref::<i64>() {
+            Some(other) => self
+                .checked_mul(*other)
+                .ok_or(ValueError::IntegerOverflow)
+                .map(Value::new),
             None => other.mul(Value::new(*self)),
         }
     }

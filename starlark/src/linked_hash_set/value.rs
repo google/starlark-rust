@@ -59,12 +59,13 @@ impl Set {
         v: &Value,
         f: &Fn(&mut LinkedHashSet<HashedValue>) -> ValueResult,
     ) -> ValueResult {
-        let mut v = v.clone();
-        v.downcast_apply_mut(|x: &mut Set| -> ValueResult {
-            x.mutability.test()?;
-            f(&mut x.content)
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
+        match v.downcast_mut::<Set>() {
+            Some(mut x) => {
+                x.mutability.test()?;
+                f(&mut x.content)
+            }
+            None => Err(ValueError::IncorrectParameterType),
+        }
     }
 
     pub fn compare<Return>(
@@ -75,11 +76,10 @@ impl Set {
             &LinkedHashSet<HashedValue>,
         ) -> Result<Return, ValueError>,
     ) -> Result<Return, ValueError> {
-        v1.downcast_apply(|v1: &Set| {
-            v2.downcast_apply(|v2: &Set| f(&v1.content, &v2.content))
-                .unwrap_or(Err(ValueError::IncorrectParameterType))
-        })
-        .unwrap_or(Err(ValueError::IncorrectParameterType))
+        match (v1.downcast_ref::<Set>(), v2.downcast_ref::<Set>()) {
+            (Some(v1), Some(v2)) => f(&v1.content, &v2.content),
+            _ => Err(ValueError::IncorrectParameterType),
+        }
     }
 }
 
