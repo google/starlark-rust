@@ -55,6 +55,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+#[allow(clippy::too_many_arguments)]
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: Arc<Mutex<codemap::CodeMap>>,
     filename: &str,
@@ -62,6 +63,7 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     lexer: T2,
     dialect: Dialect,
     env: &mut Environment,
+    file_loader_env: Environment,
     ast: bool,
 ) {
     if ast {
@@ -79,7 +81,8 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             dialect,
             lexer,
             env,
-            SimpleFileLoader::new(&map.clone()),
+            file_loader_env.clone(),
+            SimpleFileLoader::new(&map.clone(), file_loader_env),
         ) {
             Ok(v) => {
                 if v.get_type() != "NoneType" {
@@ -171,6 +174,7 @@ pub fn repl(global_environment: &Environment, dialect: Dialect, ast: bool) {
                 lexer,
                 dialect,
                 &mut env,
+                global_environment.clone(),
                 ast,
             )
         }

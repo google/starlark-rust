@@ -147,14 +147,15 @@ mod test {
         let env = global(env);
         env.freeze();
 
-        let mut env = env.child("my");
+        let mut child = env.child("my");
 
         let r = eval(
             &Arc::new(Mutex::new(CodeMap::new())),
             "test_simple.star",
             "cc_binary(name='star', srcs=['a.cc', 'b.cc'])",
             Dialect::Build,
-            &mut env,
+            &mut child,
+            env,
         )
         .unwrap();
 

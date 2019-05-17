@@ -92,6 +92,7 @@ def assert_(cond, msg="assertion failed"):
 "#,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
+        global.clone(),
     )
     .unwrap();
     prelude.freeze();
@@ -110,6 +111,7 @@ def assert_(cond, msg="assertion failed"):
             &content,
             starlark::syntax::dialect::Dialect::Bzl,
             &mut prelude.child(&path),
+            global.clone(),
         ) {
             Err(p) => {
                 if err.is_empty() {

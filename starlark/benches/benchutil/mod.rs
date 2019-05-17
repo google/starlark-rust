@@ -48,12 +48,13 @@ def assert_(cond, msg="assertion failed"):
 "#,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
+        global.clone(),
     )
     .unwrap();
     prelude.freeze();
 
     let mut env = prelude.child("run");
-    match eval(&map, path, &content, Dialect::Bzl, &mut env) {
+    match eval(&map, path, &content, Dialect::Bzl, &mut env, global) {
         Ok(_) => (),
         Err(p) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);

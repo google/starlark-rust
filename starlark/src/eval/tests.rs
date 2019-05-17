@@ -13,9 +13,13 @@
 // limitations under the License.
 
 use crate::environment::Environment;
-use crate::eval::testutil;
 use crate::eval::testutil::starlark_no_diagnostic;
 use crate::eval::RECURSION_ERROR_CODE;
+use crate::eval::{eval, simple, testutil, EvalException, FileLoader};
+use crate::syntax::dialect::Dialect;
+use crate::values::Value;
+use codemap::CodeMap;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn arithmetic_test() {
@@ -97,8 +101,12 @@ def rec6(): rec2()
 
 #[test]
 fn sets_disabled() {
-    let err = starlark_no_diagnostic(&mut crate::stdlib::global_environment(), "s = {1, 2, 3}")
-        .unwrap_err();
+    let err = starlark_no_diagnostic(
+        &mut crate::stdlib::global_environment(),
+        "s = {1, 2, 3}",
+        crate::stdlib::global_environment(),
+    )
+    .unwrap_err();
     assert_eq!(
         err.message,
         "Type `set` is not supported. Perhaps you need to enable some crate feature?".to_string()
@@ -118,7 +126,12 @@ fn sets() {
     }
 
     fn starlark_ok_with_global_env(snippet: &str) {
-        assert!(starlark_no_diagnostic(&mut env_with_set(), snippet).unwrap());
+        assert!(starlark_no_diagnostic(
+            &mut env_with_set(),
+            snippet,
+            crate::stdlib::global_environment()
+        )
+        .unwrap());
     }
 
     starlark_ok_with_global_env(
@@ -129,5 +142,56 @@ fn sets() {
     starlark_ok_with_global_env("not set()");
 
     let parent_env = env_with_set();
-    assert!(starlark_no_diagnostic(&mut parent_env.child("child"), "len({1, 2}) == 2").unwrap());
+    assert!(starlark_no_diagnostic(
+        &mut parent_env.child("child"),
+        "len({1, 2}) == 2",
+        parent_env.clone()
+    )
+    .unwrap());
+}
+
+#[test]
+fn test_context_captured() {
+    #[derive(Clone)]
+    struct TestContextCapturedFileLoader {}
+
+    impl FileLoader for TestContextCapturedFileLoader {
+        fn load(&self, path: &str) -> Result<Environment, EvalException> {
+            assert_eq!("f.bzl", path);
+            let mut env = Environment::new("new");
+            // Check that `x` is captured with the function
+            let f_bzl = r#"
+x = 17
+def f(): return x
+"#;
+            simple::eval(
+                &Arc::new(Mutex::new(CodeMap::new())),
+                path,
+                f_bzl,
+                Dialect::Bzl,
+                &mut env,
+                Environment::new("empty"),
+            )
+            .unwrap();
+            env.freeze();
+            Ok(env)
+        }
+    }
+
+    let mut env = Environment::new("z");
+    // Import `f` but do not import `x`
+    let program = "load('f.bzl', 'f')\nf()";
+    assert_eq!(
+        Value::new(17),
+        eval(
+            &Arc::new(Mutex::new(CodeMap::new())),
+            "outer.build",
+            program,
+            Dialect::Build,
+            &mut env,
+            Environment::new("empty"),
+            TestContextCapturedFileLoader {}
+        )
+        .unwrap()
+    );
 }

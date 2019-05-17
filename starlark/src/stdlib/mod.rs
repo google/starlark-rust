@@ -563,9 +563,9 @@ starlark_module! {global_functions =>
                 }
             }
             Some(key) => {
-                let mut cached = key.call(cs, e.child("max"), vec![max.clone()], LinkedHashMap::new(), None, None)?;
+                let mut cached = key.call(cs, e.clone(), vec![max.clone()], LinkedHashMap::new(), None, None)?;
                 for i in it {
-                    let keyi = key.call(cs, e.child("max"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
+                    let keyi = key.call(cs, e.clone(), vec![i.clone()], LinkedHashMap::new(), None, None)?;
                     if cached < keyi {
                         max = i;
                         cached = keyi;
@@ -821,7 +821,7 @@ starlark_module! {global_functions =>
                 for el in x {
                     v.push((
                         el.clone(),
-                        key.call(cs, e.child("sorted"), vec![el], LinkedHashMap::new(), None, None)?
+                        key.call(cs, e.clone(), vec![el], LinkedHashMap::new(), None, None)?
                     ));
                 }
                 v
@@ -960,8 +960,8 @@ pub fn global_environment_with_extensions() -> Environment {
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let env = global_environment_with_extensions();
-    let mut env = env.freeze().child("test");
-    match eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
+    let mut test_env = env.freeze().child("test");
+    match eval(&map, "<test>", snippet, Dialect::Bzl, &mut test_env, env) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d.clone()]);
@@ -983,7 +983,14 @@ pub mod tests {
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
         let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
         let mut env = global_environment().freeze().child("test");
-        match eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
+        match eval(
+            &map,
+            "<test>",
+            snippet,
+            Dialect::Bzl,
+            &mut env,
+            global_environment(),
+        ) {
             Ok(v) => Ok(v.to_bool()),
             Err(d) => Err(d),
         }

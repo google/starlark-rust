@@ -26,24 +26,15 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct SimpleFileLoader {
     map: Arc<Mutex<HashMap<String, Environment>>>,
-    parent_env: Option<Environment>,
+    parent_env: Environment,
     codemap: Arc<Mutex<CodeMap>>,
 }
 
 impl SimpleFileLoader {
-    /// Create a new simple file loader without global enviroment
-    pub fn new(map: &Arc<Mutex<CodeMap>>) -> SimpleFileLoader {
+    pub fn new(map: &Arc<Mutex<CodeMap>>, parent_env: Environment) -> SimpleFileLoader {
         SimpleFileLoader {
             map: Arc::new(Mutex::new(HashMap::new())),
-            parent_env: None,
-            codemap: map.clone(),
-        }
-    }
-
-    pub fn with_parent(map: &Arc<Mutex<CodeMap>>, parent_env: Environment) -> SimpleFileLoader {
-        SimpleFileLoader {
-            map: Arc::new(Mutex::new(HashMap::new())),
-            parent_env: Some(parent_env.clone()),
+            parent_env,
             codemap: map.clone(),
         }
     }
@@ -57,12 +48,15 @@ impl FileLoader for SimpleFileLoader {
                 return Ok(lock.get(path).unwrap().clone());
             }
         } // Release the lock
-        let mut env = match self.parent_env {
-            Some(ref e) => e.child(path),
-            None => Environment::new(path),
-        };
-        if let Err(d) = super::eval_file(&self.codemap, path, Dialect::Bzl, &mut env, self.clone())
-        {
+        let mut env = self.parent_env.child(path);
+        if let Err(d) = super::eval_file(
+            &self.codemap,
+            path,
+            Dialect::Bzl,
+            &mut env,
+            self.parent_env.clone(),
+            self.clone(),
+        ) {
             return Err(EvalException::DiagnosedError(d));
         }
         env.freeze();
@@ -92,8 +86,17 @@ pub fn eval(
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
+    file_loader_env: Environment,
 ) -> Result<Value, Diagnostic> {
-    super::eval(map, path, content, dialect, env, SimpleFileLoader::new(map))
+    super::eval(
+        map,
+        path,
+        content,
+        dialect,
+        env,
+        file_loader_env.clone(),
+        SimpleFileLoader::new(map, file_loader_env),
+    )
 }
 
 /// Evaluate a file, mutate the environment accordingly and return the evaluated value.
@@ -112,6 +115,14 @@ pub fn eval_file(
     path: &str,
     build: Dialect,
     env: &mut Environment,
+    file_loader_env: Environment,
 ) -> Result<Value, Diagnostic> {
-    super::eval_file(map, path, build, env, SimpleFileLoader::new(map))
+    super::eval_file(
+        map,
+        path,
+        build,
+        env,
+        file_loader_env.clone(),
+        SimpleFileLoader::new(map, file_loader_env),
+    )
 }

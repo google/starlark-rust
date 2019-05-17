@@ -179,17 +179,22 @@ pub trait FileLoader: Clone {
 /// A structure holding all the data about the evaluation context
 /// (scope, load statement resolver, ...)
 pub struct EvaluationContext<T: FileLoader> {
+    // Locals and captured context.
     env: Environment,
+    // Globals used to resolve types (e. g. set constructor)
+    // this is provider by caller.
+    globals: Environment,
     loader: T,
     call_stack: Vec<(String, String)>,
     map: Arc<Mutex<CodeMap>>,
 }
 
 impl<T: FileLoader> EvaluationContext<T> {
-    fn new(env: Environment, loader: T, map: Arc<Mutex<CodeMap>>) -> Self {
+    fn new(env: Environment, globals: Environment, loader: T, map: Arc<Mutex<CodeMap>>) -> Self {
         EvaluationContext {
             call_stack: Vec::new(),
             env,
+            globals,
             loader,
             map,
         }
@@ -198,6 +203,7 @@ impl<T: FileLoader> EvaluationContext<T> {
     fn child(&self, name: &str) -> EvaluationContext<()> {
         EvaluationContext {
             env: self.env.child(name),
+            globals: self.globals.clone(),
             call_stack: self.call_stack.clone(),
             loader: (),
             map: self.map.clone(),
@@ -384,7 +390,7 @@ fn eval_call<T: FileLoader + 'static>(
         t!(
             e.eval(context,)?.call(
                 &new_stack,
-                context.env.clone(),
+                context.globals.clone(),
                 npos,
                 nnamed,
                 nargs,
@@ -851,6 +857,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                     p,
                     stmts.clone(),
                     context.map.clone(),
+                    context.env.clone(),
                 );
                 t!(context.env.set(&name.node, f.clone()), name)?;
                 Ok(f)
@@ -887,15 +894,20 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
 
 /// A method for consumption by def funcitons
 #[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
 pub fn eval_def(
+    name: &str,
     call_stack: &[(String, String)],
     signature: &[FunctionParameter],
     stmts: &AstStatement,
-    env: Environment,
+    captured_env: Environment,
+    globals: Environment,
     args: Vec<FunctionArg>,
     map: Arc<Mutex<CodeMap>>,
 ) -> ValueResult {
     // argument binding
+    let env = captured_env.child(&format!("{}#{}", captured_env.name(), name));
+
     let mut it2 = args.iter();
     for s in signature.iter() {
         match s {
@@ -915,6 +927,7 @@ pub fn eval_def(
     let mut ctx = EvaluationContext {
         call_stack: call_stack.to_owned(),
         env,
+        globals,
         loader: (),
         map: map.clone(),
     };
@@ -937,6 +950,7 @@ pub fn eval_def(
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+#[allow(clippy::too_many_arguments)]
 pub fn eval_lexer<
     T1: Iterator<Item = LexerItem>,
     T2: LexerIntoIter<T1>,
@@ -948,9 +962,10 @@ pub fn eval_lexer<
     dialect: Dialect,
     lexer: T2,
     env: &mut Environment,
+    globals: Environment,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
+    let mut context = EvaluationContext::new(env.clone(), globals, file_loader, map.clone());
     match parse_lexer(map, filename, content, dialect, lexer)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -975,9 +990,10 @@ pub fn eval<T: FileLoader + 'static>(
     content: &str,
     build: Dialect,
     env: &mut Environment,
+    globals: Environment,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
+    let mut context = EvaluationContext::new(env.clone(), globals, file_loader, map.clone());
     match parse(map, path, content, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -1000,9 +1016,10 @@ pub fn eval_file<T: FileLoader + 'static>(
     path: &str,
     build: Dialect,
     env: &mut Environment,
+    globals: Environment,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), file_loader, map.clone());
+    let mut context = EvaluationContext::new(env.clone(), globals, file_loader, map.clone());
     match parse_file(map, path, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
