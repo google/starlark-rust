@@ -371,17 +371,16 @@ impl TypedValue for Function {
         // First map arguments to a vector
         let mut v = Vec::new();
         // Collect args
-        let av: Vec<Value> = if let Some(x) = args {
+        let mut av = positional;
+        if let Some(x) = args {
             match x.iter() {
-                Ok(y) => positional.into_iter().chain(y).collect(),
+                Ok(y) => av.extend(y),
                 Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
             }
-        } else {
-            positional.into_iter().collect()
         };
         let mut args_iter = av.into_iter();
         // Collect kwargs
-        let mut kwargs_dict = named.clone();
+        let mut kwargs_dict = named;
         if let Some(x) = kwargs {
             match x.iter() {
                 Ok(y) => {
