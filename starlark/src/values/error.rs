@@ -60,6 +60,8 @@ pub enum ValueError {
     CannotMutateImmutableValue,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
     IncorrectParameterType,
+    /// Trying to apply incorrect parameter type, e.g. for slicing.
+    IncorrectParameterTypeNamed(&'static str),
     /// Trying to access an index outside of the value range,
     IndexOutOfBound(i64),
     /// The value is not hashable but was requested for a hash structure (e.g. dictionary).
@@ -139,6 +141,9 @@ impl SyntaxError for ValueError {
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
                         }
+                        ValueError::IncorrectParameterTypeNamed(_) => {
+                            "Type of parameters mismatch".to_owned()
+                        }
                         ValueError::IndexOutOfBound(..) => "Index out of bound".to_owned(),
                         ValueError::NotHashableValue => "Value is not hashable".to_owned(),
                         ValueError::KeyNotFound(..) => "Key not found".to_owned(),
@@ -182,6 +187,9 @@ impl SyntaxError for ValueError {
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
                         }
+                        ValueError::IncorrectParameterTypeNamed(name) => {
+                            format!("Type of parameters {} mismatch", name)
+                        }
                         ValueError::IndexOutOfBound(ref b) => {
                             format!("Index {} is out of bound", b)
                         }
@@ -208,7 +216,7 @@ impl SyntaxError for ValueError {
                             ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
                             ValueError::IntegerOverflow => INTEGER_OVERFLOW_ERROR_CODE,
                             ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,
-                            ValueError::IncorrectParameterType => {
+                            ValueError::IncorrectParameterType | ValueError::IncorrectParameterTypeNamed(..) => {
                                 INCORRECT_PARAMETER_TYPE_ERROR_CODE
                             }
                             ValueError::IndexOutOfBound(..) => OUT_OF_BOUND_ERROR_CODE,

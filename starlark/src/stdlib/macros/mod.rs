@@ -15,29 +15,50 @@
 //! Define the `starlark_module!` macro to reduce written boilerplate when adding
 //! native functions to starlark.
 
+pub mod param;
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signature {
     ($signature:ident) => {};
     ($signature:ident call_stack $e:ident) => {};
     ($signature:ident env $e:ident) => {};
-    ($signature:ident * $t:ident) => {
+    ($signature:ident * $t:ident $(: $pt:ty)?) => {
         $signature.push($crate::values::function::FunctionParameter::ArgsArray(stringify!($t).to_owned()));
     };
-    ($signature:ident ** $t:ident) => {
+    ($signature:ident ** $t:ident $(: $pt:ty)?) => {
         $signature.push($crate::values::function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
     };
-    ($signature:ident # $t:ident) => {
+    ($signature:ident # $t:ident $(: $pt:ty)?) => {
         $signature.push($crate::values::function::FunctionParameter::Normal(format!("${}", stringify!($t))));
     };
-    ($signature:ident ? $t:ident) => {
+    ($signature:ident ? $t:ident $(: $pt:ty)?) => {
         $signature.push($crate::values::function::FunctionParameter::Optional(stringify!($t).to_owned()));
     };
-    ($signature:ident ? # $t:ident) => {
+    ($signature:ident ? # $t:ident $(: $pt:ty)?) => {
         $signature.push($crate::values::function::FunctionParameter::Optional(format!("${}", stringify!($t))));
     };
-    ($signature:ident $t:ident) => {
+    ($signature:ident $t:ident $(: $pt:ty)?) => {
         $signature.push($crate::values::function::FunctionParameter::Normal(stringify!($t).to_owned()));
+    };
+    ($signature:ident # $t:ident : $pt:ty = $e:expr) => {
+        $signature.push(
+            $crate::values::function::FunctionParameter::WithDefaultValue(
+                format!("${}", stringify!($t)),
+                // explicitly specify parameter type to:
+                // * verify that default value is convertible to required type
+                // * help type inference find type parameters
+                ::std::convert::From::<starlark_parse_param_type!(1 : $pt)>::from($e)
+            )
+        );
+    };
+    ($signature:ident $t:ident : $pt:ty = $e:expr) => {
+        $signature.push(
+            $crate::values::function::FunctionParameter::WithDefaultValue(
+                stringify!($t).to_owned(),
+                ::std::convert::From::<starlark_parse_param_type!(1 : $pt)>::from($e)
+            )
+        );
     };
     ($signature:ident # $t:ident = $e:expr) => {
         $signature.push(
@@ -61,23 +82,50 @@ macro_rules! starlark_signature {
     ($signature:ident env $e:ident, $($rest:tt)*) => {
         starlark_signature!($signature $($rest)*);
     };
-    ($signature:ident * $t:ident, $($rest:tt)* ) => {
-        starlark_signature!($signature * $t); starlark_signature!($signature $($rest)*);
+    ($signature:ident * $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature!($signature * $t $(: $pt)?);
+         starlark_signature!($signature $($rest)*);
     };
-    ($signature:ident ** $t:ident,  $($rest:tt)* ) => {
-        starlark_signature!($signature ** $t); starlark_signature!($signature $($rest)*);
+    ($signature:ident ** $t:ident $(: $pt:ty)?,  $($rest:tt)* ) => {
+        starlark_signature!($signature ** $t $(: $pt)?);
+        starlark_signature!($signature $($rest)*);
     };
-    ($signature:ident # $t:ident $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature!($signature # $t $(= $e)?); starlark_signature!($signature $($rest)*);
+    ($signature:ident ? $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature!($signature ? $t $(: $pt)?);
+        starlark_signature!($signature $($rest)*);
     };
-    ($signature:ident ? $t:ident, $($rest:tt)* ) => {
-        starlark_signature!($signature ? $t); starlark_signature!($signature $($rest)*);
+    ($signature:ident ? # $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature!($signature ? # $t $(: $pt)?);
+        starlark_signature!($signature $($rest)*);
     };
-    ($signature:ident ? # $t:ident, $($rest:tt)* ) => {
-        starlark_signature!($signature ? # $t); starlark_signature!($signature $($rest)*);
+    ($signature:ident # $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
+        starlark_signature!($signature # $t $(: $pt)? $(= $e)?);
+        starlark_signature!($signature $($rest)*);
     };
-    ($signature:ident $t:ident $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature!($signature $t $(= $e)?); starlark_signature!($signature $($rest)*);
+    ($signature:ident $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
+        starlark_signature!($signature $t $(: $pt)? $(= $e)?);
+        starlark_signature!($signature $($rest)*);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! starlark_parse_param_type {
+    (1 : $pt:ty) => { $pt };
+    (? : $pt:ty) => { $pt };
+    (* : $pt:ty) => { $pt };
+    (** : $pt:ty) => { $pt };
+    (1) => {
+        $crate::values::Value
+    };
+    (?) => {
+        ::std::option::Option<$crate::values::Value>
+    };
+    (*) => {
+        ::std::vec::Vec<$crate::values::Value>
+    };
+    (**) => {
+        ::linked_hash_map::LinkedHashMap<::std::string::String, $crate::values::Value>
     };
 }
 
@@ -87,60 +135,66 @@ macro_rules! starlark_signature_extraction {
     ($args:ident $call_stack:ident ) => {};
     ($args:ident $call_stack:ident $env:ident call_stack $e:ident ) => { let $e = $call_stack; };
     ($args:ident $call_stack:ident $env:ident env $e:ident ) => { let $e = $env; };
-    ($args:ident $call_stack:ident $env:ident * $t:ident) => {
+    ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)?) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_args_array()?;
+        let mut $t: starlark_parse_param_type!(* $(: $pt)?) =
+            $args.next().unwrap().into_args_array(stringify!($t))?;
     };
-    ($args:ident $call_stack:ident $env:ident ** $t:ident) => {
+    ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)?) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_kw_args_dict()?;
+        let mut $t: starlark_parse_param_type!(** $(: $pt)?) =
+            $args.next().unwrap().into_kw_args_dict(stringify!($t))?;
     };
-    ($args:ident $call_stack:ident $env:ident # $t:ident $(= $e:expr)?) => {
+    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)?) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_normal()?;
+        let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
+            $args.next().unwrap().into_optional(stringify!($t))?;
     };
-    ($args:ident $call_stack:ident $env:ident ? $t:ident) => {
+    ($args:ident $call_stack:ident $env:ident ? # $t:ident $(: $pt:ty)?) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_optional()?;
+        let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
+            $args.next().unwrap().into_optional(concat!("$", stringify!($t)))?;
     };
-    ($args:ident $call_stack:ident $env:ident ? # $t:ident) => {
+    ($args:ident $call_stack:ident $env:ident # $t:ident $(: $pt:ty)? $(= $e:expr)?) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_optional()?;
+        let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
+            $args.next().unwrap().into_normal(concat!("$", stringify!($t)))?;
     };
-    ($args:ident $call_stack:ident $env:ident $t:ident $(= $e:expr)?) => {
+    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)?) => {
         #[allow(unused_mut)]
-        let mut $t = $args.next().unwrap().into_normal()?;
+        let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
+            $args.next().unwrap().into_normal(stringify!($t))?;
     };
-    ($args:ident $call_stack:ident $env:ident call_stack $e:ident, $($rest:tt)*) => {
-        starlark_signature_extraction!($args $call_stack $env call_stack $e);
+    ($args:ident $call_stack:ident $env:ident call_stack $e:ident $(: $pt:ty)?, $($rest:tt)*) => {
+        starlark_signature_extraction!($args $call_stack $env call_stack $e $(: $pt)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident env $e:ident, $($rest:tt)*) => {
-        starlark_signature_extraction!($args $call_stack $env env $e);
+    ($args:ident $call_stack:ident $env:ident env $e:ident $(: $pt:ty)?, $($rest:tt)*) => {
+        starlark_signature_extraction!($args $call_stack $env env $e $(: $pt)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident * $t:ident, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env * $t);
+    ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env * $t $(: $pt)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident ** $t:ident, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env ** $t);
+    ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env ** $t $(: $pt)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident # $t:ident $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env # $t $(= $e)?);
+    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env ? $t $(: $pt)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident ? $t:ident, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env ? $t);
+    ($args:ident $call_stack:ident $env:ident ? # $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env ? # $t $(: $pt)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident ? # $t:ident, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env ? # $t);
+    ($args:ident $call_stack:ident $env:ident # $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env # $t $(: $pt)? $(= $e)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
-    ($args:ident $call_stack:ident $env:ident $t:ident $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env $t $(= $e)?);
+    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
+        starlark_signature_extraction!($args $call_stack $env $t $(: $pt)? $(= $e)?);
         starlark_signature_extraction!($args $call_stack $env $($rest)*);
     };
 }
@@ -286,6 +340,15 @@ macro_rules! starlark_signatures {
 /// # Ok(Value::new(true))
 ///     }
 ///
+///     // Functions can optionally specify parameter types after colon.
+///     // Parameter can be any type which implements `TryParamConvertFromValue`.
+///     // When parameter type is not specified, it is defaulted to `Value`
+///     // for regular parameters, `Vec<Value>` for `*args`
+///     // and `LinkedHashMap<String, Value>` for `**kwargs`.
+///     sqr(x: i64) {
+///         Ok(Value::new(x * x))
+///     }
+///
 ///     // It is also possible to capture the calling environment with `env name`
 ///     // (type `starlark::enviroment::Environment`) and the call stack with
 ///     // `call_stack name` (type `Vec<String>`). For example a `dbg` function that print the
@@ -304,6 +367,7 @@ macro_rules! starlark_signatures {
 /// #    let env = my_starlark_module(Environment::new("test"));
 /// #    assert_eq!(env.get("str").unwrap().get_type(), "function");
 /// #    assert_eq!(env.get("my_fun").unwrap().get_type(), "function");
+/// #    assert_eq!(env.get("sqr").unwrap().get_type(), "function");
 /// # }
 /// ```
 ///
