@@ -19,6 +19,7 @@ use crate::eval::eval_def;
 use crate::stdlib::macros::param::TryParamConvertFromValue;
 use crate::syntax::ast::AstStatement;
 use crate::values::error::RuntimeError;
+use crate::values::none::NoneType;
 use codemap::CodeMap;
 use std::convert::TryInto;
 use std::mem;
@@ -120,7 +121,7 @@ impl From<FunctionArg> for Value {
             FunctionArg::ArgsArray(v) => v.into(),
             FunctionArg::Optional(v) => match v {
                 Some(v) => v,
-                None => Value::new(None),
+                None => Value::new(NoneType::None),
             },
             FunctionArg::KWArgsDict(v) => {
                 // `unwrap` does not panic, because key is a string which hashable

@@ -15,6 +15,7 @@
 //! Methods for the `string` type.
 
 use crate::values::error::*;
+use crate::values::none::NoneType;
 use crate::values::*;
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -298,7 +299,7 @@ starlark_module! {global =>
     /// "hello, world!".count("o", 7, 12) == 1  # in "world"
     /// # )"#).unwrap());
     /// ```
-    string.count(this: String, #needle: String, #start = 0, #end = None) {
+    string.count(this: String, #needle: String, #start = 0, #end = NoneType::None) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         let n = needle.as_str();
@@ -360,7 +361,7 @@ starlark_module! {global =>
     /// "bonbon".find("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.find(this: String, #needle: String, #start = 0, #end = None) {
+    string.find(this: String, #needle: String, #start = 0, #end = NoneType::None) {
         convert_indices!(this, start, end);
         let needle = needle.to_str();
         if let Some(substring) = this.as_str().get(start..end) {
@@ -512,7 +513,7 @@ starlark_module! {global =>
     /// "bonbon".index("on", 2, 5) # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.index(this: String, #needle: String, #start = 0, #end = None) {
+    string.index(this: String, #needle: String, #start = 0, #end = NoneType::None) {
         check_string!(needle, count);
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
@@ -934,7 +935,7 @@ starlark_module! {global =>
     /// "bonbon".rfind("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.rfind(this: String, #needle: String, #start = 0, #end = None) {
+    string.rfind(this: String, #needle: String, #start = 0, #end = NoneType::None) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
             if let Some(offset) = substring.rfind(needle.as_str()) {
@@ -966,7 +967,7 @@ starlark_module! {global =>
     /// "bonbon".rindex("on", 2, 5)   # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.rindex(this: String, #needle: String, #start = 0, #end = None) {
+    string.rindex(this: String, #needle: String, #start = 0, #end = NoneType::None) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.get(start..end) {
             if let Some(offset) = substring.rfind(needle.as_str()) {
@@ -1037,7 +1038,7 @@ starlark_module! {global =>
     /// "one two  three".rsplit(None, 1) == ["one two", "three"]
     /// # )"#).unwrap());
     /// ```
-    string.rsplit(this: String, #sep = None, #maxsplit = None) {
+    string.rsplit(this: String, #sep = NoneType::None, #maxsplit = NoneType::None) {
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None
         } else {
@@ -1128,7 +1129,7 @@ starlark_module! {global =>
     /// "banana".split("n", 1) == ["ba", "ana"]
     /// # )"#).unwrap());
     /// ```
-    string.split(this: String, #sep = None, #maxsplit = None) {
+    string.split(this: String, #sep = NoneType::None, #maxsplit = NoneType::None) {
         let this = this.to_str();
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None

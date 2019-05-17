@@ -28,6 +28,7 @@ use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
 use crate::values::function::{FunctionArg, FunctionParameter};
+use crate::values::none::NoneType;
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -470,7 +471,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     }
 
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
-        let ok = Ok(Value::new(None));
+        let ok = Ok(Value::new(NoneType::None));
         match self {
             TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
                 let l = v.len() as i64;
@@ -696,7 +697,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
     }
 
     fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
-        let ok = Ok(Value::new(None));
+        let ok = Ok(Value::new(NoneType::None));
         match self.node {
             Expr::Tuple(ref v) | Expr::List(ref v) => {
                 let l = v.len() as i64;
@@ -738,11 +739,13 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
         match self.node {
             Statement::Break => Err(EvalException::Break(self.span)),
             Statement::Continue => Err(EvalException::Continue(self.span)),
-            Statement::Pass => Ok(Value::new(None)),
+            Statement::Pass => Ok(Value::new(NoneType::None)),
             Statement::Return(Some(ref e)) => {
                 Err(EvalException::Return(self.span, e.eval(context)?))
             }
-            Statement::Return(None) => Err(EvalException::Return(self.span, Value::new(None))),
+            Statement::Return(None) => {
+                Err(EvalException::Return(self.span, Value::new(NoneType::None)))
+            }
             Statement::Expression(ref e) => e.eval(context),
             Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
                 let rhs = rhs.eval(context)?;
@@ -788,7 +791,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 if cond.eval(context)?.to_bool() {
                     st.eval(context)
                 } else {
-                    Ok(Value::new(None))
+                    Ok(Value::new(NoneType::None))
                 }
             }
             Statement::IfElse(ref cond, ref st1, ref st2) => {
@@ -806,7 +809,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                 ref st,
             ) => {
                 let mut iterable = e2.eval(context)?;
-                let mut result = Ok(Value::new(None));
+                let mut result = Ok(Value::new(NoneType::None));
                 iterable.freeze_for_iteration();
                 for v in t!(iterable.iter(), span * span)? {
                     e1.set(context, v)?;
@@ -858,12 +861,12 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
                     t!(context.env.import_symbol(&loadenv, &orig_name.node, &new_name.node),
                         span new_name.span.merge(orig_name.span))?
                 }
-                Ok(Value::new(None))
+                Ok(Value::new(NoneType::None))
             }
             Statement::Statements(ref v) => {
                 let r = eval_vector!(v, context);
                 match r.len() {
-                    0 => Ok(Value::new(None)),
+                    0 => Ok(Value::new(NoneType::None)),
                     _ => Ok(r.last().unwrap().clone()),
                 }
             }
@@ -918,7 +921,7 @@ pub fn eval_def(
     match stmts.eval(&mut ctx) {
         Err(EvalException::Return(_s, ret)) => Ok(ret),
         Err(x) => Err(ValueError::DiagnosedError(x.into())),
-        Ok(..) => Ok(Value::new(None)),
+        Ok(..) => Ok(Value::new(NoneType::None)),
     }
 }
 

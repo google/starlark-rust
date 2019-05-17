@@ -24,6 +24,7 @@ use std::sync;
 use crate::environment::Environment;
 use crate::syntax::dialect::Dialect;
 use crate::values::dict::Dictionary;
+use crate::values::none::NoneType;
 use crate::values::*;
 
 // Errors -- CR = Critical Runtime
@@ -346,7 +347,7 @@ starlark_module! {global_functions =>
     /// getattr("banana", "split")("a") == ["b", "n", "n", ""] # equivalent to "banana".split("a")
     /// # "#).unwrap());
     /// ```
-    getattr(env env, #a, #attr: String, #default=None) {
+    getattr(env env, #a, #attr: String, #default = NoneType::None) {
         match a.get_attr(&attr) {
             Ok(v) => Ok(v),
             x => match env.get_type_value(&a, &attr) {
@@ -940,7 +941,7 @@ starlark_module! {global_functions =>
 /// of this global environment that have been frozen.
 pub fn global_environment() -> Environment {
     let env = Environment::new("global");
-    env.set("None", Value::new(None)).unwrap();
+    env.set("None", Value::new(NoneType::None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
     dict::global(list::global(string::global(global_functions(env))))

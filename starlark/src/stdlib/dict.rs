@@ -16,6 +16,7 @@
 
 use crate::values::error::*;
 use crate::values::hashed_value::HashedValue;
+use crate::values::none::NoneType;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
 
@@ -53,7 +54,7 @@ starlark_module! {global =>
             &this,
             &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
                 x.clear();
-                ok!(None)
+                Ok(Value::new(NoneType::None))
             }
         )
     }
@@ -82,7 +83,7 @@ starlark_module! {global =>
     /// x.get("three", 0) == 0
     /// # )"#).unwrap());
     /// ```
-    dict.get(this, #key, #default = None) {
+    dict.get(this, #key, #default = NoneType::None) {
         match this.at(key) {
             Err(ValueError::KeyNotFound(..)) => Ok(default),
             x => x
@@ -170,7 +171,7 @@ starlark_module! {global =>
     /// ```python
     /// x.pop("four")  # error: missing key
     /// ```
-    dict.pop(this, #key, #default = None) {
+    dict.pop(this, #key, #default = NoneType::None) {
         let key = HashedValue::new(key)?;
         let key_error = format!("Key '{}' not found in '{}'", key.get_value().to_repr(), this.to_repr());
         dict::Dictionary::mutate(
@@ -263,7 +264,7 @@ starlark_module! {global =>
     /// x == {"one": 1, "two": 2, "three": 0, "four": None}
     /// # )"#).unwrap());
     /// ```
-    dict.setdefault(this, #key, #default = None) {
+    dict.setdefault(this, #key, #default = NoneType::None) {
         let key = HashedValue::new(key)?;
         let cloned_default = default.clone_for_container_value(&this);
         dict::Dictionary::mutate(
@@ -346,7 +347,7 @@ starlark_module! {global =>
         for (k, v) in kwargs {
             this.set_at(k.into(), v)?;
         }
-        ok!(None)
+        Ok(Value::new(NoneType::None))
     }
 
     /// [dict.values](
