@@ -104,7 +104,12 @@ fn main() {
                         let codemap = Arc::new(Mutex::new(CodeMap::new()));
                         maybe_print_ast_or_exit(parse_file(&codemap, &i, dialect), &codemap);
                     } else {
-                        maybe_print_or_exit(eval_file(&i, dialect, &mut global.child(&i)));
+                        maybe_print_or_exit(eval_file(
+                            &i,
+                            dialect,
+                            &mut global.child(&i),
+                            global.clone(),
+                        ));
                     }
                 }
                 if opt_repl || (free_args_empty && command.is_none()) {
@@ -117,7 +122,13 @@ fn main() {
                         let codemap = Arc::new(Mutex::new(CodeMap::new()));
                         maybe_print_ast_or_exit(parse(&codemap, path, &command, dialect), &codemap);
                     } else {
-                        maybe_print_or_exit(eval(path, &command, dialect, &mut global.child(path)));
+                        maybe_print_or_exit(eval(
+                            "[command flag]",
+                            &command,
+                            dialect,
+                            &mut global.child("[command flag]"),
+                            global.clone(),
+                        ));
                     }
                 }
             }

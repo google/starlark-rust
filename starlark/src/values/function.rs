@@ -256,11 +256,22 @@ impl Function {
         signature: Vec<FunctionParameter>,
         stmts: AstStatement,
         map: Arc<Mutex<CodeMap>>,
+        env: Environment,
     ) -> Value {
         let signature_cp = signature.clone();
+        let name_for_closure = name.clone();
         Value::new(Function {
-            function: Box::new(move |stack, env, v| {
-                eval_def(stack, &signature_cp, &stmts, env, v, map.clone())
+            function: Box::new(move |stack, globals, v| {
+                eval_def(
+                    &name_for_closure,
+                    stack,
+                    &signature_cp,
+                    &stmts,
+                    env.clone(),
+                    globals,
+                    v,
+                    map.clone(),
+                )
             }),
             signature,
             function_type: FunctionType::Def(name, module),
@@ -363,7 +374,7 @@ impl TypedValue for Function {
     fn call(
         &self,
         call_stack: &[(String, String)],
-        env: Environment,
+        globals: Environment,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
@@ -454,11 +465,7 @@ impl TypedValue for Function {
             return Err(FunctionError::ExtraParameter.into());
         }
         // Finally call the function with a new child environment
-        (*self.function)(
-            call_stack,
-            env.child(&format!("{}#{}", env.name(), &self.to_str())),
-            v,
-        )
+        (*self.function)(call_stack, globals, v)
     }
 
     fn is_descendant(&self, _other: &TypedValue) -> bool {

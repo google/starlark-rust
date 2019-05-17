@@ -24,7 +24,14 @@ use std::sync;
 pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    match eval::simple::eval(&map, "<test>", snippet, Dialect::Bzl, &mut env) {
+    match eval::simple::eval(
+        &map,
+        "<test>",
+        snippet,
+        Dialect::Bzl,
+        &mut env,
+        environment::Environment::new("empty"),
+    ) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d.clone()]);
@@ -35,16 +42,21 @@ pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
 
 /// Execute a starlark snippet with an empty environment.
 pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
-    starlark_no_diagnostic(&mut environment::Environment::new("test"), snippet)
+    starlark_no_diagnostic(
+        &mut environment::Environment::new("test"),
+        snippet,
+        environment::Environment::new("test-loader"),
+    )
 }
 
 /// Execute a starlark snippet with the passed environment.
 pub fn starlark_no_diagnostic(
     env: &mut environment::Environment,
     snippet: &str,
+    file_loader_env: environment::Environment,
 ) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    Ok(eval::simple::eval(&map, "<test>", snippet, Dialect::Bzl, env)?.to_bool())
+    Ok(eval::simple::eval(&map, "<test>", snippet, Dialect::Bzl, env, file_loader_env)?.to_bool())
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.

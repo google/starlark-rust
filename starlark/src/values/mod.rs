@@ -232,7 +232,7 @@ pub trait TypedValue: 'static {
     /// # Parameters
     ///
     /// * call_stack: the calling stack, to detect recursion
-    /// * env: the environment for the call.
+    /// * globals: global environment of the caller.
     /// * positional: the list of arguments passed positionally.
     /// * named: the list of argument that were named.
     /// * args: if provided, the `*args` argument.
@@ -240,7 +240,7 @@ pub trait TypedValue: 'static {
     fn call(
         &self,
         _call_stack: &[(String, String)],
-        _env: Environment,
+        _globals: Environment,
         _positional: Vec<Value>,
         _named: LinkedHashMap<String, Value>,
         _args: Option<Value>,
@@ -808,14 +808,14 @@ impl Value {
     pub fn call(
         &self,
         call_stack: &[(String, String)],
-        env: Environment,
+        globals: Environment,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
         let borrowed = self.0.borrow();
-        borrowed.call(call_stack, env, positional, named, args, kwargs)
+        borrowed.call(call_stack, globals, positional, named, args, kwargs)
     }
     pub fn at(&self, index: Value) -> ValueResult {
         let borrowed = self.0.borrow();

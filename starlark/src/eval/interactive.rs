@@ -50,9 +50,13 @@ pub fn eval(
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
+    file_loader_env: Environment,
 ) -> Result<Option<Value>, EvalError> {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    transform_result(super::simple::eval(&map, path, content, dialect, env), map)
+    transform_result(
+        super::simple::eval(&map, path, content, dialect, env, file_loader_env),
+        map,
+    )
 }
 
 /// Evaluate a file, mutate the environment accordingly, and return the value of the last
@@ -70,9 +74,13 @@ pub fn eval_file(
     path: &str,
     dialect: Dialect,
     env: &mut Environment,
+    file_loader_env: Environment,
 ) -> Result<Option<Value>, EvalError> {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    transform_result(super::simple::eval_file(&map, path, dialect, env), map)
+    transform_result(
+        super::simple::eval_file(&map, path, dialect, env, file_loader_env),
+        map,
+    )
 }
 
 fn transform_result(
