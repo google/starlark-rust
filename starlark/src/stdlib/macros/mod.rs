@@ -202,7 +202,7 @@ macro_rules! starlark_signature_extraction {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_fun {
-    ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
+    ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($($rest:tt)+)?) => {
         $(#[$attr])*
         pub fn $fn(
             __call_stack: &[(String, String)],
@@ -213,36 +213,12 @@ macro_rules! starlark_fun {
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
         }
-    };
-    ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($rest:tt)*) => {
-        $(#[$attr])*
-        pub fn $fn(
-            __call_stack: &[(String, String)],
-            __env: $crate::environment::Environment,
-            args: Vec<$crate::values::function::FunctionArg>
-        ) -> $crate::values::ValueResult {
-            let mut __args = args.into_iter();
-            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
-            $($content)*
-        }
-        starlark_fun! {
-            $($rest)*
-        }
-    };
-    ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
-        $(#[$attr])*
-        pub fn $fn(
-            __call_stack: &[(String, String)],
-            __env: $crate::environment::Environment,
-            args: Vec<$crate::values::function::FunctionArg>
-        ) -> $crate::values::ValueResult {
-            let mut __args = args.into_iter();
-            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
-            $($content)*
-        }
+        $(starlark_fun! {
+            $($rest)+
+        })?
     };
     ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }
-            $($rest:tt)*) => {
+            $($($rest:tt)+)?) => {
         $(#[$attr])*
         pub fn $fn(
             __call_stack: &[(String, String)],
@@ -253,9 +229,9 @@ macro_rules! starlark_fun {
             starlark_signature_extraction!(__args __call_stack __env $($signature)*);
             $($content)*
         }
-        starlark_fun! {
-            $($rest)*
-        }
+        $(starlark_fun! {
+            $($rest)+
+        })?
     };
 }
 
