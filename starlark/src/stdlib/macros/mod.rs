@@ -21,27 +21,37 @@ pub mod param;
 #[macro_export]
 macro_rules! starlark_signature {
     ($signature:ident) => {};
-    ($signature:ident call_stack $e:ident) => {};
-    ($signature:ident env $e:ident) => {};
-    ($signature:ident * $t:ident $(: $pt:ty)?) => {
+    ($signature:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
+        $( starlark_signature!($signature $($rest)+) )?;
+    };
+    ($signature:ident env $e:ident $(,$($rest:tt)+)?) => {
+        $( starlark_signature!($signature $($rest)+) )?;
+    };
+    ($signature:ident * $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push($crate::values::function::FunctionParameter::ArgsArray(stringify!($t).to_owned()));
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident ** $t:ident $(: $pt:ty)?) => {
+    ($signature:ident ** $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push($crate::values::function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident # $t:ident $(: $pt:ty)?) => {
+    ($signature:ident # $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push($crate::values::function::FunctionParameter::Normal(format!("${}", stringify!($t))));
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident ? $t:ident $(: $pt:ty)?) => {
+    ($signature:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push($crate::values::function::FunctionParameter::Optional(stringify!($t).to_owned()));
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident ? # $t:ident $(: $pt:ty)?) => {
+    ($signature:ident ? # $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push($crate::values::function::FunctionParameter::Optional(format!("${}", stringify!($t))));
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident $t:ident $(: $pt:ty)?) => {
+    ($signature:ident $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push($crate::values::function::FunctionParameter::Normal(stringify!($t).to_owned()));
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident # $t:ident : $pt:ty = $e:expr) => {
+    ($signature:ident # $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push(
             $crate::values::function::FunctionParameter::WithDefaultValue(
                 format!("${}", stringify!($t)),
@@ -51,60 +61,34 @@ macro_rules! starlark_signature {
                 ::std::convert::From::<starlark_parse_param_type!(1 : $pt)>::from($e)
             )
         );
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident $t:ident : $pt:ty = $e:expr) => {
+    ($signature:ident $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push(
             $crate::values::function::FunctionParameter::WithDefaultValue(
                 stringify!($t).to_owned(),
                 ::std::convert::From::<starlark_parse_param_type!(1 : $pt)>::from($e)
             )
         );
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident # $t:ident = $e:expr) => {
+    ($signature:ident # $t:ident = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push(
             $crate::values::function::FunctionParameter::WithDefaultValue(
                 format!("${}", stringify!($t)),
                 $crate::values::Value::from($e)
             )
         );
+        $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident $t:ident = $e:expr) => {
+    ($signature:ident $t:ident = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push(
             $crate::values::function::FunctionParameter::WithDefaultValue(
                 stringify!($t).to_owned(),
                 $crate::values::Value::from($e)
             )
         );
-    };
-    ($signature:ident call_stack $e:ident, $($rest:tt)*) => {
-        starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident env $e:ident, $($rest:tt)*) => {
-        starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident * $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature!($signature * $t $(: $pt)?);
-         starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident ** $t:ident $(: $pt:ty)?,  $($rest:tt)* ) => {
-        starlark_signature!($signature ** $t $(: $pt)?);
-        starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident ? $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature!($signature ? $t $(: $pt)?);
-        starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident ? # $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature!($signature ? # $t $(: $pt)?);
-        starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident # $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature!($signature # $t $(: $pt)? $(= $e)?);
-        starlark_signature!($signature $($rest)*);
-    };
-    ($signature:ident $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature!($signature $t $(: $pt)? $(= $e)?);
-        starlark_signature!($signature $($rest)*);
+        $( starlark_signature!($signature $($rest)+) )?;
     };
 }
 
@@ -133,69 +117,49 @@ macro_rules! starlark_parse_param_type {
 #[macro_export]
 macro_rules! starlark_signature_extraction {
     ($args:ident $call_stack:ident ) => {};
-    ($args:ident $call_stack:ident $env:ident call_stack $e:ident ) => { let $e = $call_stack; };
-    ($args:ident $call_stack:ident $env:ident env $e:ident ) => { let $e = $env; };
-    ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)?) => {
+    ($args:ident $call_stack:ident $env:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
+        let $e = $call_stack;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
+    };
+    ($args:ident $call_stack:ident $env:ident env $e:ident $(,$($rest:tt)+)?) => {
+        let $e = $env;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
+    };
+    ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(* $(: $pt)?) =
             $args.next().unwrap().into_args_array(stringify!($t))?;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)?) => {
+    ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(** $(: $pt)?) =
             $args.next().unwrap().into_kw_args_dict(stringify!($t))?;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)?) => {
+    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
             $args.next().unwrap().into_optional(stringify!($t))?;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident ? # $t:ident $(: $pt:ty)?) => {
+    ($args:ident $call_stack:ident $env:ident ? # $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
             $args.next().unwrap().into_optional(concat!("$", stringify!($t)))?;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident # $t:ident $(: $pt:ty)? $(= $e:expr)?) => {
+    ($args:ident $call_stack:ident $env:ident # $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
             $args.next().unwrap().into_normal(concat!("$", stringify!($t)))?;
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)?) => {
+    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
             $args.next().unwrap().into_normal(stringify!($t))?;
-    };
-    ($args:ident $call_stack:ident $env:ident call_stack $e:ident $(: $pt:ty)?, $($rest:tt)*) => {
-        starlark_signature_extraction!($args $call_stack $env call_stack $e $(: $pt)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident env $e:ident $(: $pt:ty)?, $($rest:tt)*) => {
-        starlark_signature_extraction!($args $call_stack $env env $e $(: $pt)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env * $t $(: $pt)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env ** $t $(: $pt)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env ? $t $(: $pt)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident ? # $t:ident $(: $pt:ty)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env ? # $t $(: $pt)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident # $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env # $t $(: $pt)? $(= $e)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)?, $($rest:tt)* ) => {
-        starlark_signature_extraction!($args $call_stack $env $t $(: $pt)? $(= $e)?);
-        starlark_signature_extraction!($args $call_stack $env $($rest)*);
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
 }
 
