@@ -59,11 +59,8 @@ impl Set {
         v: &Value,
         f: &Fn(&mut LinkedHashSet<HashedValue>) -> ValueResult,
     ) -> ValueResult {
-        match v.downcast_mut::<Set>() {
-            Some(mut x) => {
-                x.mutability.test()?;
-                f(&mut x.content)
-            }
+        match v.downcast_mut::<Set>()? {
+            Some(mut x) => f(&mut x.content),
             None => Err(ValueError::IncorrectParameterType),
         }
     }

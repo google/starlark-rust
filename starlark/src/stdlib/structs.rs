@@ -27,8 +27,8 @@ pub struct StarlarkStruct {
 impl TypedValue for StarlarkStruct {
     any!();
 
-    fn immutable(&self) -> bool {
-        true
+    fn mutability(&self) -> IterableMutability {
+        IterableMutability::Immutable
     }
 
     fn freeze(&mut self) {

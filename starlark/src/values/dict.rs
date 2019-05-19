@@ -59,11 +59,8 @@ impl Dictionary {
         v: &Value,
         f: &dyn Fn(&mut LinkedHashMap<HashedValue, Value>) -> ValueResult,
     ) -> ValueResult {
-        match v.downcast_mut::<Dictionary>() {
-            Some(mut x) => {
-                x.mutability.test()?;
-                f(&mut x.content)
-            }
+        match v.downcast_mut::<Dictionary>()? {
+            Some(mut x) => f(&mut x.content),
             None => Err(ValueError::IncorrectParameterType),
         }
     }

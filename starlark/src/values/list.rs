@@ -47,11 +47,8 @@ impl List {
     }
 
     pub fn mutate(v: &Value, f: &dyn Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
-        match v.downcast_mut::<List>() {
-            Some(mut x) => {
-                x.mutability.test()?;
-                f(&mut x.content)
-            }
+        match v.downcast_mut::<List>()? {
+            Some(mut x) => f(&mut x.content),
             None => Err(ValueError::IncorrectParameterType),
         }
     }

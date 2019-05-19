@@ -143,8 +143,8 @@ impl Value {
 /// A trait for a value with a type that all variable container
 /// will implement.
 pub trait TypedValue: 'static {
-    /// Return true if the value is immutable.
-    fn immutable(&self) -> bool;
+    /// Return the state of object mutability.
+    fn mutability(&self) -> IterableMutability;
 
     /// Convert to an Any. This allows for operation on the native type.
     /// You most certainly don't want to implement it yourself but rather use the `any!` macro.
@@ -628,7 +628,9 @@ macro_rules! default_compare {
 #[macro_export]
 macro_rules! immutable {
     () => {
-        fn immutable(&self) -> bool { true }
+        fn mutability(&self) -> $crate::values::IterableMutability {
+            $crate::values::IterableMutability::Immutable
+        }
         fn freeze(&mut self) {}
         fn freeze_for_iteration(&mut self) {}
         fn unfreeze_for_iteration(&mut self) {}
@@ -655,7 +657,7 @@ macro_rules! immutable {
 ///    // return an error if trying to mutate a frozen object.
 /// }
 /// ```
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum IterableMutability {
     Mutable,
     Immutable,
@@ -667,7 +669,7 @@ impl IterableMutability {
     ///
     /// This method is to be called simply `mutability.test()?` to return
     /// an error if the current container is no longer mutable.
-    pub fn test(&self) -> Result<(), ValueError> {
+    pub fn test(self) -> Result<(), ValueError> {
         match self {
             IterableMutability::Mutable => Ok(()),
             IterableMutability::Immutable => Err(ValueError::CannotMutateImmutableValue),
@@ -687,12 +689,6 @@ impl IterableMutability {
                 panic!("attempt to freeze during iteration");
             }
         }
-    }
-
-    /// Tells wether the current value define a permanently immutable function, to be used
-    /// to implement the `immutable` function of the [TypedValue] trait.
-    pub fn immutable(&self) -> bool {
-        *self == IterableMutability::Immutable
     }
 
     /// Freezes the current value for iterating over, to be used to implement the
@@ -727,17 +723,13 @@ impl IterableMutability {
 #[macro_export]
 macro_rules! define_iterable_mutability {
     ($name: ident) => {
-        fn immutable(&self) -> bool { self.$name.immutable() }
+        fn mutability(&self) -> $crate::values::IterableMutability { self.$name }
         fn freeze_for_iteration(&mut self) { self.$name.freeze_for_iteration() }
         fn unfreeze_for_iteration(&mut self) { self.$name.unfreeze_for_iteration() }
     }
 }
 
 impl Value {
-    pub fn immutable(&self) -> bool {
-        let borrowed = self.0.borrow();
-        borrowed.immutable()
-    }
     pub fn freeze(&mut self) {
         let mut borrowed = self.0.borrow_mut();
         borrowed.freeze()
@@ -1091,14 +1083,17 @@ impl Value {
     /// if contained object has different type than requested.
     ///
     /// This function panics if the `Value` is borrowed.
-    pub fn downcast_mut<T: Any + TypedValue>(&self) -> Option<RefMut<T>> {
+    ///
+    /// Error is returned if the value is frozen or frozen for iteration.
+    pub fn downcast_mut<T: Any + TypedValue>(&self) -> Result<Option<RefMut<T>>, ValueError> {
         let borrow = self.0.borrow_mut();
         if borrow.as_any().is::<T>() {
-            Some(RefMut::map(borrow, |r| {
+            borrow.mutability().test()?;
+            Ok(Some(RefMut::map(borrow, |r| {
                 r.as_any_mut().downcast_mut().unwrap()
-            }))
+            })))
         } else {
-            None
+            Ok(None)
         }
     }
 
