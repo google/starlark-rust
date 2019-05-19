@@ -13,6 +13,7 @@
 // limitations under the License.
 
 //! Define the tuple type for Starlark.
+use crate::values::error::ValueError;
 use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
@@ -260,9 +261,10 @@ impl<
 impl TypedValue for Tuple {
     any!();
 
-    fn immutable(&self) -> bool {
-        true
+    fn mutability(&self) -> IterableMutability {
+        IterableMutability::Immutable
     }
+
     fn freeze(&mut self) {
         // Tuple are weird, immutable but with potentially mutable
         for x in self.content.iter_mut() {
