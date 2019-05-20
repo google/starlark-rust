@@ -678,7 +678,15 @@ impl IterableMutability {
     /// Freezes the current value, can be used when implementing the `freeze` function
     /// of the [TypedValue] trait.
     pub fn freeze(&mut self) {
-        *self = IterableMutability::Immutable;
+        match *self {
+            IterableMutability::Immutable => {}
+            IterableMutability::Mutable => {
+                *self = IterableMutability::Immutable;
+            }
+            IterableMutability::FrozenForIteration => {
+                panic!("attempt to freeze during iteration");
+            }
+        }
     }
 
     /// Tells wether the current value define a permanently immutable function, to be used
@@ -690,19 +698,23 @@ impl IterableMutability {
     /// Freezes the current value for iterating over, to be used to implement the
     /// `freeze_for_iteration` function of the [TypedValue] trait.
     pub fn freeze_for_iteration(&mut self) {
-        if self.immutable() {
-            return;
+        match *self {
+            IterableMutability::Immutable => {}
+            IterableMutability::Mutable => *self = IterableMutability::FrozenForIteration,
+            IterableMutability::FrozenForIteration => panic!("already frozen"),
         }
-        *self = IterableMutability::FrozenForIteration
     }
 
     /// Unfreezes the current value for iterating over, to be used to implement the
     /// `unfreeze_for_iteration` function of the [TypedValue] trait.
     pub fn unfreeze_for_iteration(&mut self) {
-        if self.immutable() {
-            return;
+        match *self {
+            IterableMutability::Immutable => {}
+            IterableMutability::Mutable => {
+                panic!("not frozen");
+            }
+            IterableMutability::FrozenForIteration => *self = IterableMutability::Mutable,
         }
-        *self = IterableMutability::Mutable
     }
 }
 
