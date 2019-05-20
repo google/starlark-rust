@@ -48,6 +48,7 @@ use starlark::eval::eval_lexer;
 use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
+use starlark::syntax::parser::parse_lexer;
 use starlark::values::Value;
 use std::env;
 use std::path::PathBuf;
@@ -60,22 +61,32 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     lexer: T2,
     dialect: Dialect,
     env: &mut Environment,
+    ast: bool,
 ) {
-    match eval_lexer(
-        &map,
-        filename,
-        content,
-        dialect,
-        lexer,
-        env,
-        SimpleFileLoader::new(&map.clone()),
-    ) {
-        Ok(v) => {
-            if v.get_type() != "NoneType" {
-                println!("{}", v.to_repr())
+    if ast {
+        match parse_lexer(&map, filename, content, dialect, lexer) {
+            Ok(ast) => {
+                println!("{:#?}", ast);
             }
+            Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
         }
-        Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
+    } else {
+        match eval_lexer(
+            &map,
+            filename,
+            content,
+            dialect,
+            lexer,
+            env,
+            SimpleFileLoader::new(&map.clone()),
+        ) {
+            Ok(v) => {
+                if v.get_type() != "NoneType" {
+                    println!("{}", v.to_repr())
+                }
+            }
+            Err(p) => Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]),
+        }
     }
 }
 
@@ -110,7 +121,8 @@ starlark_module! {print_function =>
 ///
 /// * global_environment: the parent enviroment for the loop.
 /// * dialect: Starlark language dialect.
-pub fn repl(global_environment: &Environment, dialect: Dialect) {
+/// * ast: print AST instead of evaluating.
+pub fn repl(global_environment: &Environment, dialect: Dialect, ast: bool) {
     let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
     let reader = Interface::new("Starlark").unwrap();
     let mut env = global_environment.child("repl");
@@ -158,6 +170,7 @@ pub fn repl(global_environment: &Environment, dialect: Dialect) {
                 lexer,
                 dialect,
                 &mut env,
+                ast,
             )
         }
         reader.set_prompt(">>> ").unwrap();
