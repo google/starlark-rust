@@ -363,14 +363,6 @@ impl TypedValue for Function {
         "function"
     }
 
-    fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "function" {
-            Ok(self.to_repr().cmp(&other.to_repr()))
-        } else {
-            default_compare(self, other)
-        }
-    }
-
     fn call(
         &self,
         call_stack: &[(String, String)],
@@ -485,9 +477,6 @@ impl TypedValue for WrappedMethod {
     }
     fn get_type(&self) -> &'static str {
         "function"
-    }
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        self.method.compare_underlying(other, recursion)
     }
 
     fn call(

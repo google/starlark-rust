@@ -15,6 +15,7 @@
 //! Define the None type for Starlark.
 
 use crate::values::*;
+use std::cmp::Ordering;
 
 /// Define the NoneType type
 pub enum NoneType {
@@ -24,7 +25,11 @@ pub enum NoneType {
 impl TypedValue for NoneType {
     immutable!();
     any!();
-    default_compare!();
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+        // assert type
+        other.downcast_ref::<NoneType>().unwrap();
+        Ok(Ordering::Equal)
+    }
     fn to_repr(&self) -> String {
         "None".to_owned()
     }

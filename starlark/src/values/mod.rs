@@ -35,9 +35,10 @@
 //! For example the `NoneType` trait implementation is the following:
 //!
 //! ```rust
-//! # use starlark::{default_compare, any, immutable};
-//! # use starlark::values::TypedValue;
+//! # use starlark::{any, immutable};
+//! # use starlark::values::{TypedValue, Value};
 //! # use starlark::values::error::ValueError;
+//! use std::cmp::Ordering;
 //!
 //! /// Define the NoneType type
 //! pub enum NoneType {
@@ -47,7 +48,11 @@
 //! impl TypedValue for NoneType {
 //!     immutable!();
 //!     any!();
-//!     default_compare!();
+//!     fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+//!         // assert type
+//!         other.downcast_ref::<NoneType>().unwrap();
+//!         Ok(Ordering::Equal)
+//!     }
 //!     fn to_repr(&self) -> String {
 //!         "None".to_owned()
 //!     }
@@ -211,17 +216,22 @@ pub trait TypedValue: 'static {
     /// Compare `self` with `other`.
     ///
     /// This method returns a result of type
-    /// [Ordering](https://doc.rust-lang.org/std/cmp/enum.Ordering.html). If it cannot perform
-    /// the comparison it should return `self.get_type().cmp(other.get_type())`.
+    /// [Ordering](https://doc.rust-lang.org/std/cmp/enum.Ordering.html).
     ///
-    /// This assumption work since we consider that `a < b <=> b > a`.
+    /// `other` parameter is of type `Self` so it is safe to downcast it.
+    ///
+    /// Default implementation does pointer (id) comparison.
     ///
     /// __Note__: This does not use the
     ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
     ///       the trait needs to know the actual type of the value we compare.
     ///
     /// The extraneous recursion parameter is used to detect deep recursion.
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError>;
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+        let self_ptr = self as *const Self as *const ();
+        let other_ptr = &*other.0.borrow() as *const dyn TypedValue as *const ();
+        Ok(self_ptr.cmp(&other_ptr))
+    }
 
     /// Perform a call on the object, only meaningfull for function object.
     ///
@@ -608,29 +618,6 @@ macro_rules! any {
     }
 }
 
-/// A default implementation of the compare function, this can be used if the two types of
-/// value are differents or numeric. Custom types should implement their own comparison for the
-/// last case.
-pub fn default_compare(v1: &dyn TypedValue, v2: &dyn TypedValue) -> Result<Ordering, ValueError> {
-    Ok(match (v1.get_type(), v2.get_type()) {
-        ("bool", "bool") | ("bool", "int") | ("int", "bool") | ("int", "int") => {
-            v1.to_int()?.cmp(&(v2.to_int()?))
-        }
-        ("bool", ..) | ("int", ..) => Ordering::Less,
-        (.., "bool") | (.., "int") => Ordering::Greater,
-        (x, y) => x.cmp(y),
-    })
-}
-
-#[macro_export]
-macro_rules! default_compare {
-    () => {
-        fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<::std::cmp::Ordering, ValueError> {
-            $crate::values::default_compare(self, other)
-        }
-    }
-}
-
 /// Declare the value as immutable.
 #[macro_export]
 macro_rules! immutable {
@@ -772,23 +759,24 @@ impl Value {
         borrowed.get_hash()
     }
     pub fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
-        self.compare_underlying(other.0.borrow().deref(), recursion)
-    }
-
-    pub fn compare_underlying(
-        &self,
-        other: &dyn TypedValue,
-        recursion: u32,
-    ) -> Result<Ordering, ValueError> {
-        let borrowed = self.0.borrow();
         if recursion > MAX_RECURSION {
             return Err(ValueError::TooManyRecursionLevel);
         }
-        if ::std::ptr::eq(borrowed.deref(), other) {
-            // Special case for recursive structure, stop if we are pointing to the same object.
-            Ok(Ordering::Equal)
+
+        let self_borrow = self.0.borrow();
+        let other_borrow = other.0.borrow();
+
+        if self_borrow.as_any().type_id() != other_borrow.as_any().type_id() {
+            Ok(match (self_borrow.get_type(), other_borrow.get_type()) {
+                ("bool", "int") | ("int", "bool") => {
+                    self_borrow.to_int()?.cmp(&(other_borrow.to_int()?))
+                }
+                ("bool", ..) | ("int", ..) => Ordering::Less,
+                (.., "bool") | (.., "int") => Ordering::Greater,
+                (x, y) => x.cmp(y),
+            })
         } else {
-            borrowed.compare(other, recursion)
+            self_borrow.compare(other, recursion)
         }
     }
 
@@ -1189,16 +1177,12 @@ mod tests {
             }
             fn compare<'a>(
                 &'a self,
-                other: &dyn TypedValue,
+                other: &Value,
                 _recursion: u32,
             ) -> Result<std::cmp::Ordering, ValueError> {
-                match other.get_type() {
-                    "WrappedNumber" => {
-                        let other = other.as_any().downcast_ref::<Self>().unwrap();
-                        Ok(std::cmp::Ord::cmp(self, other))
-                    }
-                    _ => default_compare(self, other),
-                }
+                let other = other.downcast_ref::<WrappedNumber>().unwrap();
+                let other = other.as_any().downcast_ref::<Self>().unwrap();
+                Ok(std::cmp::Ord::cmp(self, other))
             }
 
             fn is_descendant(&self, _other: &TypedValue) -> bool {

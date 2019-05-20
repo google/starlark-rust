@@ -100,25 +100,23 @@ impl TypedValue for List {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &dyn TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "list" {
-            let mut iter1 = self.iter()?;
-            let mut iter2 = other.iter()?;
-            loop {
-                match (iter1.next(), iter2.next()) {
-                    (None, None) => return Ok(Ordering::Equal),
-                    (None, Some(..)) => return Ok(Ordering::Less),
-                    (Some(..), None) => return Ok(Ordering::Greater),
-                    (Some(v1), Some(v2)) => {
-                        let r = v1.compare(&v2, recursion + 1)?;
-                        if r != Ordering::Equal {
-                            return Ok(r);
-                        }
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+        // assert type
+        other.downcast_ref::<List>().unwrap();
+        let mut iter1 = self.iter()?;
+        let mut iter2 = other.iter()?;
+        loop {
+            match (iter1.next(), iter2.next()) {
+                (None, None) => return Ok(Ordering::Equal),
+                (None, Some(..)) => return Ok(Ordering::Less),
+                (Some(..), None) => return Ok(Ordering::Greater),
+                (Some(v1), Some(v2)) => {
+                    let r = v1.compare(&v2, recursion + 1)?;
+                    if r != Ordering::Equal {
+                        return Ok(r);
                     }
                 }
             }
-        } else {
-            default_compare(self, other)
         }
     }
 
