@@ -14,7 +14,7 @@
 
 //! Methods for the `list` type.
 
-use crate::values::error::*;
+use crate::values::list::List;
 use crate::values::none::NoneType;
 use crate::values::*;
 
@@ -48,11 +48,9 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     list.append(this, #el) {
-        let el = el.clone_for_container_value(&this);
-        list::List::mutate(&this, &|x| {
-            x.push(el.clone()?);
-            Ok(Value::new(NoneType::None))
-        })
+        let mut this = this.downcast_mut::<List>()?.unwrap();
+        this.push(el)?;
+        Ok(Value::new(NoneType::None))
     }
 
     /// [list.clear](
@@ -74,10 +72,9 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     list.clear(this) {
-        list::List::mutate(&this, &|x| {
-            x.clear();
-            Ok(Value::new(NoneType::None))
-        })
+        let mut this = this.downcast_mut::<List>()?.unwrap();
+        this.clear();
+        Ok(Value::new(NoneType::None))
     }
 
     /// [list.extend](
@@ -104,12 +101,9 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     list.extend(this, #other) {
-        let this_cloned = this.clone();
-        let other_cloned: Result<Vec<_>, _>  = other.iter()?.map(|v| v.clone_for_container_value(&this_cloned)).collect();
-        list::List::mutate(&this, &|x| {
-            x.extend(other_cloned.clone()?);
-            Ok(Value::new(NoneType::None))
-        })
+        let mut this = this.downcast_mut::<List>()?.unwrap();
+        this.extend(other)?;
+        Ok(Value::new(NoneType::None))
     }
 
     /// [list.index](
@@ -181,12 +175,10 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     list.insert(this, #index, #el) {
+        let mut this = this.downcast_mut::<List>()?.unwrap();
         convert_indices!(this, index);
-        let el = el.clone_for_container_value(&this);
-        list::List::mutate(&this, &move |x| {
-            x.insert(index, el.clone()?);
-            Ok(Value::new(NoneType::None))
-        })
+        this.insert(index, el)?;
+        Ok(Value::new(NoneType::None))
     }
 
     /// [list.pop](
@@ -214,16 +206,12 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     list.pop(this, ?#index) {
+        let mut this = this.downcast_mut::<List>()?.unwrap();
         let index = match index {
             Some(index) => index.to_int()?,
             None => this.length()? - 1,
         };
-        if index < 0 || index >= this.length()? {
-            return Err(ValueError::IndexOutOfBound(index));
-        }
-        list::List::mutate(&this, &|x| {
-            Ok(x.remove(index as usize))
-        })
+        Ok(this.pop(index)?)
     }
 
     /// [list.remove](
@@ -254,20 +242,9 @@ starlark_module! {global =>
     /// found.
     /// ```
     list.remove(this, #needle) {
-        let for_it = this.clone();
-        let mut it = for_it.iter()?;
-        if let Some(offset) = it.position(|x| x == needle) {
-            list::List::mutate(&this, &|x| {
-                x.remove(offset);
-                Ok(Value::new(NoneType::None))
-            })
-        } else {
-            starlark_err!(
-                LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE,
-                format!("Element '{}' not found in '{}'", needle, this),
-                "not found".to_owned()
-            );
-        }
+        let mut this = this.downcast_mut::<List>()?.unwrap();
+        this.remove(needle)?;
+        Ok(Value::new(NoneType::None))
     }
 }
 
