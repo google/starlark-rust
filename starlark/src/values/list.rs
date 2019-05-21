@@ -13,6 +13,8 @@
 // limitations under the License.
 
 //! Define the list type of Starlark
+use crate::stdlib::list::LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE;
+use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
@@ -46,11 +48,52 @@ impl List {
         })
     }
 
-    pub fn mutate(v: &Value, f: &dyn Fn(&mut Vec<Value>) -> ValueResult) -> ValueResult {
-        match v.downcast_mut::<List>()? {
-            Some(mut x) => f(&mut x.content),
-            None => Err(ValueError::IncorrectParameterType),
+    pub fn push(&mut self, value: Value) -> Result<(), ValueError> {
+        let value = value.clone_for_container(self)?;
+        self.content.push(value);
+        Ok(())
+    }
+
+    pub fn extend(&mut self, other: Value) -> Result<(), ValueError> {
+        let other: Vec<Value> = other
+            .iter()?
+            .map(|v| v.clone_for_container(self))
+            .collect::<Result<_, _>>()?;
+        self.content.extend(other);
+        Ok(())
+    }
+
+    pub fn clear(&mut self) {
+        self.content.clear();
+    }
+
+    pub fn insert(&mut self, index: usize, value: Value) -> Result<(), ValueError> {
+        let value = value.clone_for_container(self)?;
+        self.content.insert(index, value);
+        Ok(())
+    }
+
+    pub fn pop(&mut self, index: i64) -> Result<Value, ValueError> {
+        if index < 0 || index >= self.content.len() as i64 {
+            return Err(ValueError::IndexOutOfBound(index));
         }
+        Ok(self.content.remove(index as usize))
+    }
+
+    pub fn remove(&mut self, needle: Value) -> Result<(), ValueError> {
+        let position = match self.content.iter().position(|v| v == &needle) {
+            Some(position) => position,
+            None => {
+                return Err(RuntimeError {
+                    code: LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE,
+                    message: format!("Element '{}' not found in '{}'", needle, self.to_str()),
+                    label: "not found".to_owned(),
+                }
+                .into());
+            }
+        };
+        self.content.remove(position);
+        Ok(())
     }
 }
 
