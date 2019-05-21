@@ -13,6 +13,7 @@
 // limitations under the License.
 
 //! Module define the Starlark type Dictionary
+use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
@@ -45,24 +46,30 @@ impl Dictionary {
         &self.content
     }
 
-    pub fn apply<Return>(
-        v: &Value,
-        f: &dyn Fn(&LinkedHashMap<HashedValue, Value>) -> Result<Return, ValueError>,
-    ) -> Result<Return, ValueError> {
-        match v.downcast_ref::<Dictionary>() {
-            Some(x) => f(&x.content),
-            None => Err(ValueError::IncorrectParameterType),
-        }
+    pub fn get(&self, key: &Value) -> Result<Option<&Value>, ValueError> {
+        let key = HashedValue::new(key.clone())?;
+        Ok(self.content.get(&key))
     }
 
-    pub fn mutate(
-        v: &Value,
-        f: &dyn Fn(&mut LinkedHashMap<HashedValue, Value>) -> ValueResult,
-    ) -> ValueResult {
-        match v.downcast_mut::<Dictionary>()? {
-            Some(mut x) => f(&mut x.content),
-            None => Err(ValueError::IncorrectParameterType),
-        }
+    pub fn clear(&mut self) {
+        self.content.clear();
+    }
+
+    pub fn remove(&mut self, key: &Value) -> Result<Option<Value>, ValueError> {
+        let key = HashedValue::new(key.clone())?;
+        Ok(self.content.remove(&key))
+    }
+
+    pub fn pop_front(&mut self) -> Option<(HashedValue, Value)> {
+        self.content.pop_front()
+    }
+
+    pub fn insert(&mut self, key: Value, value: Value) -> Result<(), ValueError> {
+        let key = key.clone_for_container(self)?;
+        let key = HashedValue::new(key)?;
+        let value = value.clone_for_container(self)?;
+        self.content.insert(key, value);
+        Ok(())
     }
 }
 
