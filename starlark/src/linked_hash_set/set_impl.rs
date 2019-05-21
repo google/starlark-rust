@@ -20,7 +20,7 @@ use std::hash::Hash;
 /// `LinkedHashSet` is a tiny wrapper around `LinkedHashMap`.
 ///
 /// Using `LinkedHashMap` directly to avoid adding extra dependency.
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Default)]
 pub(crate) struct LinkedHashSet<K: Eq + Hash> {
     map: LinkedHashMap<K, ()>,
 }
@@ -105,5 +105,14 @@ impl<K: Eq + Hash> LinkedHashSet<K> {
 
     pub fn pop_back(&mut self) -> Option<K> {
         self.map.pop_back().map(|(k, ())| k)
+    }
+}
+
+impl<'a, K: Hash + Eq> IntoIterator for &'a LinkedHashSet<K> {
+    type Item = &'a K;
+    type IntoIter = linked_hash_map::Keys<'a, K, ()>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.map.keys()
     }
 }
