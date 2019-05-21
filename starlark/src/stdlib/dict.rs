@@ -14,11 +14,10 @@
 
 //! Methods for the `dict` type.
 
+use crate::values::dict::Dictionary;
 use crate::values::error::*;
-use crate::values::hashed_value::HashedValue;
 use crate::values::none::NoneType;
 use crate::values::*;
-use linked_hash_map::LinkedHashMap;
 
 pub const DICT_KEY_NOT_FOUND_ERROR_CODE: &str = "UF20";
 pub const POP_ON_EMPTY_DICT_ERROR_CODE: &str = "UF21";
@@ -50,13 +49,9 @@ starlark_module! {global =>
     /// # (x == {})"#).unwrap());
     /// ```
     dict.clear(this) {
-        dict::Dictionary::mutate(
-            &this,
-            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
-                x.clear();
-                Ok(Value::new(NoneType::None))
-            }
-        )
+        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+        this.clear();
+        Ok(Value::new(NoneType::None))
     }
 
     /// [dict.get](
@@ -108,14 +103,10 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.items(this) {
-        dict::Dictionary::apply(
-            &this,
-            &|x: &LinkedHashMap<HashedValue, Value>| -> ValueResult {
-                let v : Vec<Value> =
-                    x.iter().map(|x| Value::from((x.0.get_value().clone(), x.1.clone()))).collect();
-                ok!(v)
-            }
-        )
+        let this = this.downcast_ref::<Dictionary>().unwrap();
+        let v : Vec<Value> =
+            this.get_content().iter().map(|x| Value::from((x.0.get_value().clone(), x.1.clone()))).collect();
+        ok!(v)
     }
 
     /// [dict.keys](
@@ -172,25 +163,20 @@ starlark_module! {global =>
     /// x.pop("four")  # error: missing key
     /// ```
     dict.pop(this, #key, #default = NoneType::None) {
-        let key = HashedValue::new(key)?;
-        let key_error = format!("Key '{}' not found in '{}'", key.get_value().to_repr(), this.to_repr());
-        dict::Dictionary::mutate(
-            &this,
-            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
-                match x.remove(&key) {
-                    Some(x) => Ok(x),
-                    None => if default.get_type() == "NoneType" {
-                        starlark_err!(
-                            DICT_KEY_NOT_FOUND_ERROR_CODE,
-                            key_error.clone(),
-                            "not found".to_owned()
-                        );
-                    } else {
-                        Ok(default.clone())
-                    }
-                }
+        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+        match this.remove(&key)? {
+            Some(x) => Ok(x),
+            None => if default.get_type() == "NoneType" {
+                let key_error = format!("Key '{}' not found in '{}'", key.to_repr(), this.to_repr());
+                starlark_err!(
+                    DICT_KEY_NOT_FOUND_ERROR_CODE,
+                    key_error.clone(),
+                    "not found".to_owned()
+                );
+            } else {
+                Ok(default.clone())
             }
-        )
+        }
     }
 
     /// [dict.popitem](
@@ -220,19 +206,15 @@ starlark_module! {global =>
     /// x.popitem()  # error: empty dict
     /// ```
     dict.popitem(this) {
-        dict::Dictionary::mutate(
-            &this,
-            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
-                match x.pop_front() {
-                    Some(x) => ok!(x),
-                    None => starlark_err!(
-                        POP_ON_EMPTY_DICT_ERROR_CODE,
-                        "Cannot .popitem() on an empty dictionary".to_owned(),
-                        "empty dictionary".to_owned()
-                    )
-                }
-            }
-        )
+        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+        match this.pop_front() {
+            Some(x) => ok!(x),
+            None => starlark_err!(
+                POP_ON_EMPTY_DICT_ERROR_CODE,
+                "Cannot .popitem() on an empty dictionary".to_owned(),
+                "empty dictionary".to_owned()
+            )
+        }
     }
 
     /// [dict.setdefault](
@@ -265,18 +247,12 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.setdefault(this, #key, #default = NoneType::None) {
-        let key = HashedValue::new(key)?;
-        let cloned_default = default.clone_for_container_value(&this);
-        dict::Dictionary::mutate(
-            &this,
-            &|x: &mut LinkedHashMap<HashedValue, Value>| -> ValueResult {
-                if let Some(r) = x.get(&key) {
-                    return Ok(r.clone())
-                }
-                x.insert(key.clone(), cloned_default.clone()?);
-                Ok(default.clone())
-            }
-        )
+        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+        if let Some(r) = this.get(&key)? {
+            return Ok(r.clone())
+        }
+        this.insert(key, default.clone())?;
+        Ok(default)
     }
 
     /// [dict.update](
@@ -369,13 +345,9 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.values(this) {
-        dict::Dictionary::apply(
-            &this,
-            &|x: &LinkedHashMap<HashedValue, Value>| -> ValueResult {
-                let v : Vec<Value> = x.iter().map(|x| x.1.clone()).collect();
-                ok!(v)
-            }
-        )
+        let this = this.downcast_ref::<Dictionary>().unwrap();
+        let v : Vec<Value> = this.get_content().iter().map(|x| x.1.clone()).collect();
+        ok!(v)
     }
 }
 

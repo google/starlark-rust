@@ -41,13 +41,16 @@ impl<K: TryParamConvertFromValue + Hash + Eq, V: TryParamConvertFromValue> TryPa
     for LinkedHashMap<K, V>
 {
     fn try_from(source: Value) -> Result<Self, ValueError> {
-        Dictionary::apply(&source, &|dict| {
-            let mut r = LinkedHashMap::new();
-            for (k, v) in dict {
-                r.insert(K::try_from(k.get_value().clone())?, V::try_from(v.clone())?);
+        match source.downcast_ref::<Dictionary>() {
+            Some(dict) => {
+                let mut r = LinkedHashMap::new();
+                for (k, v) in dict.get_content() {
+                    r.insert(K::try_from(k.get_value().clone())?, V::try_from(v.clone())?);
+                }
+                Ok(r)
             }
-            Ok(r)
-        })
+            None => Err(ValueError::IncorrectParameterType),
+        }
     }
 }
 
