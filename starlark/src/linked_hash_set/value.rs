@@ -16,7 +16,6 @@
 use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
-use crate::values::none::NoneType;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::num::Wrapping;
@@ -48,22 +47,10 @@ impl Set {
         Ok(Value::new(result))
     }
 
-    pub fn insert_if_absent(set: &Value, v: Value) -> Result<Value, ValueError> {
-        let v = v.clone_for_container_value(set)?;
-        Self::mutate(set, &|hashset| {
-            hashset.insert_if_absent(HashedValue::new(v.clone())?);
-            Ok(Value::new(NoneType::None))
-        })
-    }
-
-    pub fn mutate(
-        v: &Value,
-        f: &Fn(&mut LinkedHashSet<HashedValue>) -> ValueResult,
-    ) -> ValueResult {
-        match v.downcast_mut::<Set>()? {
-            Some(mut x) => f(&mut x.content),
-            None => Err(ValueError::IncorrectParameterType),
-        }
+    pub fn insert_if_absent(&mut self, v: Value) -> Result<(), ValueError> {
+        let v = v.clone_for_container(self)?;
+        self.content.insert_if_absent(HashedValue::new(v.clone())?);
+        Ok(())
     }
 
     pub fn compare<Return>(
@@ -78,6 +65,51 @@ impl Set {
             (Some(v1), Some(v2)) => f(&v1.content, &v2.content),
             _ => Err(ValueError::IncorrectParameterType),
         }
+    }
+
+    pub(crate) fn get_content(&self) -> &LinkedHashSet<HashedValue> {
+        &self.content
+    }
+
+    pub fn clear(&mut self) {
+        self.content.clear();
+    }
+
+    pub fn copy(&self) -> Set {
+        Set {
+            mutability: IterableMutability::Mutable,
+            content: self.content.clone(),
+        }
+    }
+
+    pub fn remove(&mut self, needle: &Value) -> Result<bool, ValueError> {
+        let needle = HashedValue::new(needle.clone())?;
+        Ok(self.content.remove(&needle))
+    }
+
+    pub fn insert(&mut self, value: Value) -> Result<(), ValueError> {
+        let value = value.clone_for_container(self)?;
+        let value = HashedValue::new(value)?;
+        self.content.insert(value);
+        Ok(())
+    }
+
+    pub fn pop_front(&mut self) -> Option<Value> {
+        self.content.pop_front().map(HashedValue::into)
+    }
+
+    pub fn pop_back(&mut self) -> Option<Value> {
+        self.content.pop_back().map(HashedValue::into)
+    }
+
+    pub fn len(&self) -> usize {
+        self.content.len()
+    }
+}
+
+impl From<Set> for Value {
+    fn from(set: Set) -> Self {
+        Value::new(set)
     }
 }
 
@@ -275,7 +307,11 @@ mod tests {
     fn test_value_alias() {
         let v1 = Set::from(vec![1, 2]).unwrap();
         let v2 = v1.clone();
-        Set::insert_if_absent(&v2, Value::from(3)).unwrap();
+        v2.downcast_mut::<Set>()
+            .unwrap()
+            .unwrap()
+            .insert_if_absent(Value::from(3))
+            .unwrap();
         assert_eq!(v2.to_str(), "{1, 2, 3}");
         assert_eq!(v1.to_str(), "{1, 2, 3}");
     }
