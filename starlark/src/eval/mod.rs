@@ -20,6 +20,7 @@
 //! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
 //! The BUILD dialect does not allow `def` statements.
 use crate::environment::Environment;
+use crate::eval::call_stack::CallStack;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -75,7 +76,7 @@ pub enum EvalException {
     // Incorrect number of value to unpack (expected, got)
     IncorrectNumberOfValueToUnpack(Span, i64, i64),
     // Recursion
-    Recursion(Span, String, Vec<(String, String)>),
+    Recursion(Span, String, CallStack),
 }
 
 type EvalResult = Result<Value, EvalException>;
@@ -154,10 +155,7 @@ impl Into<Diagnostic> for EvalException {
                 message: format!(
                     "Function {} recursed, call stack:{}",
                     f,
-                    stack
-                        .iter()
-                        .rev()
-                        .fold(String::new(), |a, s| format!("{}\n  {}", a, s.1))
+                    stack.print_with_newline_before()
                 ),
                 code: Some(RECURSION_ERROR_CODE.to_owned()),
                 spans: vec![SpanLabel {
@@ -185,14 +183,14 @@ pub struct EvaluationContext<T: FileLoader> {
     // this is provider by caller.
     globals: Environment,
     loader: T,
-    call_stack: Vec<(String, String)>,
+    call_stack: CallStack,
     map: Arc<Mutex<CodeMap>>,
 }
 
 impl<T: FileLoader> EvaluationContext<T> {
     fn new(env: Environment, globals: Environment, loader: T, map: Arc<Mutex<CodeMap>>) -> Self {
         EvaluationContext {
-            call_stack: Vec::new(),
+            call_stack: CallStack::default(),
             env,
             globals,
             loader,
@@ -374,19 +372,11 @@ fn eval_call<T: FileLoader + 'static>(
     let fname = f.to_repr();
     let descr = f.to_str();
     let mut new_stack = context.call_stack.clone();
-    if context.call_stack.iter().any(|x| x.0 == fname) {
+    if context.call_stack.contains(&fname) {
         Err(EvalException::Recursion(this.span, fname, new_stack))
     } else {
         let loc = { context.map.lock().unwrap().look_up_pos(this.span.low()) };
-        new_stack.push((
-            fname,
-            format!(
-                "call to {} at {}:{}",
-                descr,
-                loc.file.name(),
-                loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
-            ),
-        ));
+        new_stack.push(&fname, &descr, loc.file.name(), loc.position.line as u32);
         t!(
             e.eval(context,)?.call(
                 &new_stack,
@@ -897,7 +887,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
 #[allow(clippy::too_many_arguments)]
 pub fn eval_def(
     name: &str,
-    call_stack: &[(String, String)],
+    call_stack: &CallStack,
     signature: &[FunctionParameter],
     stmts: &AstStatement,
     captured_env: Environment,
@@ -1028,6 +1018,8 @@ pub fn eval_file<T: FileLoader + 'static>(
 
 pub mod interactive;
 pub mod simple;
+
+pub mod call_stack;
 
 #[cfg(test)]
 #[macro_use]
