@@ -15,7 +15,7 @@
 //! Define simpler version of the evaluation function,
 //! which does not support `load(...)` statement.
 
-use crate::environment::{Environment, LOAD_NOT_SUPPORTED_ERROR_CODE};
+use crate::environment::{Environment, TypeValues, LOAD_NOT_SUPPORTED_ERROR_CODE};
 use crate::eval::{EvalException, FileLoader};
 use crate::syntax::dialect::Dialect;
 use crate::values::Value;
@@ -56,7 +56,15 @@ pub fn eval(
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
-    globals: Environment,
+    type_values: TypeValues,
 ) -> Result<Value, Diagnostic> {
-    super::eval(map, path, content, dialect, env, globals, NoLoadFileLoader)
+    super::eval(
+        map,
+        path,
+        content,
+        dialect,
+        env,
+        type_values,
+        NoLoadFileLoader,
+    )
 }

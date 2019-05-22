@@ -21,7 +21,7 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::sync;
 
-use crate::environment::Environment;
+use crate::environment::{Environment, TypeValues};
 use crate::eval::noload::eval;
 use crate::syntax::dialect::Dialect;
 use crate::values::dict::Dictionary;
@@ -624,9 +624,9 @@ starlark_module! {global_functions =>
                 }
             }
             Some(key) => {
-                let mut cached = key.call(cs, e.child("min"), vec![min.clone()], LinkedHashMap::new(), None, None)?;
+                let mut cached = key.call(cs, e.clone(), vec![min.clone()], LinkedHashMap::new(), None, None)?;
                 for i in it {
-                    let keyi = key.call(cs, e.child("min"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
+                    let keyi = key.call(cs, e.clone(), vec![i.clone()], LinkedHashMap::new(), None, None)?;
                     if cached.compare(&keyi)? == Ordering::Greater {
                         min = i;
                         cached = keyi;
@@ -980,7 +980,14 @@ pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let env = global_environment_with_extensions();
     let mut test_env = env.freeze().child("test");
-    match eval(&map, "<test>", snippet, Dialect::Bzl, &mut test_env, env) {
+    match eval(
+        &map,
+        "<test>",
+        snippet,
+        Dialect::Bzl,
+        &mut test_env,
+        TypeValues::new(env),
+    ) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d.clone()]);
@@ -994,6 +1001,7 @@ pub mod tests {
     use super::global_environment;
     use super::starlark_default;
     use super::Dialect;
+    use crate::environment::TypeValues;
     use crate::eval::noload::eval;
     use codemap::CodeMap;
     use codemap_diagnostic::Diagnostic;
@@ -1008,7 +1016,7 @@ pub mod tests {
             snippet,
             Dialect::Bzl,
             &mut env,
-            global_environment(),
+            TypeValues::new(global_environment()),
         ) {
             Ok(v) => Ok(v.to_bool()),
             Err(d) => Err(d),

@@ -133,7 +133,7 @@ impl From<FunctionArg> for Value {
 }
 
 pub type StarlarkFunctionPrototype =
-    dyn Fn(&CallStack, Environment, Vec<FunctionArg>) -> ValueResult;
+    dyn Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult;
 
 pub struct Function {
     function: Box<StarlarkFunctionPrototype>,
@@ -225,7 +225,7 @@ impl Function {
     #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&CallStack, Environment, Vec<FunctionArg>) -> ValueResult + 'static,
+        F: Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -241,7 +241,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&CallStack, Environment, Vec<FunctionArg>) -> ValueResult + 'static,
+        F: Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -262,14 +262,14 @@ impl Function {
         let signature_cp = signature.clone();
         let name_for_closure = name.clone();
         Value::new(Function {
-            function: Box::new(move |stack, globals, v| {
+            function: Box::new(move |stack, type_values, v| {
                 eval_def(
                     &name_for_closure,
                     stack,
                     &signature_cp,
                     &stmts,
                     env.clone(),
-                    globals,
+                    type_values,
                     v,
                     map.clone(),
                 )
@@ -368,7 +368,7 @@ impl TypedValue for Function {
     fn call(
         &self,
         call_stack: &CallStack,
-        globals: Environment,
+        type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
@@ -459,7 +459,7 @@ impl TypedValue for Function {
             return Err(FunctionError::ExtraParameter.into());
         }
         // Finally call the function with a new child environment
-        (*self.function)(call_stack, globals, v)
+        (*self.function)(call_stack, type_values, v)
     }
 }
 
@@ -481,7 +481,7 @@ impl TypedValue for WrappedMethod {
     fn call(
         &self,
         call_stack: &CallStack,
-        env: Environment,
+        type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
@@ -494,6 +494,6 @@ impl TypedValue for WrappedMethod {
             .chain(positional.into_iter())
             .collect();
         self.method
-            .call(call_stack, env, positional, named, args, kwargs)
+            .call(call_stack, type_values, positional, named, args, kwargs)
     }
 }

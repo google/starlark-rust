@@ -131,6 +131,7 @@ mod test {
     use crate::starlark_signature_extraction;
     use crate::starlark_signatures;
 
+    use crate::environment::TypeValues;
     use crate::eval::noload::eval;
     use crate::stdlib::global_environment;
     use crate::syntax::dialect::Dialect;
@@ -159,7 +160,7 @@ mod test {
             "cc_binary(name='star', srcs=['a.cc', 'b.cc'])",
             Dialect::Build,
             &mut child,
-            env,
+            TypeValues::new(env),
         )
         .unwrap();
 

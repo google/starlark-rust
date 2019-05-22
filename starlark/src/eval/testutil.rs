@@ -31,7 +31,7 @@ pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
         snippet,
         Dialect::Bzl,
         &mut env,
-        environment::Environment::new("empty"),
+        environment::TypeValues::new(environment::Environment::new("empty")),
     ) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {

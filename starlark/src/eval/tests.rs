@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::environment::Environment;
+use crate::environment::{Environment, TypeValues};
 use crate::eval::testutil::starlark_no_diagnostic;
 use crate::eval::{eval, testutil, EvalException, FileLoader};
 use crate::eval::{noload, RECURSION_ERROR_CODE};
@@ -170,7 +170,7 @@ def f(): return x
                 f_bzl,
                 Dialect::Bzl,
                 &mut env,
-                Environment::new("empty"),
+                TypeValues::new(Environment::new("empty")),
             )
             .unwrap();
             env.freeze();
@@ -189,9 +189,67 @@ def f(): return x
             program,
             Dialect::Build,
             &mut env,
-            Environment::new("empty"),
+            TypeValues::new(Environment::new("empty")),
             TestContextCapturedFileLoader {}
         )
         .unwrap()
     );
+}
+
+#[test]
+fn test_type_values_are_imported_from_caller() {
+    use crate::starlark_fun;
+    use crate::starlark_module;
+    use crate::starlark_param_name;
+    use crate::starlark_parse_param_type;
+    use crate::starlark_signature;
+    use crate::starlark_signature_extraction;
+    use crate::starlark_signatures;
+
+    starlark_module! { string_truncate =>
+        string.truncate(this: String, len: usize) {
+            // This works properly only for ASCII, but that enough for a test
+            this.truncate(len);
+            Ok(Value::new(this))
+        }
+    }
+
+    struct MyFileLoader {}
+
+    impl FileLoader for MyFileLoader {
+        fn load(&self, path: &str) -> Result<Environment, EvalException> {
+            assert_eq!("utils.bzl", path);
+
+            let mut env = Environment::new("utils.bzl");
+            noload::eval(
+                &Arc::new(Mutex::new(CodeMap::new())),
+                "utils.bzl",
+                "def truncate_strings(strings, len): return [s.truncate(len) for s in strings]",
+                Dialect::Bzl,
+                &mut env,
+                TypeValues::new(Environment::new("empty")),
+            )?;
+            Ok(env)
+        }
+    }
+
+    let mut env = Environment::new("my.bzl");
+
+    let type_values = Environment::new("string.truncate");
+    let type_values = string_truncate(type_values);
+
+    // Note `string.truncate` is not available in either `utils.bzl` or `my.bzl`,
+    // but this code works.
+    let result = eval(
+        &Arc::new(Mutex::new(CodeMap::new())),
+        "my.bzl",
+        "load('utils.bzl', 'truncate_strings'); truncate_strings(['abc', 'de'], 2)",
+        Dialect::Bzl,
+        &mut env,
+        TypeValues::new(type_values),
+        MyFileLoader {},
+    )
+    .unwrap();
+
+    assert_eq!("[\"ab\", \"de\"]", result.to_str());
 }

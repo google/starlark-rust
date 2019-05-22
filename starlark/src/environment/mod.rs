@@ -136,12 +136,12 @@ impl Environment {
     }
 
     /// Get a type value if it exists (e.g. list.index).
-    pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
+    fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
         self.env.borrow().get_type_value(obj, id)
     }
 
     /// List the attribute of a type
-    pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
+    fn list_type_value(&self, obj: &Value) -> Vec<String> {
         self.env.borrow().list_type_value(obj)
     }
 
@@ -279,7 +279,7 @@ impl EnvironmentContent {
     }
 
     /// Get a type value if it exists (e.g. list.index).
-    pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
+    fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
         match self.type_objs.get(obj.get_type()) {
             Some(ref d) => match d.get(id) {
                 Some(v) => Some(v.clone()),
@@ -313,5 +313,37 @@ impl EnvironmentContent {
     /// Return the parent environment (or `None` if there is no parent).
     pub fn get_parent(&self) -> Option<Environment> {
         self.parent.clone()
+    }
+}
+
+/// Environment passed to `call` calls.
+///
+/// Function implementations are only allowed to access
+/// type values from "type values" from the caller context,
+/// so this struct is passed instead of full `Environment`.
+#[derive(Clone)]
+pub struct TypeValues {
+    env: Environment,
+}
+
+impl TypeValues {
+    /// Wrap environment.
+    pub fn new(env: Environment) -> TypeValues {
+        TypeValues { env }
+    }
+
+    /// Return the underlying `Environment` name.
+    pub fn name(&self) -> String {
+        self.env.name()
+    }
+
+    /// Get a type value if it exists (e.g. list.index).
+    pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
+        self.env.get_type_value(obj, id)
+    }
+
+    /// List the attribute of a type
+    pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
+        self.env.list_type_value(obj)
     }
 }
