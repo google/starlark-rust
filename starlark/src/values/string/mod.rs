@@ -52,6 +52,10 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        Ok(*self == *other.downcast_ref::<String>().unwrap())
+    }
+
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         Ok(self.cmp(other.downcast_ref::<String>().unwrap().deref()))
     }

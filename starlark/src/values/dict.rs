@@ -18,7 +18,6 @@ use crate::values::hashed_value::HashedValue;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
 use std::borrow::BorrowMut;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::Hash;
@@ -146,34 +145,26 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
         // assert type
-        other.downcast_ref::<Dictionary>().unwrap();
-        let mut v1: Vec<Value> = self.iter()?.collect();
-        let mut v2: Vec<Value> = other.iter()?.collect();
-        // We sort the keys because the dictionary preserve insertion order but ordering does
-        // not matter in the comparison. This make the comparison O(n.log n) instead of O(n).
-        v1.sort();
-        v2.sort();
-        let mut iter1 = v1.into_iter();
-        let mut iter2 = v2.into_iter();
-        loop {
-            match (iter1.next(), iter2.next()) {
-                (None, None) => return Ok(Ordering::Equal),
-                (None, Some(..)) => return Ok(Ordering::Less),
-                (Some(..), None) => return Ok(Ordering::Greater),
-                (Some(k1), Some(k2)) => {
-                    let r = k1.compare(&k2)?;
-                    if r != Ordering::Equal {
-                        return Ok(r);
-                    }
-                    let r = self.at(k1)?.compare(&other.at(k2)?)?;
-                    if r != Ordering::Equal {
-                        return Ok(r);
+        let other = other.downcast_ref::<Dictionary>().unwrap();
+
+        if self.content.len() != other.content.len() {
+            return Ok(false);
+        }
+
+        for (k, v) in &self.content {
+            match other.content.get(k) {
+                None => return Ok(false),
+                Some(w) => {
+                    if !v.equals(w)? {
+                        return Ok(false);
                     }
                 }
             }
         }
+
+        Ok(true)
     }
 
     fn at(&self, index: Value) -> ValueResult {

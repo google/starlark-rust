@@ -38,15 +38,18 @@
 
 def lam(): None
 
-# All comparisons are legal
-None < False
-False < list
-list < {}
-{} < lam
-lam < 0
-0 < []
-[] < ""
-"" < ()
+# Ordered comparisons require values of the same type.
+None < False  ###  compare not supported for types NoneType and bool
+---
+False < list  ###  compare not supported for types bool and function
+---
+list < {}     ###  compare not supported for types function and dict
+---
+0 < []        ###  compare not supported for types int and list
+---
+[] < ""       ###  compare not supported for types list and str
+---
+"" < ()       ###  compare not supported for types string and tuple
 
 ---
 # cyclic data structures

@@ -143,6 +143,31 @@ impl TypedValue for List {
         !self.content.is_empty()
     }
 
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        let other = other.downcast_ref::<List>().unwrap();
+
+        if self.content.len() != other.content.len() {
+            return Ok(false);
+        }
+
+        let mut self_iter = self.content.iter();
+        let mut other_iter = other.content.iter();
+
+        loop {
+            match (self_iter.next(), other_iter.next()) {
+                (Some(a), Some(b)) => {
+                    if !a.equals(b)? {
+                        return Ok(false);
+                    }
+                }
+                (None, None) => {
+                    return Ok(true);
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         // assert type
         other.downcast_ref::<List>().unwrap();
@@ -174,7 +199,7 @@ impl TypedValue for List {
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         for x in self.content.iter() {
-            if x.compare(other)? == Ordering::Equal {
+            if x.equals(other)? {
                 return Ok(true);
             }
         }

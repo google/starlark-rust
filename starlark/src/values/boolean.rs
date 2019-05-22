@@ -28,6 +28,9 @@ impl From<bool> for Value {
 impl TypedValue for bool {
     immutable!();
     any!();
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        Ok(*self == *other.downcast_ref::<bool>().unwrap())
+    }
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         Ok(self.cmp(&*other.downcast_ref::<bool>().unwrap()))
     }

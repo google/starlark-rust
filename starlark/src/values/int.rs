@@ -14,6 +14,7 @@
 
 //! Define the int type for Starlark.
 
+use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
 
@@ -81,6 +82,9 @@ where
 impl TypedValue for i64 {
     immutable!();
     any!();
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        Ok(*self == *other.downcast_ref::<i64>().unwrap())
+    }
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         Ok(self.cmp(&*other.downcast_ref::<i64>().unwrap()))
     }

@@ -207,6 +207,21 @@ pub trait TypedValue: 'static {
     /// Returns true if `other` is a descendent of the current value, used for sanity checks.
     fn is_descendant(&self, other: &dyn TypedValue) -> bool;
 
+    /// Compare `self` with `other` for equality.
+    ///
+    /// `other` parameter is of type `Self` so it is safe to downcast it.
+    ///
+    /// Default implementation does pointer (id) comparison.
+    ///
+    /// Note: `==` in Starlark should work for arbitary objects,
+    /// so implementation should avoid returning errors except for
+    //  unrecoverable runtime errors.
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        let self_ptr = self as *const Self as *const ();
+        let other_ptr = &*other.0.borrow() as *const dyn TypedValue as *const ();
+        Ok(self_ptr == other_ptr)
+    }
+
     /// Compare `self` with `other`.
     ///
     /// This method returns a result of type
@@ -214,15 +229,17 @@ pub trait TypedValue: 'static {
     ///
     /// `other` parameter is of type `Self` so it is safe to downcast it.
     ///
-    /// Default implementation does pointer (id) comparison.
+    /// Default implementation returns error.
     ///
     /// __Note__: This does not use the
     ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
     ///       the trait needs to know the actual type of the value we compare.
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        let self_ptr = self as *const Self as *const ();
-        let other_ptr = &*other.0.borrow() as *const dyn TypedValue as *const ();
-        Ok(self_ptr.cmp(&other_ptr))
+        Err(ValueError::OperationNotSupported {
+            op: "compare".to_owned(),
+            left: self.get_type().to_owned(),
+            right: Some(other.get_type().to_owned()),
+        })
     }
 
     /// Perform a call on the object, only meaningfull for function object.
@@ -750,6 +767,18 @@ impl Value {
         let borrowed = self.0.borrow();
         borrowed.get_hash()
     }
+    pub fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        let _stack_depth_guard = call_stack::try_inc()?;
+
+        let self_borrow = self.0.borrow();
+        let other_borrow = other.0.borrow();
+
+        if self_borrow.as_any().type_id() != other_borrow.as_any().type_id() {
+            Ok(false)
+        } else {
+            self_borrow.equals(other)
+        }
+    }
     pub fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         let _stack_depth_guard = call_stack::try_inc()?;
 
@@ -757,13 +786,10 @@ impl Value {
         let other_borrow = other.0.borrow();
 
         if self_borrow.as_any().type_id() != other_borrow.as_any().type_id() {
-            Ok(match (self_borrow.get_type(), other_borrow.get_type()) {
-                ("bool", "int") | ("int", "bool") => {
-                    self_borrow.to_int()?.cmp(&(other_borrow.to_int()?))
-                }
-                ("bool", ..) | ("int", ..) => Ordering::Less,
-                (.., "bool") | (.., "int") => Ordering::Greater,
-                (x, y) => x.cmp(y),
+            Err(ValueError::OperationNotSupported {
+                op: "compare".to_owned(),
+                left: self.get_type().to_owned(),
+                right: Some(other.get_type().to_owned()),
             })
         } else {
             self_borrow.compare(other)
@@ -894,26 +920,10 @@ impl fmt::Display for Value {
 
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
-        self.compare(other) == Ok(Ordering::Equal)
+        self.equals(other) == Ok(true)
     }
 }
 impl Eq for Value {}
-
-impl Ord for Value {
-    fn cmp(&self, other: &Value) -> Ordering {
-        self.compare(other).unwrap()
-    }
-}
-
-impl PartialOrd for Value {
-    fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
-        if let Ok(r) = self.compare(other) {
-            Some(r)
-        } else {
-            None
-        }
-    }
-}
 
 impl dyn TypedValue {
     // To be calleds by convert_slice_indices only
@@ -1167,8 +1177,7 @@ mod tests {
             }
             fn compare<'a>(&'a self, other: &Value) -> Result<std::cmp::Ordering, ValueError> {
                 let other = other.downcast_ref::<WrappedNumber>().unwrap();
-                let other = other.as_any().downcast_ref::<Self>().unwrap();
-                Ok(std::cmp::Ord::cmp(self, other))
+                Ok(std::cmp::Ord::cmp(self, &*other))
             }
 
             fn is_descendant(&self, _other: &TypedValue) -> bool {
@@ -1179,7 +1188,6 @@ mod tests {
         let one = Value::new(WrappedNumber(1));
         let another_one = Value::new(WrappedNumber(1));
         let two = Value::new(WrappedNumber(2));
-        let not_wrapped_number: Value = 1.into();
 
         use std::cmp::Ordering::*;
 
@@ -1187,7 +1195,10 @@ mod tests {
         assert_eq!(one.compare(&another_one), Ok(Equal));
         assert_eq!(one.compare(&two), Ok(Less));
         assert_eq!(two.compare(&one), Ok(Greater));
-        assert_eq!(one.compare(&not_wrapped_number), Ok(Greater));
-        assert_eq!(not_wrapped_number.compare(&one), Ok(Less));
+    }
+
+    #[test]
+    fn compare_between_different_types() {
+        assert!(Value::new(1).compare(&Value::new(false)).is_err());
     }
 }

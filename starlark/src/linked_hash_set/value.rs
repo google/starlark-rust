@@ -17,7 +17,6 @@ use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::*;
-use std::cmp::Ordering;
 use std::num::Wrapping;
 
 pub(crate) struct Set {
@@ -163,27 +162,20 @@ impl TypedValue for Set {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
         let other = other.downcast_ref::<Self>().unwrap();
-        if self
-            .content
-            .symmetric_difference(&other.content)
-            .next()
-            .is_none()
-        {
-            return Ok(Ordering::Equal);
+
+        if self.content.len() != other.content.len() {
+            return Ok(false);
         }
-        // Comparing based on hash value isn't particularly meaningful to users, who may expect
-        // sets to compare based on, say, their size, or comparing their elements.
-        // We do this because it's guaranteed to provide a consistent ordering for any pair of
-        // sets. We should consider better defining the sort order of sets if users complain.
-        let l = self.get_hash().unwrap();
-        let r = other.get_hash().unwrap();
-        if l <= r {
-            Ok(Ordering::Less)
-        } else {
-            Ok(Ordering::Greater)
+
+        for a in &self.content {
+            if !other.content.contains(a) {
+                return Ok(false);
+            }
         }
+
+        Ok(true)
     }
 
     fn at(&self, index: Value) -> ValueResult {

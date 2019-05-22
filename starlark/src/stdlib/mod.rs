@@ -17,6 +17,7 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use linked_hash_map::LinkedHashMap;
 use std;
+use std::cmp::Ordering;
 use std::error::Error;
 use std::sync;
 
@@ -557,7 +558,7 @@ starlark_module! {global_functions =>
         match key {
             None => {
                 for i in it {
-                    if max < i {
+                    if max.compare(&i)? == Ordering::Less {
                         max = i;
                     }
                 }
@@ -566,7 +567,7 @@ starlark_module! {global_functions =>
                 let mut cached = key.call(cs, e.clone(), vec![max.clone()], LinkedHashMap::new(), None, None)?;
                 for i in it {
                     let keyi = key.call(cs, e.clone(), vec![i.clone()], LinkedHashMap::new(), None, None)?;
-                    if cached < keyi {
+                    if cached.compare(&keyi)? == Ordering::Less {
                         max = i;
                         cached = keyi;
                     }
@@ -613,7 +614,7 @@ starlark_module! {global_functions =>
         match key {
             None => {
                 for i in it {
-                    if min > i {
+                    if min.compare(&i)? == Ordering::Greater {
                         min = i;
                     }
                 }
@@ -622,7 +623,7 @@ starlark_module! {global_functions =>
                 let mut cached = key.call(cs, e.child("min"), vec![min.clone()], LinkedHashMap::new(), None, None)?;
                 for i in it {
                     let keyi = key.call(cs, e.child("min"), vec![i.clone()], LinkedHashMap::new(), None, None)?;
-                    if cached > keyi {
+                    if cached.compare(&keyi)? == Ordering::Greater {
                         min = i;
                         cached = keyi;
                     }
@@ -827,16 +828,29 @@ starlark_module! {global_functions =>
                 v
             }
         };
+
+        let mut compare_ok = Ok(());
+
         let reverse = reverse.to_bool();
         it.sort_by(
             |x : &(Value, Value), y : &(Value, Value)| {
-                if reverse {
-                    x.1.compare(&y.1).unwrap().reverse()
+                let ord_or_err = if reverse {
+                    x.1.compare(&y.1).map(Ordering::reverse)
                 } else {
-                    x.1.compare(&y.1).unwrap()
+                    x.1.compare(&y.1)
+                };
+                match ord_or_err {
+                    Ok(r) => r,
+                    Err(e) => {
+                        compare_ok = Err(e);
+                        Ordering::Equal // does not matter
+                    }
                 }
             }
         );
+
+        compare_ok?;
+
         let result : Vec<Value> = it.into_iter().map(|x| x.0).collect();
         Ok(Value::from(result))
     }
