@@ -44,25 +44,29 @@ assert_eq(sorted([42, 123, 3]), [3, 42, 123])
 assert_eq(sorted([42, 123, 3], reverse=True), [123, 42, 3])
 assert_eq(sorted(["wiz", "foo", "bar"]), ["bar", "foo", "wiz"])
 assert_eq(sorted(["wiz", "foo", "bar"], reverse=True), ["wiz", "foo", "bar"])
-assert_eq(sorted([1, 2, None, 3]), [1, 2, 3, None])
-assert_eq(sorted([1, "one"]), [1, "one"])
+sorted([1, 2, None, 3])       ###   compare not supported for types
+---
+sorted([1, "one"])            ###   compare not supported for types
+---
 # custom key function
 assert_eq(sorted(["two", "three", "four"], key=len),
           ["two", "four", "three"])
 assert_eq(sorted(["two", "three", "four"], key=len, reverse=True),
           ["three", "four", "two"])
----
-# why should that fails?
-# sorted([1, 2, 3], key=None)  # Type of parameters mismatch
+sorted([1, 2, 3], key=None)   ###   call() not supported for type NoneType
 ---
 # sort is stable
 pairs = [(4, 0), (3, 1), (4, 2), (2, 3), (3, 4), (1, 5), (2, 6), (3, 7)]
-def fn(x): return x[0]
-assert_eq(sorted(pairs, key=fn),
+def first(t): return t[0]
+assert_eq(sorted(pairs, key=first),
           [(1, 5),
            (2, 3), (2, 6),
            (3, 1), (3, 4), (3, 7),
            (4, 0), (4, 2)])
+
+sorted(1)                     ###   The type 'int' is not iterable
+
+---
 
 # reversed
 assert_eq(reversed([1, 144, 81, 16]), [16, 81, 144, 1])
@@ -107,7 +111,7 @@ assert_(range(0) < range(1))
 # <number> in <range>
 assert_(1 in range(3))
 ---
-assert_(True in range(3))  # The go implementation does not support that but python does.
+assert_(True not in range(3))  # The go implementation does not support that but python returns True.
 ---
 assert_("one" not in range(10))
 ---

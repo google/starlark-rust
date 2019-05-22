@@ -17,7 +17,6 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
-use std::cmp::Ordering;
 
 /// `struct()` implementation.
 pub struct StarlarkStruct {
@@ -65,29 +64,25 @@ impl TypedValue for StarlarkStruct {
             .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
         let other = other.downcast_ref::<StarlarkStruct>().unwrap();
-        let mut self_keys: Vec<_> = self.fields.keys().collect();
-        let mut other_keys: Vec<_> = other.fields.keys().collect();
-        self_keys.sort();
-        other_keys.sort();
-        let mut self_keys = self_keys.into_iter();
-        let mut other_keys = other_keys.into_iter();
-        loop {
-            match (self_keys.next(), other_keys.next()) {
-                (None, None) => return Ok(Ordering::Equal),
-                (None, Some(_)) => return Ok(Ordering::Less),
-                (Some(_), None) => return Ok(Ordering::Greater),
-                (Some(s_k), Some(o_k)) => {
-                    let s_v = self.fields.get(s_k).unwrap();
-                    let o_v = other.fields.get(o_k).unwrap();
-                    match s_v.compare(o_v)? {
-                        Ordering::Equal => continue,
-                        ordering => return Ok(ordering),
+
+        if self.fields.len() != other.fields.len() {
+            return Ok(false);
+        }
+
+        for (field, a) in &self.fields {
+            match other.fields.get(field) {
+                None => return Ok(false),
+                Some(b) => {
+                    if !a.equals(b)? {
+                        return Ok(false);
                     }
                 }
             }
         }
+
+        Ok(true)
     }
 
     fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {

@@ -33,15 +33,15 @@ min(1)  ### type 'int' is not iterable
 ---
 min([])  ### Argument is an empty iterable, min() expect a non empty iterable
 ---
-assert_eq(min(1, "2", True), 1) # Ignoring: this is is correct in python -- Cannot compare int with string
+assert_eq(min(1, "2", True), 1)     ###  compare not supported for types
 ---
-assert_eq(min([1, "2", True]), 1) # Ignoring: this is is correct in python -- Cannot compare int with string
+assert_eq(min([1, "2", True]), 1)   ###  compare not supported for types
 ---
 max(1) ### type 'int' is not iterable
 ---
 max([]) ### Argument is an empty iterable, max() expect a non empty iterable
 ---
-assert_eq(max(1, '2', True), '2') # Ignoring: this is is correct in python -- Cannot compare int with string
+assert_eq(max(1, '2', True), '2')   ###  compare not supported for types
 ---
-assert_eq(max([1, '2', True]), '2') # Ignoring: this is is correct in python -- Cannot compare int with string
+assert_eq(max([1, '2', True]), '2') ###  compare not supported for types
 ---

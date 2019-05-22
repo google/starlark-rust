@@ -331,6 +331,24 @@ where
     Ok(Value::new(cmp(t!(l.compare(&r), this)?)))
 }
 
+fn eval_equals<F>(
+    this: &AstExpr,
+    left: &AstExpr,
+    right: &AstExpr,
+    cmp: F,
+    context: &mut EvaluationContext,
+) -> EvalResult
+where
+    F: Fn(bool) -> bool,
+{
+    let l = left.eval(context)?;
+    let r = right.eval(context)?;
+    Ok(Value::new(cmp(t!(
+        l.equals(&r).map_err(Into::<ValueError>::into),
+        this
+    )?)))
+}
+
 fn eval_slice(
     this: &AstExpr,
     a: &AstExpr,
@@ -607,12 +625,8 @@ impl Evaluate for AstExpr {
                 let l = l.eval(context)?;
                 Ok(if !l.to_bool() { l } else { r.eval(context)? })
             }
-            Expr::Op(BinOp::EqualsTo, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x == Ordering::Equal, context)
-            }
-            Expr::Op(BinOp::Different, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x != Ordering::Equal, context)
-            }
+            Expr::Op(BinOp::EqualsTo, ref l, ref r) => eval_equals(self, l, r, |x| x, context),
+            Expr::Op(BinOp::Different, ref l, ref r) => eval_equals(self, l, r, |x| !x, context),
             Expr::Op(BinOp::LowerThan, ref l, ref r) => {
                 eval_compare(self, l, r, |x| x == Ordering::Less, context)
             }
