@@ -202,38 +202,20 @@ macro_rules! starlark_fun {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signatures {
-    ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }) => {
-        {
-            let name = stringify!($name).trim_matches('_');
-            let mut signature = Vec::new();
-            starlark_signature!(signature $($signature)*);
-            $env.set(name, $crate::values::function::Function::new(name.to_owned(), &$name, signature)).unwrap();
-        }
-    };
     ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }
-            $($rest:tt)*) => {
+            $($($rest:tt)+)?) => {
         {
             let name = stringify!($name).trim_matches('_');
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
             $env.set(name, $crate::values::function::Function::new(name.to_owned(), &$name, signature)).unwrap();
         }
-        starlark_signatures!{ $env,
-            $($rest)*
-        }
-    };
-    ($env:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* )
-            { $($content:tt)* }) => {
-        {
-            let name = stringify!($name).trim_matches('_');
-            let mut signature = Vec::new();
-            starlark_signature!(signature $($signature)*);
-            $env.add_type_value(stringify!($ty), name,
-                $crate::values::function::Function::new(name.to_owned(), &$name, signature));
-        }
+        $(starlark_signatures!{ $env,
+            $($rest)+
+        })?
     };
     ($env:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* ) { $($content:tt)* }
-            $($rest:tt)*) => {
+            $($($rest:tt)+)?) => {
         {
             let name = stringify!($name).trim_matches('_');
             let mut signature = Vec::new();
@@ -241,9 +223,9 @@ macro_rules! starlark_signatures {
             $env.add_type_value(stringify!($ty), name,
                 $crate::values::function::Function::new(name.to_owned(), &$name, signature));
         }
-        starlark_signatures!{ $env,
-            $($rest)*
-        }
+        $(starlark_signatures!{ $env,
+            $($rest)+
+        })?
     }
 }
 
