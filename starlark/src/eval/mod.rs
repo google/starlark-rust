@@ -19,7 +19,7 @@
 //! All evaluation function can evaluate the full Starlark language (i.e. Bazel's
 //! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
 //! The BUILD dialect does not allow `def` statements.
-use crate::environment::Environment;
+use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
@@ -78,6 +78,12 @@ pub enum EvalException {
     IncorrectNumberOfValueToUnpack(Span, i64, i64),
     // Recursion
     Recursion(Span, String, CallStack),
+}
+
+impl From<Diagnostic> for EvalException {
+    fn from(diagnostic: Diagnostic) -> Self {
+        EvalException::DiagnosedError(diagnostic)
+    }
 }
 
 type EvalResult = Result<Value, EvalException>;
@@ -180,9 +186,8 @@ pub trait FileLoader: 'static {
 pub struct EvaluationContext {
     // Locals and captured context.
     env: Environment,
-    // Globals used to resolve types (e. g. set constructor)
-    // this is provider by caller.
-    globals: Environment,
+    // Globals used to resolve type values, provided by the caller.
+    type_values: TypeValues,
     loader: Rc<dyn FileLoader>,
     call_stack: CallStack,
     map: Arc<Mutex<CodeMap>>,
@@ -191,14 +196,14 @@ pub struct EvaluationContext {
 impl EvaluationContext {
     fn new<T: FileLoader>(
         env: Environment,
-        globals: Environment,
+        type_values: TypeValues,
         loader: T,
         map: Arc<Mutex<CodeMap>>,
     ) -> Self {
         EvaluationContext {
             call_stack: CallStack::default(),
             env,
-            globals,
+            type_values,
             loader: Rc::new(loader),
             map,
         }
@@ -207,7 +212,7 @@ impl EvaluationContext {
     fn child(&self, name: &str) -> EvaluationContext {
         EvaluationContext {
             env: self.env.child(name),
-            globals: self.globals.clone(),
+            type_values: self.type_values.clone(),
             call_stack: self.call_stack.clone(),
             loader: Rc::new(UnreachableFileLoader),
             map: self.map.clone(),
@@ -409,7 +414,7 @@ fn eval_call(
         t!(
             e.eval(context,)?.call(
                 &new_stack,
-                context.globals.clone(),
+                context.type_values.clone(),
                 npos,
                 nnamed,
                 nargs,
@@ -427,7 +432,7 @@ fn eval_dot(
     context: &mut EvaluationContext,
 ) -> EvalResult {
     let left = e.eval(context)?;
-    if let Some(v) = context.env.get_type_value(&left, &s.node) {
+    if let Some(v) = context.type_values.get_type_value(&left, &s.node) {
         if v.get_type() == "function" {
             // Insert self so the method see the object it is acting on
             Ok(function::Function::new_self_call(left.clone(), v))
@@ -537,7 +542,7 @@ impl Evaluate for TransformedExpr {
                 Ok(Value::from(r))
             }
             TransformedExpr::Dot(ref left, ref s, ref span) => {
-                if let Some(v) = context.env.get_type_value(left, &s) {
+                if let Some(v) = context.type_values.get_type_value(left, &s) {
                     if v.get_type() == "function" {
                         // Insert self so the method see the object it is acting on
                         Ok(function::Function::new_self_call(left.clone(), v))
@@ -914,7 +919,7 @@ pub fn eval_def(
     signature: &[FunctionParameter],
     stmts: &AstStatement,
     captured_env: Environment,
-    globals: Environment,
+    type_values: TypeValues,
     args: Vec<FunctionArg>,
     map: Arc<Mutex<CodeMap>>,
 ) -> ValueResult {
@@ -940,7 +945,7 @@ pub fn eval_def(
     let mut ctx = EvaluationContext {
         call_stack: call_stack.to_owned(),
         env,
-        globals,
+        type_values: type_values,
         loader: Rc::new(UnreachableFileLoader),
         map: map.clone(),
     };
@@ -975,10 +980,10 @@ pub fn eval_lexer<
     dialect: Dialect,
     lexer: T2,
     env: &mut Environment,
-    globals: Environment,
+    type_values: TypeValues,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), globals, file_loader, map.clone());
+    let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
     match parse_lexer(map, filename, content, dialect, lexer)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -1003,10 +1008,10 @@ pub fn eval<T: FileLoader + 'static>(
     content: &str,
     build: Dialect,
     env: &mut Environment,
-    globals: Environment,
+    type_values: TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), globals, file_loader, map.clone());
+    let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
     match parse(map, path, content, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -1029,10 +1034,10 @@ pub fn eval_file<T: FileLoader + 'static>(
     path: &str,
     build: Dialect,
     env: &mut Environment,
-    globals: Environment,
+    type_values: TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), globals, file_loader, map.clone());
+    let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
     match parse_file(map, path, build)?.eval(&mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),

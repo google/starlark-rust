@@ -165,7 +165,7 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         fn $fn(
             __call_stack: &$crate::eval::call_stack::CallStack,
-            __env: $crate::environment::Environment,
+            __env: $crate::environment::TypeValues,
             args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
@@ -181,7 +181,7 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         fn $fn(
             __call_stack: &$crate::eval::call_stack::CallStack,
-            __env: $crate::environment::Environment,
+            __env: $crate::environment::TypeValues,
             args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
             let mut __args = args.into_iter();
@@ -268,14 +268,12 @@ macro_rules! starlark_signatures {
 ///         Ok(Value::new(x * x))
 ///     }
 ///
-///     // It is also possible to capture the calling environment with `env name`
-///     // (type `starlark::enviroment::Environment`) and the call stack with
+///     // It is also possible to capture the call stack with
 ///     // `call_stack name` (type `Vec<String>`). For example a `dbg` function that print the
-///     // environment and the call stack of the caller:
-///     dbg(call_stack cs, env environ) {
+///     // the call stack:
+///     dbg(call_stack cs) {
 ///        println!(
-///            "In {}:{}",
-///            if let Some(x) = environ.get_parent() { x.name() } else { "<root>".to_owned() },
+///            "In:{}",
 ///            cs.print_with_newline_before()
 ///        );
 ///        Ok(Value::from(NoneType::None))
@@ -316,7 +314,7 @@ macro_rules! starlark_signatures {
 /// ```rust
 /// # #[macro_use] extern crate starlark;
 /// # use starlark::values::*;
-/// # use starlark::environment::Environment;
+/// # use starlark::environment::{Environment, TypeValues};
 /// starlark_module!{ my_starlark_module =>
 ///     // The first argument is always self in that module but we use "this" because "self" is a
 ///     // a rust keyword.
@@ -328,7 +326,7 @@ macro_rules! starlark_signatures {
 /// }
 /// #
 /// # fn main() {
-/// #    let env = my_starlark_module(Environment::new("test"));
+/// #    let env = TypeValues::new(my_starlark_module(Environment::new("test")));
 /// #    assert_eq!(env.get_type_value(&Value::from(""), "hello").unwrap().get_type(), "function");
 /// # }
 /// ```

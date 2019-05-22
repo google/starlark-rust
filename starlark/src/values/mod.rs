@@ -81,7 +81,7 @@
 //!     }
 //! }
 //! ```
-use crate::environment::Environment;
+use crate::environment::TypeValues;
 use crate::eval::call_stack;
 use crate::eval::call_stack::CallStack;
 use crate::values::error::ValueError;
@@ -313,7 +313,7 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     fn call(
         &self,
         call_stack: &CallStack,
-        env: Environment,
+        type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
@@ -321,7 +321,7 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     ) -> ValueResult {
         self.content
             .borrow()
-            .call(call_stack, env, positional, named, args, kwargs)
+            .call(call_stack, type_values, positional, named, args, kwargs)
     }
 
     fn at(&self, index: Value) -> Result<Value, ValueError> {
@@ -481,7 +481,7 @@ trait ValueHolderDyn {
     fn call(
         &self,
         call_stack: &CallStack,
-        env: Environment,
+        type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
@@ -637,7 +637,7 @@ pub trait TypedValue: Sized + 'static {
     /// # Parameters
     ///
     /// * call_stack: the calling stack, to detect recursion
-    /// * globals: global environment of the caller.
+    /// * type_values: environment used to resolve type fields.
     /// * positional: the list of arguments passed positionally.
     /// * named: the list of argument that were named.
     /// * args: if provided, the `*args` argument.
@@ -645,7 +645,7 @@ pub trait TypedValue: Sized + 'static {
     fn call(
         &self,
         _call_stack: &CallStack,
-        _globals: Environment,
+        _type_values: TypeValues,
         _positional: Vec<Value>,
         _named: LinkedHashMap<String, Value>,
         _args: Option<Value>,
@@ -1042,14 +1042,14 @@ impl Value {
     pub fn call(
         &self,
         call_stack: &CallStack,
-        globals: Environment,
+        type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
         self.0
-            .call(call_stack, globals, positional, named, args, kwargs)
+            .call(call_stack, type_values, positional, named, args, kwargs)
     }
 
     pub fn at(&self, index: Value) -> ValueResult {

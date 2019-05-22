@@ -15,7 +15,7 @@
 //! Define simpler version of the evaluation function
 use super::Dialect;
 use super::{EvalException, FileLoader};
-use crate::environment::Environment;
+use crate::environment::{Environment, TypeValues};
 use crate::values::*;
 use codemap::CodeMap;
 use codemap_diagnostic::Diagnostic;
@@ -54,7 +54,7 @@ impl FileLoader for SimpleFileLoader {
             path,
             Dialect::Bzl,
             &mut env,
-            self.parent_env.clone(),
+            TypeValues::new(self.parent_env.clone()),
             self.clone(),
         ) {
             return Err(EvalException::DiagnosedError(d));
@@ -94,7 +94,7 @@ pub fn eval(
         content,
         dialect,
         env,
-        file_loader_env.clone(),
+        TypeValues::new(file_loader_env.clone()),
         SimpleFileLoader::new(map, file_loader_env),
     )
 }
@@ -122,7 +122,7 @@ pub fn eval_file(
         path,
         build,
         env,
-        file_loader_env.clone(),
+        TypeValues::new(file_loader_env.clone()),
         SimpleFileLoader::new(map, file_loader_env),
     )
 }

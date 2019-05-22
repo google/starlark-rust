@@ -43,7 +43,7 @@ extern crate starlark;
 
 use codemap_diagnostic::{ColorConfig, Emitter};
 use linefeed::{Interface, ReadResult};
-use starlark::environment::Environment;
+use starlark::environment::{Environment, TypeValues};
 use starlark::eval::eval_lexer;
 use starlark::eval::simple::SimpleFileLoader;
 use starlark::syntax::dialect::Dialect;
@@ -81,7 +81,7 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             dialect,
             lexer,
             env,
-            file_loader_env.clone(),
+            TypeValues::new(file_loader_env.clone()),
             SimpleFileLoader::new(&map.clone(), file_loader_env),
         ) {
             Ok(v) => {

@@ -15,6 +15,7 @@
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Emitter};
 use linked_hash_map::LinkedHashMap;
+use starlark::environment::TypeValues;
 use starlark::eval::call_stack::CallStack;
 use starlark::eval::simple::eval;
 use starlark::stdlib::global_environment_with_extensions;
@@ -71,7 +72,7 @@ def assert_(cond, msg="assertion failed"):
         let env = env.child("bench");
         match bench_func.call(
             &CallStack::default(),
-            env,
+            TypeValues::new(env),
             Vec::new(),
             LinkedHashMap::new(),
             None,
