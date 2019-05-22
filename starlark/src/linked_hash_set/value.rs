@@ -131,30 +131,26 @@ impl TypedValue for Set {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "set" {
-            let other = other.as_any().downcast_ref::<Self>().unwrap();
-            if self
-                .content
-                .symmetric_difference(&other.content)
-                .next()
-                .is_none()
-            {
-                return Ok(Ordering::Equal);
-            }
-            // Comparing based on hash value isn't particularly meaningful to users, who may expect
-            // sets to compare based on, say, their size, or comparing their elements.
-            // We do this because it's guaranteed to provide a consistent ordering for any pair of
-            // sets. We should consider better defining the sort order of sets if users complain.
-            let l = self.get_hash().unwrap();
-            let r = other.get_hash().unwrap();
-            if l <= r {
-                Ok(Ordering::Less)
-            } else {
-                Ok(Ordering::Greater)
-            }
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+        let other = other.downcast_ref::<Self>().unwrap();
+        if self
+            .content
+            .symmetric_difference(&other.content)
+            .next()
+            .is_none()
+        {
+            return Ok(Ordering::Equal);
+        }
+        // Comparing based on hash value isn't particularly meaningful to users, who may expect
+        // sets to compare based on, say, their size, or comparing their elements.
+        // We do this because it's guaranteed to provide a consistent ordering for any pair of
+        // sets. We should consider better defining the sort order of sets if users complain.
+        let l = self.get_hash().unwrap();
+        let r = other.get_hash().unwrap();
+        if l <= r {
+            Ok(Ordering::Less)
         } else {
-            default_compare(self, other)
+            Ok(Ordering::Greater)
         }
     }
 

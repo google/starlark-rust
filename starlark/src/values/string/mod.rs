@@ -52,12 +52,8 @@ impl TypedValue for String {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &dyn TypedValue, _recursion: u32) -> Result<Ordering, ValueError> {
-        if other.get_type() == "string" {
-            Ok(self.cmp(&other.to_str()))
-        } else {
-            default_compare(self, other)
-        }
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(other.downcast_ref::<String>().unwrap().deref()))
     }
 
     fn at(&self, index: Value) -> ValueResult {

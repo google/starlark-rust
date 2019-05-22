@@ -15,6 +15,7 @@
 //! Define the int type for Starlark.
 
 use crate::values::*;
+use std::cmp::Ordering;
 
 // A convenient macro for testing and documentation.
 #[macro_export]
@@ -80,7 +81,9 @@ where
 impl TypedValue for i64 {
     immutable!();
     any!();
-    default_compare!();
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(&*other.downcast_ref::<i64>().unwrap()))
+    }
     fn to_str(&self) -> String {
         format!("{}", self)
     }

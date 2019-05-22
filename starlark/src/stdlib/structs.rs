@@ -65,32 +65,28 @@ impl TypedValue for StarlarkStruct {
             .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
-    fn compare(&self, other: &TypedValue, recursion: u32) -> Result<Ordering, ValueError> {
-        match other.as_any().downcast_ref::<StarlarkStruct>() {
-            Some(other) => {
-                let mut self_keys: Vec<_> = self.fields.keys().collect();
-                let mut other_keys: Vec<_> = other.fields.keys().collect();
-                self_keys.sort();
-                other_keys.sort();
-                let mut self_keys = self_keys.into_iter();
-                let mut other_keys = other_keys.into_iter();
-                loop {
-                    match (self_keys.next(), other_keys.next()) {
-                        (None, None) => return Ok(Ordering::Equal),
-                        (None, Some(_)) => return Ok(Ordering::Less),
-                        (Some(_), None) => return Ok(Ordering::Greater),
-                        (Some(s_k), Some(o_k)) => {
-                            let s_v = self.fields.get(s_k).unwrap();
-                            let o_v = other.fields.get(o_k).unwrap();
-                            match s_v.compare(o_v, recursion + 1)? {
-                                Ordering::Equal => continue,
-                                ordering => return Ok(ordering),
-                            }
-                        }
+    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+        let other = other.downcast_ref::<StarlarkStruct>().unwrap();
+        let mut self_keys: Vec<_> = self.fields.keys().collect();
+        let mut other_keys: Vec<_> = other.fields.keys().collect();
+        self_keys.sort();
+        other_keys.sort();
+        let mut self_keys = self_keys.into_iter();
+        let mut other_keys = other_keys.into_iter();
+        loop {
+            match (self_keys.next(), other_keys.next()) {
+                (None, None) => return Ok(Ordering::Equal),
+                (None, Some(_)) => return Ok(Ordering::Less),
+                (Some(_), None) => return Ok(Ordering::Greater),
+                (Some(s_k), Some(o_k)) => {
+                    let s_v = self.fields.get(s_k).unwrap();
+                    let o_v = other.fields.get(o_k).unwrap();
+                    match s_v.compare(o_v, recursion + 1)? {
+                        Ordering::Equal => continue,
+                        ordering => return Ok(ordering),
                     }
                 }
             }
-            None => default_compare(self, other),
         }
     }
 

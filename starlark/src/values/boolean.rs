@@ -14,7 +14,9 @@
 
 //! Define the bool type for Starlark.
 
+use crate::values::error::ValueError;
 use crate::values::*;
+use std::cmp::Ordering;
 
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
@@ -26,7 +28,9 @@ impl From<bool> for Value {
 impl TypedValue for bool {
     immutable!();
     any!();
-    default_compare!();
+    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+        Ok(self.cmp(&*other.downcast_ref::<bool>().unwrap()))
+    }
     fn to_repr(&self) -> String {
         if *self {
             "True".to_owned()
