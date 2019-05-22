@@ -169,7 +169,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($($rest:tt)+)?) => {
         $(#[$attr])*
         fn $fn(
-            __call_stack: &[(String, String)],
+            __call_stack: &$crate::eval::call_stack::CallStack,
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
@@ -185,7 +185,7 @@ macro_rules! starlark_fun {
             $($($rest:tt)+)?) => {
         $(#[$attr])*
         fn $fn(
-            __call_stack: &[(String, String)],
+            __call_stack: &$crate::eval::call_stack::CallStack,
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::function::FunctionArg>
         ) -> $crate::values::ValueResult {
@@ -280,7 +280,7 @@ macro_rules! starlark_signatures {
 ///        println!(
 ///            "In {}:{}",
 ///            if let Some(x) = environ.get_parent() { x.name() } else { "<root>".to_owned() },
-///            cs.iter().skip(1).fold(String::new(), |a, x| format!("{}\n{}", a, x.1))
+///            cs.print_with_newline_before()
 ///        );
 ///        Ok(Value::from(NoneType::None))
 ///     }

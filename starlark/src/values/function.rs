@@ -132,7 +132,7 @@ impl From<FunctionArg> for Value {
 }
 
 pub type StarlarkFunctionPrototype =
-    dyn Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult;
+    dyn Fn(&CallStack, Environment, Vec<FunctionArg>) -> ValueResult;
 
 pub struct Function {
     function: Box<StarlarkFunctionPrototype>,
@@ -224,7 +224,7 @@ impl Function {
     #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
-        F: Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult + 'static,
+        F: Fn(&CallStack, Environment, Vec<FunctionArg>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -240,7 +240,7 @@ impl Function {
         signature: Vec<FunctionParameter>,
     ) -> Value
     where
-        F: Fn(&[(String, String)], Environment, Vec<FunctionArg>) -> ValueResult + 'static,
+        F: Fn(&CallStack, Environment, Vec<FunctionArg>) -> ValueResult + 'static,
     {
         Value::new(Function {
             function: Box::new(f),
@@ -365,7 +365,7 @@ impl TypedValue for Function {
 
     fn call(
         &self,
-        call_stack: &[(String, String)],
+        call_stack: &CallStack,
         globals: Environment,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
@@ -481,7 +481,7 @@ impl TypedValue for WrappedMethod {
 
     fn call(
         &self,
-        call_stack: &[(String, String)],
+        call_stack: &CallStack,
         env: Environment,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,

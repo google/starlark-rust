@@ -84,6 +84,7 @@
 //! }
 //! ```
 use crate::environment::Environment;
+use crate::eval::call_stack::CallStack;
 use crate::values::error::ValueError;
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
@@ -249,7 +250,7 @@ pub trait TypedValue: 'static {
     /// * kwargs: if provided, the `**kwargs` argument.
     fn call(
         &self,
-        _call_stack: &[(String, String)],
+        _call_stack: &CallStack,
         _globals: Environment,
         _positional: Vec<Value>,
         _named: LinkedHashMap<String, Value>,
@@ -795,7 +796,7 @@ impl Value {
 
     pub fn call(
         &self,
-        call_stack: &[(String, String)],
+        call_stack: &CallStack,
         globals: Environment,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
