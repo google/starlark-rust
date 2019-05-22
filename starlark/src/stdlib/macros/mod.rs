@@ -168,7 +168,7 @@ macro_rules! starlark_signature_extraction {
 macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($($rest:tt)+)?) => {
         $(#[$attr])*
-        pub fn $fn(
+        fn $fn(
             __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::function::FunctionArg>
@@ -184,7 +184,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $ty:ident . $fn:ident ( $($signature:tt)* ) { $($content:tt)* }
             $($($rest:tt)+)?) => {
         $(#[$attr])*
-        pub fn $fn(
+        fn $fn(
             __call_stack: &[(String, String)],
             __env: $crate::environment::Environment,
             args: Vec<$crate::values::function::FunctionArg>
