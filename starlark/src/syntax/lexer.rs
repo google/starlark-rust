@@ -19,9 +19,6 @@ use std::char;
 use std::collections::linked_list::IntoIter;
 use std::collections::LinkedList;
 use std::fmt;
-use std::iter::Peekable;
-use std::mem;
-use std::str::CharIndices;
 
 // TODO: move that code in some common error code list?
 // CL prefix = Critical Lexing
@@ -230,7 +227,8 @@ impl<T1: Iterator<Item = LexerItem>, T2: IntoIterator<Item = LexerItem, IntoIter
 #[doc(hidden)]
 pub struct Lexer {
     input: String,
-    chars: Peekable<CharIndices<'static>>,
+    /// Byte offset of the next char in `input`
+    pos_bytes: usize,
     offset: u64,
     process_end_of_file: bool,
     last_new_line: bool,
@@ -307,10 +305,9 @@ impl Lexer {
     /// Create a new lexer from a string slice
     pub fn new(input: &str) -> Self {
         let input = input.to_owned();
-        let chars = unsafe { mem::transmute(input.char_indices().peekable()) };
         Lexer {
             input,
-            chars,
+            pos_bytes: 0,
             offset: 0,
             process_end_of_file: true,
             last_new_line: true,
@@ -338,7 +335,7 @@ impl Lexer {
         };
         assert!(self.offset >= self.last_pos);
         self.input = input.to_owned();
-        self.chars = unsafe { mem::transmute(self.input.char_indices().peekable()) };
+        self.pos_bytes = 0;
     }
 
     /// Enqueue a
@@ -350,18 +347,23 @@ impl Lexer {
     }
 
     fn peek(&mut self) -> Option<(u64, char)> {
-        match self.chars.peek() {
-            Some(&(x, c)) => Some((x as u64 + self.offset, c)),
+        match self.input[self.pos_bytes..].chars().next() {
+            Some(c) => Some((self.pos_bytes as u64 + self.offset, c)),
             None => None,
         }
     }
 
     fn pop(&mut self) -> Option<(u64, char)> {
-        let r = self.chars.next();
-        self.last_next = match r {
-            Some((x, c)) => {
+        let mut char_indices = self.input[self.pos_bytes..].char_indices();
+        self.last_next = match char_indices.next() {
+            Some((_, c)) => {
+                let pos = self.pos_bytes;
+                self.pos_bytes = match char_indices.next() {
+                    Some((len, _)) => self.pos_bytes + len,
+                    None => self.input.len(),
+                };
                 self.last_new_line = Lexer::is_nl(c);
-                Some((x as u64 + self.offset, c))
+                Some((pos as u64 + self.offset, c))
             }
             None => {
                 self.last_new_line = false;
@@ -372,7 +374,7 @@ impl Lexer {
     }
 
     fn terminate(&mut self) {
-        (&mut self.chars).last();
+        self.pos_bytes = self.input.len();
         self.indentation_stack.clear();
         self.parentheses = 0;
     }
