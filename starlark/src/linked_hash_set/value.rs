@@ -163,7 +163,7 @@ impl TypedValue for Set {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         let other = other.downcast_ref::<Self>().unwrap();
         if self
             .content

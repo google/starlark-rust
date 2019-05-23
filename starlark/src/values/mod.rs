@@ -48,7 +48,7 @@
 //! impl TypedValue for NoneType {
 //!     immutable!();
 //!     any!();
-//!     fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+//!     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
 //!         // assert type
 //!         other.downcast_ref::<NoneType>().unwrap();
 //!         Ok(Ordering::Equal)
@@ -84,6 +84,7 @@
 //! }
 //! ```
 use crate::environment::Environment;
+use crate::eval::call_stack;
 use crate::eval::call_stack::CallStack;
 use crate::values::error::ValueError;
 use codemap_diagnostic::Level;
@@ -94,14 +95,6 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
-
-// Maximum recursion level for comparison
-// TODO(dmarting): those are rather short, maybe make it configurable?
-#[cfg(debug_assertions)]
-const MAX_RECURSION: u32 = 200;
-
-#[cfg(not(debug_assertions))]
-const MAX_RECURSION: u32 = 3000;
 
 /// A value in Starlark.
 ///
@@ -226,9 +219,7 @@ pub trait TypedValue: 'static {
     /// __Note__: This does not use the
     ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
     ///       the trait needs to know the actual type of the value we compare.
-    ///
-    /// The extraneous recursion parameter is used to detect deep recursion.
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         let self_ptr = self as *const Self as *const ();
         let other_ptr = &*other.0.borrow() as *const dyn TypedValue as *const ();
         Ok(self_ptr.cmp(&other_ptr))
@@ -759,10 +750,8 @@ impl Value {
         let borrowed = self.0.borrow();
         borrowed.get_hash()
     }
-    pub fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
-        if recursion > MAX_RECURSION {
-            return Err(ValueError::TooManyRecursionLevel);
-        }
+    pub fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+        let _stack_depth_guard = call_stack::try_inc()?;
 
         let self_borrow = self.0.borrow();
         let other_borrow = other.0.borrow();
@@ -777,7 +766,7 @@ impl Value {
                 (x, y) => x.cmp(y),
             })
         } else {
-            self_borrow.compare(other, recursion)
+            self_borrow.compare(other)
         }
     }
 
@@ -905,20 +894,20 @@ impl fmt::Display for Value {
 
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
-        self.compare(other, 0) == Ok(Ordering::Equal)
+        self.compare(other) == Ok(Ordering::Equal)
     }
 }
 impl Eq for Value {}
 
 impl Ord for Value {
     fn cmp(&self, other: &Value) -> Ordering {
-        self.compare(other, 0).unwrap()
+        self.compare(other).unwrap()
     }
 }
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
-        if let Ok(r) = self.compare(other, 0) {
+        if let Ok(r) = self.compare(other) {
             Some(r)
         } else {
             None
@@ -1176,11 +1165,7 @@ mod tests {
             fn get_hash(&self) -> Result<u64, ValueError> {
                 Ok(self.0)
             }
-            fn compare<'a>(
-                &'a self,
-                other: &Value,
-                _recursion: u32,
-            ) -> Result<std::cmp::Ordering, ValueError> {
+            fn compare<'a>(&'a self, other: &Value) -> Result<std::cmp::Ordering, ValueError> {
                 let other = other.downcast_ref::<WrappedNumber>().unwrap();
                 let other = other.as_any().downcast_ref::<Self>().unwrap();
                 Ok(std::cmp::Ord::cmp(self, other))
@@ -1198,11 +1183,11 @@ mod tests {
 
         use std::cmp::Ordering::*;
 
-        assert_eq!(one.compare(&one, 0), Ok(Equal));
-        assert_eq!(one.compare(&another_one, 0), Ok(Equal));
-        assert_eq!(one.compare(&two, 0), Ok(Less));
-        assert_eq!(two.compare(&one, 0), Ok(Greater));
-        assert_eq!(one.compare(&not_wrapped_number, 0), Ok(Greater));
-        assert_eq!(not_wrapped_number.compare(&one, 0), Ok(Less));
+        assert_eq!(one.compare(&one), Ok(Equal));
+        assert_eq!(one.compare(&another_one), Ok(Equal));
+        assert_eq!(one.compare(&two), Ok(Less));
+        assert_eq!(two.compare(&one), Ok(Greater));
+        assert_eq!(one.compare(&not_wrapped_number), Ok(Greater));
+        assert_eq!(not_wrapped_number.compare(&one), Ok(Less));
     }
 }

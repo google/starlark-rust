@@ -25,7 +25,7 @@ pub enum NoneType {
 impl TypedValue for NoneType {
     immutable!();
     any!();
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         // assert type
         other.downcast_ref::<NoneType>().unwrap();
         Ok(Ordering::Equal)

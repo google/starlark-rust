@@ -323,7 +323,7 @@ where
 {
     let l = left.eval(context)?;
     let r = right.eval(context)?;
-    Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
+    Ok(Value::new(cmp(t!(l.compare(&r), this)?)))
 }
 
 fn eval_slice(

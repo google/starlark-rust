@@ -13,6 +13,8 @@
 // limitations under the License.
 //! Starlark call stack.
 
+use crate::values::error::ValueError;
+use std::cell::Cell;
 use std::fmt;
 
 /// Starlark call stack.
@@ -58,4 +60,68 @@ impl<'a> fmt::Display for DisplayWithNewlineBefore<'a> {
         }
         Ok(())
     }
+}
+
+// Maximum recursion level for comparison
+// TODO(dmarting): those are rather short, maybe make it configurable?
+#[cfg(debug_assertions)]
+const MAX_RECURSION: u32 = 200;
+
+#[cfg(not(debug_assertions))]
+const MAX_RECURSION: u32 = 3000;
+
+// A thread-local counter is used to detect too deep recursion.
+//
+// Thread-local is chosen instead of explicit function "recursion" parameter
+// for two reasons:
+// * It's possible to propagate stack depth across external functions like
+//   `Display::to_string` where passing a stack depth parameter is hard
+// * We need to guarantee that stack depth is not lost in complex invocation
+//   chains like function calls compare which calls native function which calls
+//   starlark function which calls to_str. We could change all evaluation stack
+//   signatures to accept some "context" parameters, but passing it as thread-local
+//   is easier.
+thread_local!(static STACK_DEPTH: Cell<u32> = Cell::new(0));
+
+/// Stored previous stack depth before calling `try_inc`.
+///
+/// Stores that previous stack depths back to thread-local on drop.
+#[must_use]
+pub struct StackGuard {
+    prev_depth: u32,
+}
+
+impl Drop for StackGuard {
+    fn drop(&mut self) {
+        STACK_DEPTH.with(|c| c.set(self.prev_depth));
+    }
+}
+
+/// Increment stack depth.
+fn inc() -> StackGuard {
+    let prev_depth = STACK_DEPTH.with(|c| {
+        let prev = c.get();
+        c.set(prev + 1);
+        prev
+    });
+    StackGuard { prev_depth }
+}
+
+/// Check stack depth does not exceed configured max stack depth.
+fn check() -> Result<(), ValueError> {
+    if STACK_DEPTH.with(Cell::get) >= MAX_RECURSION {
+        return Err(ValueError::TooManyRecursionLevel);
+    }
+    Ok(())
+}
+
+/// Try increment stack depth.
+///
+/// Return opaque `StackGuard` object which resets stack to previous value
+/// on `drop`.
+///
+/// If stack depth exceeds configured limit, return error.
+pub fn try_inc() -> Result<StackGuard, ValueError> {
+    check()?;
+    Ok(inc())
 }

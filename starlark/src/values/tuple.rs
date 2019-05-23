@@ -305,7 +305,7 @@ impl TypedValue for Tuple {
         Ok(s.finish())
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         // assert type
         other.downcast_ref::<Tuple>().unwrap();
         let mut iter1 = self.iter()?;
@@ -316,7 +316,7 @@ impl TypedValue for Tuple {
                 (None, Some(..)) => return Ok(Ordering::Less),
                 (Some(..), None) => return Ok(Ordering::Greater),
                 (Some(v1), Some(v2)) => {
-                    let r = v1.compare(&v2, recursion + 1)?;
+                    let r = v1.compare(&v2)?;
                     if r != Ordering::Equal {
                         return Ok(r);
                     }
@@ -336,7 +336,7 @@ impl TypedValue for Tuple {
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         for x in self.content.iter() {
-            if x.compare(other, 0)? == Ordering::Equal {
+            if x.compare(other)? == Ordering::Equal {
                 return Ok(true);
             }
         }

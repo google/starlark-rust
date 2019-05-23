@@ -81,7 +81,7 @@ where
 impl TypedValue for i64 {
     immutable!();
     any!();
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         Ok(self.cmp(&*other.downcast_ref::<i64>().unwrap()))
     }
     fn to_str(&self) -> String {
