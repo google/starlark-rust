@@ -16,6 +16,7 @@
 use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
+use crate::values::iter::TypedIterable;
 use crate::values::*;
 use std::num::Wrapping;
 
@@ -220,8 +221,8 @@ impl TypedValue for Set {
         )))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().map(|x| x.get_value().clone())))
+    fn iter(&self) -> Result<&TypedIterable, ValueError> {
+        Ok(self)
     }
 
     /// Concatenate `other` to the current value.
@@ -248,7 +249,7 @@ impl TypedValue for Set {
             for x in self.content.iter() {
                 result.content.insert(x.clone());
             }
-            for x in other.iter()? {
+            for x in &other.iter()? {
                 result
                     .content
                     .insert_if_absent(HashedValue::new(x.clone())?);
@@ -267,6 +268,12 @@ impl TypedValue for Set {
             .map(Wrapping)
             .fold(Wrapping(0_u64), |acc, v| acc + v)
             .0)
+    }
+}
+
+impl TypedIterable for Set {
+    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.content.iter().map(|v| v.get_value().clone()))
     }
 }
 

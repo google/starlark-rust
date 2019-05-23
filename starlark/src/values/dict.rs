@@ -15,6 +15,7 @@
 //! Module define the Starlark type Dictionary
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
+use crate::values::iter::TypedIterable;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
 use std::borrow::BorrowMut;
@@ -191,10 +192,8 @@ impl TypedValue for Dictionary {
         })
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(
-            self.content.iter().map(|x| x.0.get_value().clone()),
-        ))
+    fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
+        Ok(self)
     }
 
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
@@ -220,7 +219,7 @@ impl TypedValue for Dictionary {
             for (k, v) in self.content.iter() {
                 result.content.insert(k.clone(), v.clone());
             }
-            for k in other.iter()? {
+            for k in &other.iter()? {
                 result
                     .content
                     .insert(HashedValue::new(k.clone())?, other.at(k)?.clone());
@@ -229,6 +228,12 @@ impl TypedValue for Dictionary {
         } else {
             Err(ValueError::IncorrectParameterType)
         }
+    }
+}
+
+impl TypedIterable for Dictionary {
+    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.content.iter().map(|x| x.0.get_value().clone()))
     }
 }
 

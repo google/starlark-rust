@@ -300,7 +300,7 @@ fn eval_comprehension_clause(
             Clause::For(ref k, ref v) => {
                 let mut iterable = v.eval(context)?;
                 iterable.freeze_for_iteration();
-                for i in t!(iterable.iter(), c)? {
+                for i in &t!(iterable.iter(), c)? {
                     k.set(context, i)?;
                     if tl.is_empty() {
                         result.push(e.eval(context)?);
@@ -507,7 +507,8 @@ impl Evaluate for TransformedExpr {
                     let mut r = Vec::new();
                     let mut it1 = v.iter();
                     // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.iter(), span * span)?;
+                    let it2 = t!(new_value.iter(), span * span)?;
+                    let mut it2 = it2.iter();
                     for _ in 0..l {
                         r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
                     }
@@ -717,19 +718,20 @@ impl Evaluate for AstExpr {
         let ok = Ok(Value::new(NoneType::None));
         match self.node {
             Expr::Tuple(ref v) | Expr::List(ref v) => {
-                let l = v.len() as i64;
-                let nvl = t!(new_value.length(), self)?;
-                if nvl != l {
+                // TODO: the span here should probably include the rvalue
+                let new_values: Vec<Value> = t!(new_value.iter(), self)?.iter().collect();
+                let l = v.len();
+                if new_values.len() != l {
                     Err(EvalException::IncorrectNumberOfValueToUnpack(
-                        self.span, l, nvl,
+                        self.span,
+                        l as i64,
+                        new_values.len() as i64,
                     ))
                 } else {
-                    let mut r = Vec::new();
                     let mut it1 = v.iter();
-                    // TODO: the span here should probably include the rvalue
-                    let mut it2 = t!(new_value.iter(), self)?;
+                    let mut it2 = new_values.into_iter();
                     for _ in 0..l {
-                        r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
+                        it1.next().unwrap().set(context, it2.next().unwrap())?;
                     }
                     ok
                 }
@@ -828,7 +830,7 @@ impl Evaluate for AstStatement {
                 let mut iterable = e2.eval(context)?;
                 let mut result = Ok(Value::new(NoneType::None));
                 iterable.freeze_for_iteration();
-                for v in t!(iterable.iter(), span * span)? {
+                for v in &t!(iterable.iter(), span * span)? {
                     e1.set(context, v)?;
                     match st.eval(context) {
                         Err(EvalException::Break(..)) => break,

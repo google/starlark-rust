@@ -137,7 +137,8 @@ starlark_module! {global =>
     /// ```
     list.index(this, #needle, #start = 0, #end = NoneType::None) {
         convert_indices!(this, start, end);
-        let mut it = this.iter()?.skip(start).take(end - start);
+        let it = this.iter()?;
+        let mut it = it.iter().skip(start).take(end - start);
         if let Some(offset) = it.position(|x| x == needle) {
             Ok(Value::new((offset + start) as i64))
         } else {

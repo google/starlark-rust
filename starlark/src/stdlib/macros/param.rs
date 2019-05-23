@@ -30,7 +30,7 @@ pub trait TryParamConvertFromValue: Sized {
 impl<T: TryParamConvertFromValue> TryParamConvertFromValue for Vec<T> {
     fn try_from(source: Value) -> Result<Self, ValueError> {
         let mut r = Vec::new();
-        for item in source.iter()? {
+        for item in &source.iter()? {
             r.push(T::try_from(item)?);
         }
         Ok(r)

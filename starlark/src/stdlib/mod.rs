@@ -88,7 +88,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     any(#x) {
-        for i in x.iter()? {
+        for i in &x.iter()? {
             if i.to_bool() {
                 return Ok(Value::new(true));
             }
@@ -121,7 +121,7 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     all(#x) {
-        for i in x.iter()? {
+        for i in &x.iter()? {
             if !i.to_bool() {
                 return Ok(Value::new(false));
             }
@@ -235,15 +235,16 @@ starlark_module! {global_functions =>
         if let Some(a) = a {
             match a.get_type() {
                 "dict" => {
-                    for k in a.iter()? {
+                    for k in &a.iter()? {
                         let v = a.at(k.clone())?;
                         map.set_at(k, v)?;
                     }
                 },
                 _ => {
-                   for el in a.iter()? {
+                   for el in &a.iter()? {
                        match el.iter() {
-                           Ok(mut it) => {
+                           Ok(it) => {
+                                let mut it = it.iter();
                                 let first = it.next();
                                 let second = it.next();
                                 if first.is_none() || second.is_none() || it.next().is_some() {
@@ -327,6 +328,7 @@ starlark_module! {global_functions =>
         let v : Vec<Value> =
             it
             .iter()?
+            .iter()
             .enumerate()
             .map(|(k, v)| Value::from((Value::new(k as i64 + offset), v)))
             .collect();
@@ -511,7 +513,7 @@ starlark_module! {global_functions =>
     list(?#a) {
         let mut l = Vec::new();
         if let Some(a) = a {
-            for x in a.iter()? {
+            for x in &a.iter()? {
                 l.push(x.clone())
             }
         }
@@ -546,7 +548,8 @@ starlark_module! {global_functions =>
         } else {
             Value::from(args)
         };
-        let mut it = args.iter()?;
+        let it = args.iter()?;
+        let mut it = it.iter();
         let mut max = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -602,7 +605,8 @@ starlark_module! {global_functions =>
         } else {
             Value::from(args)
         };
-        let mut it = args.iter()?;
+        let it = args.iter()?;
+        let mut it = it.iter();
         let mut min = match it.next() {
             Some(x) => x,
             None => starlark_err!(
@@ -779,7 +783,7 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     reversed(#a) {
-        let v : Vec<Value> = a.iter()?.collect();
+        let v : Vec<Value> = a.iter()?.iter().collect();
         let v : Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
     }
@@ -812,7 +816,8 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     sorted(call_stack cs, env e, #x, ?key, reverse = false) {
-        let x = x.iter()?;
+        let it = x.iter()?;
+        let x = it.iter();
         let mut it = match key {
             None => {
                 x.map(|x| (x.clone(), x)).collect()
@@ -884,7 +889,7 @@ starlark_module! {global_functions =>
     tuple(?#a) {
         let mut l = Vec::new();
         if let Some(a) = a {
-            for x in a.iter()? {
+            for x in &a.iter()? {
                 l.push(x.clone())
             }
         }
@@ -934,7 +939,7 @@ starlark_module! {global_functions =>
         for arg in args {
             let first = v.is_empty();
             let mut idx = 0;
-            for e in arg.iter()? {
+            for e in &arg.iter()? {
                 if first {
                     v.push(Value::from((e.clone(),)));
                     idx += 1;

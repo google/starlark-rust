@@ -790,7 +790,8 @@ starlark_module! {global =>
     /// ```
     string.join(this: String, #to_join) {
         let mut r = String::new();
-        for (index, item) in to_join.iter()?.enumerate() {
+        let to_join_iter = to_join.iter()?;
+        for (index, item) in to_join_iter.iter().enumerate() {
             if index != 0 {
                 r.push_str(&this);
             }
@@ -1354,7 +1355,8 @@ mod tests {
     fn test_format_capture() {
         let args = Value::from(vec!["1", "2", "3"]);
         let mut kwargs = dict::Dictionary::new();
-        let mut it = args.iter().unwrap();
+        let it = args.iter().unwrap();
+        let mut it = it.iter();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
 
@@ -1431,7 +1433,8 @@ mod tests {
         )
         .is_err());
         captured_by_order = false;
-        it = args.iter().unwrap();
+        let it = args.iter().unwrap();
+        let mut it = it.iter();
         assert_eq!(
             format_capture(
                 "{1",
