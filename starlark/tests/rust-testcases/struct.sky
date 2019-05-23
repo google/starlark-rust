@@ -1,0 +1,16 @@
+# Struct tests
+
+# Comparison
+assert_(struct() == struct())
+assert_(struct(a=1) == struct(a=1))
+assert_(struct(a=1, b=False) == struct(a=1, b=False))
+
+# Order of fields is not important for comparison
+assert_(struct(a=1, b=2) == struct(b=2, a=1))
+
+# Inequality
+assert_(struct(a=2) != struct())
+assert_(struct() != struct(a=2))
+assert_(struct(a=2) != struct(a=1))
+assert_(struct(a=2) != struct(b=1))
+assert_(struct(a=1, b=2) != struct(a=1, b="2"))
