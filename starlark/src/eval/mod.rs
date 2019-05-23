@@ -35,6 +35,7 @@ use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 macro_rules! eval_vector {
@@ -169,41 +170,46 @@ impl Into<Diagnostic> for EvalException {
 }
 
 /// A trait for loading file using the load statement path.
-pub trait FileLoader: Clone {
+pub trait FileLoader: 'static {
     /// Open the file given by the load statement `path`.
     fn load(&self, path: &str) -> Result<Environment, EvalException>;
 }
 
 /// A structure holding all the data about the evaluation context
 /// (scope, load statement resolver, ...)
-pub struct EvaluationContext<T: FileLoader> {
+pub struct EvaluationContext {
     // Locals and captured context.
     env: Environment,
     // Globals used to resolve types (e. g. set constructor)
     // this is provider by caller.
     globals: Environment,
-    loader: T,
+    loader: Rc<dyn FileLoader>,
     call_stack: CallStack,
     map: Arc<Mutex<CodeMap>>,
 }
 
-impl<T: FileLoader> EvaluationContext<T> {
-    fn new(env: Environment, globals: Environment, loader: T, map: Arc<Mutex<CodeMap>>) -> Self {
+impl EvaluationContext {
+    fn new<T: FileLoader>(
+        env: Environment,
+        globals: Environment,
+        loader: T,
+        map: Arc<Mutex<CodeMap>>,
+    ) -> Self {
         EvaluationContext {
             call_stack: CallStack::default(),
             env,
             globals,
-            loader,
+            loader: Rc::new(loader),
             map,
         }
     }
 
-    fn child(&self, name: &str) -> EvaluationContext<()> {
+    fn child(&self, name: &str) -> EvaluationContext {
         EvaluationContext {
             env: self.env.child(name),
             globals: self.globals.clone(),
             call_stack: self.call_stack.clone(),
-            loader: (),
+            loader: Rc::new(()),
             map: self.map.clone(),
         }
     }
@@ -218,58 +224,58 @@ impl FileLoader for () {
 }
 
 // A trait to add an eval function to the AST elements
-trait Evaluate<T: FileLoader> {
+trait Evaluate {
     // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
-    fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult;
+    fn eval(&self, context: &mut EvaluationContext) -> EvalResult;
 
     // An intermediate transformation that tries to evaluate parameters of function / indices.
     // It is used to cache result of LHS in augmented assignment.
     // This transformation by default should be a deep copy (clone).
     fn transform(
         &self,
-        context: &mut EvaluationContext<T>,
-    ) -> Result<Box<dyn Evaluate<T>>, EvalException>;
+        context: &mut EvaluationContext,
+    ) -> Result<Box<dyn Evaluate>, EvalException>;
 
     // Perform an assignment on the LHS represented by this AST element
-    fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult;
+    fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult;
 }
 
-impl<T: FileLoader> Evaluate<T> for AstString {
-    fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
+impl Evaluate for AstString {
+    fn eval(&self, _context: &mut EvaluationContext) -> EvalResult {
         Ok(Value::new(self.node.clone()))
     }
 
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
+        _context: &mut EvaluationContext,
+    ) -> Result<Box<dyn Evaluate>, EvalException> {
         Ok(Box::new(self.clone()))
     }
 
-    fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
+    fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
         Err(EvalException::IncorrectLeftValue(self.span))
     }
 }
 
-impl<T: FileLoader> Evaluate<T> for AstInt {
-    fn eval(&self, _context: &mut EvaluationContext<T>) -> EvalResult {
+impl Evaluate for AstInt {
+    fn eval(&self, _context: &mut EvaluationContext) -> EvalResult {
         Ok(Value::new(self.node))
     }
 
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
+        _context: &mut EvaluationContext,
+    ) -> Result<Box<dyn Evaluate>, EvalException> {
         Ok(Box::new(*self))
     }
 
-    fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
+    fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
         Err(EvalException::IncorrectLeftValue(self.span))
     }
 }
 
-fn eval_comprehension_clause<T: FileLoader + 'static>(
-    context: &mut EvaluationContext<T>,
+fn eval_comprehension_clause(
+    context: &mut EvaluationContext,
     e: &AstExpr,
     clauses: &[AstClause],
 ) -> Result<Vec<Value>, EvalException> {
@@ -305,12 +311,12 @@ fn eval_comprehension_clause<T: FileLoader + 'static>(
     Ok(result)
 }
 
-fn eval_compare<T: FileLoader + 'static, F>(
+fn eval_compare<F>(
     this: &AstExpr,
     left: &AstExpr,
     right: &AstExpr,
     cmp: F,
-    context: &mut EvaluationContext<T>,
+    context: &mut EvaluationContext,
 ) -> EvalResult
 where
     F: Fn(Ordering) -> bool,
@@ -320,13 +326,13 @@ where
     Ok(Value::new(cmp(t!(l.compare(&r, 0), this)?)))
 }
 
-fn eval_slice<T: FileLoader + 'static>(
+fn eval_slice(
     this: &AstExpr,
     a: &AstExpr,
     start: &Option<AstExpr>,
     stop: &Option<AstExpr>,
     stride: &Option<AstExpr>,
-    context: &mut EvaluationContext<T>,
+    context: &mut EvaluationContext,
 ) -> EvalResult {
     let a = a.eval(context)?;
     let start = match start {
@@ -344,14 +350,14 @@ fn eval_slice<T: FileLoader + 'static>(
     t!(a.slice(start, stop, stride), this)
 }
 
-fn eval_call<T: FileLoader + 'static>(
+fn eval_call(
     this: &AstExpr,
     e: &AstExpr,
     pos: &[AstExpr],
     named: &[(AstString, AstExpr)],
     args: &Option<AstExpr>,
     kwargs: &Option<AstExpr>,
-    context: &mut EvaluationContext<T>,
+    context: &mut EvaluationContext,
 ) -> EvalResult {
     let npos = eval_vector!(pos, context);
     let mut nnamed = LinkedHashMap::new();
@@ -391,11 +397,11 @@ fn eval_call<T: FileLoader + 'static>(
     }
 }
 
-fn eval_dot<T: FileLoader + 'static>(
+fn eval_dot(
     this: &AstExpr,
     e: &AstExpr,
     s: &AstString,
-    context: &mut EvaluationContext<T>,
+    context: &mut EvaluationContext,
 ) -> EvalResult {
     let left = e.eval(context)?;
     if let Some(v) = context.env.get_type_value(&left, &s.node) {
@@ -410,11 +416,11 @@ fn eval_dot<T: FileLoader + 'static>(
     }
 }
 
-fn eval_dict_comprehension<T: FileLoader + 'static>(
+fn eval_dict_comprehension(
     k: &AstExpr,
     v: &AstExpr,
     clauses: &[AstClause],
-    context: &EvaluationContext<T>,
+    context: &EvaluationContext,
 ) -> EvalResult {
     let mut r = Dictionary::new_typed();
     let tuple = Box::new(Spanned {
@@ -430,10 +436,10 @@ fn eval_dict_comprehension<T: FileLoader + 'static>(
     Ok(Value::new(r))
 }
 
-fn eval_one_dimensional_comprehension<T: FileLoader + 'static>(
+fn eval_one_dimensional_comprehension(
     e: &AstExpr,
     clauses: &[AstClause],
-    context: &EvaluationContext<T>,
+    context: &EvaluationContext,
 ) -> Result<Vec<Value>, EvalException> {
     let mut r = Vec::new();
     let mut context = context.child("one_dimensional_comprehension");
@@ -443,30 +449,30 @@ fn eval_one_dimensional_comprehension<T: FileLoader + 'static>(
     Ok(r)
 }
 
-fn eval_list_comprehension<T: FileLoader + 'static>(
+fn eval_list_comprehension(
     e: &AstExpr,
     clauses: &[AstClause],
-    context: &EvaluationContext<T>,
+    context: &EvaluationContext,
 ) -> EvalResult {
     eval_one_dimensional_comprehension(e, clauses, &context).map(Value::from)
 }
 
-enum TransformedExpr<T: FileLoader> {
+enum TransformedExpr {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
-    List(Vec<Box<dyn Evaluate<T>>>, Span),
-    Tuple(Vec<Box<dyn Evaluate<T>>>, Span),
+    List(Vec<Box<dyn Evaluate>>, Span),
+    Tuple(Vec<Box<dyn Evaluate>>, Span),
 }
 
-impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
+impl Evaluate for TransformedExpr {
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
+        _context: &mut EvaluationContext,
+    ) -> Result<Box<dyn Evaluate>, EvalException> {
         panic!("Transform should not be called on an already transformed object");
     }
 
-    fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
+    fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
         let ok = Ok(Value::new(NoneType::None));
         match self {
             TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
@@ -496,7 +502,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
         }
     }
 
-    fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
+    fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
         match self {
             TransformedExpr::Tuple(ref v, ..) => {
                 let r = eval_vector!(v, context);
@@ -525,22 +531,18 @@ impl<T: FileLoader + 'static> Evaluate<T> for TransformedExpr<T> {
     }
 }
 
-fn make_set<T: FileLoader + 'static>(
-    values: Vec<Value>,
-    context: &EvaluationContext<T>,
-    span: Span,
-) -> EvalResult {
+fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> EvalResult {
     context
         .env
         .make_set(values)
         .map_err(|err| EvalException::DiagnosedError(err.to_diagnostic(span)))
 }
 
-impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
+impl Evaluate for AstExpr {
     fn transform(
         &self,
-        context: &mut EvaluationContext<T>,
-    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
+        context: &mut EvaluationContext,
+    ) -> Result<Box<dyn Evaluate>, EvalException> {
         match self.node {
             Expr::Dot(ref e, ref s) => Ok(Box::new(TransformedExpr::Dot(
                 e.eval(context)?,
@@ -569,7 +571,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
     }
 
     #[allow(unconditional_recursion)]
-    fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
+    fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
         match self.node {
             Expr::Tuple(ref v) => {
                 let r = eval_vector!(v, context);
@@ -692,7 +694,7 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
         }
     }
 
-    fn set(&self, context: &mut EvaluationContext<T>, new_value: Value) -> EvalResult {
+    fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
         let ok = Ok(Value::new(NoneType::None));
         match self.node {
             Expr::Tuple(ref v) | Expr::List(ref v) => {
@@ -730,8 +732,8 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstExpr {
     }
 }
 
-impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
-    fn eval(&self, context: &mut EvaluationContext<T>) -> EvalResult {
+impl Evaluate for AstStatement {
+    fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
         match self.node {
             Statement::Break => Err(EvalException::Break(self.span)),
             Statement::Continue => Err(EvalException::Continue(self.span)),
@@ -872,12 +874,12 @@ impl<T: FileLoader + 'static> Evaluate<T> for AstStatement {
 
     fn transform(
         &self,
-        _context: &mut EvaluationContext<T>,
-    ) -> Result<Box<dyn Evaluate<T>>, EvalException> {
+        _context: &mut EvaluationContext,
+    ) -> Result<Box<dyn Evaluate>, EvalException> {
         Ok(Box::new(self.clone()))
     }
 
-    fn set(&self, _context: &mut EvaluationContext<T>, _new_value: Value) -> EvalResult {
+    fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
         Err(EvalException::IncorrectLeftValue(self.span))
     }
 }
@@ -918,7 +920,7 @@ pub fn eval_def(
         call_stack: call_stack.to_owned(),
         env,
         globals,
-        loader: (),
+        loader: Rc::new(()),
         map: map.clone(),
     };
     match stmts.eval(&mut ctx) {
