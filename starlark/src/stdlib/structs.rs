@@ -65,7 +65,7 @@ impl TypedValue for StarlarkStruct {
             .any(|x| x.same_as(other) || x.is_descendant(other))
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         let other = other.downcast_ref::<StarlarkStruct>().unwrap();
         let mut self_keys: Vec<_> = self.fields.keys().collect();
         let mut other_keys: Vec<_> = other.fields.keys().collect();
@@ -81,7 +81,7 @@ impl TypedValue for StarlarkStruct {
                 (Some(s_k), Some(o_k)) => {
                     let s_v = self.fields.get(s_k).unwrap();
                     let o_v = other.fields.get(o_k).unwrap();
-                    match s_v.compare(o_v, recursion + 1)? {
+                    match s_v.compare(o_v)? {
                         Ordering::Equal => continue,
                         ordering => return Ok(ordering),
                     }

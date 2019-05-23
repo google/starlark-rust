@@ -28,7 +28,7 @@ impl From<bool> for Value {
 impl TypedValue for bool {
     immutable!();
     any!();
-    fn compare(&self, other: &Value, _recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         Ok(self.cmp(&*other.downcast_ref::<bool>().unwrap()))
     }
     fn to_repr(&self) -> String {

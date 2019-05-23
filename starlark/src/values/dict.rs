@@ -146,7 +146,7 @@ impl TypedValue for Dictionary {
         !self.content.is_empty()
     }
 
-    fn compare(&self, other: &Value, recursion: u32) -> Result<Ordering, ValueError> {
+    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         // assert type
         other.downcast_ref::<Dictionary>().unwrap();
         let mut v1: Vec<Value> = self.iter()?.collect();
@@ -163,11 +163,11 @@ impl TypedValue for Dictionary {
                 (None, Some(..)) => return Ok(Ordering::Less),
                 (Some(..), None) => return Ok(Ordering::Greater),
                 (Some(k1), Some(k2)) => {
-                    let r = k1.compare(&k2, recursion + 1)?;
+                    let r = k1.compare(&k2)?;
                     if r != Ordering::Equal {
                         return Ok(r);
                     }
-                    let r = self.at(k1)?.compare(&other.at(k2)?, recursion + 1)?;
+                    let r = self.at(k1)?.compare(&other.at(k2)?)?;
                     if r != Ordering::Equal {
                         return Ok(r);
                     }

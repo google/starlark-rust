@@ -831,9 +831,9 @@ starlark_module! {global_functions =>
         it.sort_by(
             |x : &(Value, Value), y : &(Value, Value)| {
                 if reverse {
-                    x.1.compare(&y.1, 0).unwrap().reverse()
+                    x.1.compare(&y.1).unwrap().reverse()
                 } else {
-                    x.1.compare(&y.1, 0).unwrap()
+                    x.1.compare(&y.1).unwrap()
                 }
             }
         );
