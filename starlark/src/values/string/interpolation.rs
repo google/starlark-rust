@@ -244,7 +244,7 @@ impl ArgsFormat {
             } else {
                 let next = chars
                     .next()
-                    .ok_or_else(|| StringInterpolationError::UnexpectedEOFPercent.into())?;
+                    .ok_or(StringInterpolationError::UnexpectedEOFPercent)?;
                 let (named_or_positional, format_char) = if next == '(' {
                     let mut name = String::new();
                     loop {
@@ -264,7 +264,7 @@ impl ArgsFormat {
                         NamedOrPositional::Named(name),
                         chars
                             .next()
-                            .ok_or_else(|| StringInterpolationError::UnexpectedEOFPercent.into())?,
+                            .ok_or(StringInterpolationError::UnexpectedEOFPercent)?,
                     )
                 } else {
                     (NamedOrPositional::Positional, next)

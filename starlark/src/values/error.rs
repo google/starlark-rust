@@ -98,15 +98,15 @@ impl<T: Into<RuntimeError>> SyntaxError for T {
     }
 }
 
-impl Into<ValueError> for RuntimeError {
-    fn into(self) -> ValueError {
-        ValueError::Runtime(self)
+impl From<RuntimeError> for ValueError {
+    fn from(e: RuntimeError) -> Self {
+        ValueError::Runtime(e)
     }
 }
 
-impl Into<ValueError> for StringInterpolationError {
-    fn into(self) -> ValueError {
-        ValueError::StringInterpolation(self)
+impl From<StringInterpolationError> for ValueError {
+    fn from(e: StringInterpolationError) -> Self {
+        ValueError::StringInterpolation(e)
     }
 }
 

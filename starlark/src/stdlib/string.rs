@@ -789,20 +789,16 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     string.join(this: String, #to_join) {
-        ok!(
-            to_join.iter()?.fold(
-                Ok(String::new()),
-                |a, x| {
-                    check_string!(x, join);
-                    let a = a.unwrap();
-                    if a.is_empty() {
-                        Ok(x.to_str())
-                    } else {
-                        Ok(format!("{}{}{}", a, this, x.to_str()))
-                    }
-                }
-            )?
-        );
+        let mut r = String::new();
+        for (index, item) in to_join.iter()?.enumerate() {
+            if index != 0 {
+                r.push_str(&this);
+            }
+            check_string!(item, join);
+            let item = item.downcast_ref::<String>().unwrap();
+            r.push_str(&*item);
+        }
+        ok!(r)
     }
 
     /// [string.lower](
