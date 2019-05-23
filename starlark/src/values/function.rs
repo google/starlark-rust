@@ -214,9 +214,9 @@ impl Into<RuntimeError> for FunctionError {
     }
 }
 
-impl Into<ValueError> for FunctionError {
-    fn into(self) -> ValueError {
-        ValueError::Runtime(self.into())
+impl From<FunctionError> for ValueError {
+    fn from(e: FunctionError) -> Self {
+        ValueError::Runtime(e.into())
     }
 }
 

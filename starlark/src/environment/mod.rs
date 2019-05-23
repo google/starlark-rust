@@ -70,9 +70,9 @@ impl Into<RuntimeError> for EnvironmentError {
     }
 }
 
-impl Into<ValueError> for EnvironmentError {
-    fn into(self) -> ValueError {
-        ValueError::Runtime(self.into())
+impl From<EnvironmentError> for ValueError {
+    fn from(e: EnvironmentError) -> Self {
+        ValueError::Runtime(e.into())
     }
 }
 
