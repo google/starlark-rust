@@ -15,6 +15,7 @@
 //! Define the list type of Starlark
 use crate::stdlib::list::LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE;
 use crate::values::error::{RuntimeError, ValueError};
+use crate::values::iter::TypedIterable;
 use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
@@ -57,6 +58,7 @@ impl List {
     pub fn extend(&mut self, other: Value) -> Result<(), ValueError> {
         let other: Vec<Value> = other
             .iter()?
+            .iter()
             .map(|v| v.clone_for_container(self))
             .collect::<Result<_, _>>()?;
         self.content.extend(other);
@@ -169,10 +171,9 @@ impl TypedValue for List {
     }
 
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        // assert type
-        other.downcast_ref::<List>().unwrap();
-        let mut iter1 = self.iter()?;
-        let mut iter2 = other.iter()?;
+        let other = other.downcast_ref::<List>().unwrap();
+        let mut iter1 = self.content.iter();
+        let mut iter2 = other.content.iter();
         loop {
             match (iter1.next(), iter2.next()) {
                 (None, None) => return Ok(Ordering::Equal),
@@ -228,8 +229,8 @@ impl TypedValue for List {
         )))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().cloned()))
+    fn iter(&self) -> Result<&TypedIterable, ValueError> {
+        Ok(self)
     }
 
     /// Concatenate `other` to the current value.
@@ -256,7 +257,7 @@ impl TypedValue for List {
             for x in self.content.iter() {
                 result.content.push(x.clone());
             }
-            for x in other.iter()? {
+            for x in &other.iter()? {
                 result.content.push(x.clone());
             }
             Ok(Value::new(result))
@@ -314,6 +315,12 @@ impl TypedValue for List {
         let i = index.convert_index(self.length()?)? as usize;
         self.content[i] = new_value.clone_for_container(self)?;
         Ok(())
+    }
+}
+
+impl TypedIterable for List {
+    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.content.iter().cloned())
     }
 }
 

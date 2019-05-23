@@ -14,6 +14,7 @@
 
 //! Define the tuple type for Starlark.
 use crate::values::error::ValueError;
+use crate::values::iter::TypedIterable;
 use crate::values::*;
 use std::borrow::BorrowMut;
 use std::cmp::Ordering;
@@ -331,10 +332,9 @@ impl TypedValue for Tuple {
     }
 
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        // assert type
-        other.downcast_ref::<Tuple>().unwrap();
-        let mut iter1 = self.iter()?;
-        let mut iter2 = other.iter()?;
+        let other = other.downcast_ref::<Tuple>().unwrap();
+        let mut iter1 = self.content.iter();
+        let mut iter2 = other.content.iter();
         loop {
             match (iter1.next(), iter2.next()) {
                 (None, None) => return Ok(Ordering::Equal),
@@ -390,8 +390,8 @@ impl TypedValue for Tuple {
         ))))
     }
 
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        Ok(Box::new(self.content.iter().cloned()))
+    fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
+        Ok(self)
     }
 
     /// Concatenate `other` to the current value.
@@ -416,7 +416,7 @@ impl TypedValue for Tuple {
             for x in self.content.iter() {
                 result.content.push(x.clone());
             }
-            for x in other.iter()? {
+            for x in &other.iter()? {
                 result.content.push(x.clone());
             }
             Ok(Value::new(result))
@@ -455,6 +455,12 @@ impl TypedValue for Tuple {
         } else {
             Err(ValueError::IncorrectParameterType)
         }
+    }
+}
+
+impl TypedIterable for Tuple {
+    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+        Box::new(self.content.iter().cloned())
     }
 }
 

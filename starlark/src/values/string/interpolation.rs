@@ -310,8 +310,10 @@ impl ArgsFormat {
 
     pub fn format(self, other: Value) -> Result<String, ValueError> {
         let mut r = self.init;
+        let mut other_iter;
         let mut arg_iter: Box<dyn Iterator<Item = Value>> = if self.positional_count > 1 {
-            other.iter()?
+            other_iter = Some(other.iter()?);
+            other_iter.as_ref().unwrap().iter()
         } else if self.positional_count == 1 {
             Box::new(iter::once(other.clone()))
         } else if self.named_count != 0 {
@@ -319,7 +321,8 @@ impl ArgsFormat {
         } else {
             // If both positional count is zero and named count is zero
             // we should check that iterable has zero elements.
-            other.iter()?
+            other_iter = Some(other.iter()?);
+            other_iter.as_ref().unwrap().iter()
         };
         for (named_or_positional, format, tail) in self.parameters {
             let arg = match named_or_positional {

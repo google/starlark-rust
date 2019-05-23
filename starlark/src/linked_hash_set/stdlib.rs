@@ -39,7 +39,7 @@ starlark_module! {global =>
     set(?#a) {
         let mut s = Set::default();
         if let Some(a) = a {
-            for x in a.iter()? {
+            for x in &a.iter()? {
                 s.insert_if_absent(x)?;
             }
         }
@@ -151,7 +151,7 @@ starlark_module! {global =>
     /// ```
     set.difference(this, *others) {
         let mut ret = Set::default();
-        for el in this.iter()? {
+        for el in &this.iter()? {
             let mut is_in_any_other = false;
             for other in &others {
                 if other.is_in(&el)?.to_bool() {
@@ -254,7 +254,7 @@ starlark_module! {global =>
     /// ```
     set.intersection(this, *others) {
         let mut ret = Set::default();
-        for el in this.iter()? {
+        for el in &this.iter()? {
             let mut is_in_every_other = true;
             for other in &others {
                 if !other.is_in(&el)?.to_bool() {
@@ -529,7 +529,7 @@ starlark_module! {global =>
         })?;
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         this.clear();
-        for item in symmetric_difference.iter()? {
+        for item in &symmetric_difference.iter()? {
             this.insert(item)?;
         }
         Ok(Value::new(NoneType::None))
@@ -563,11 +563,11 @@ starlark_module! {global =>
     /// ```
     set.union(this, *others) {
         let mut ret = Set::default();
-        for el in this.iter()? {
+        for el in &this.iter()? {
             ret.insert_if_absent(el)?;
         }
         for other in others {
-            for el in other.iter()? {
+            for el in &other.iter()? {
                 ret.insert_if_absent(el)?;
             }
         }
@@ -598,7 +598,7 @@ starlark_module! {global =>
     set.update(this, *others) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         for other in others {
-            for el in other.iter()? {
+            for el in &other.iter()? {
                 this.insert_if_absent(el)?;
             }
         }

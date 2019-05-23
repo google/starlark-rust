@@ -378,7 +378,7 @@ impl TypedValue for Function {
         let mut av = positional;
         if let Some(x) = args {
             match x.iter() {
-                Ok(y) => av.extend(y),
+                Ok(y) => av.extend(y.iter()),
                 Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
             }
         };
@@ -388,7 +388,7 @@ impl TypedValue for Function {
         if let Some(x) = kwargs {
             match x.iter() {
                 Ok(y) => {
-                    for n in y {
+                    for n in &y {
                         if n.get_type() == "string" {
                             let k = n.to_str();
                             if let Ok(v) = x.at(n) {

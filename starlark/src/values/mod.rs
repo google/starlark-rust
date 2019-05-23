@@ -87,6 +87,7 @@ use crate::environment::Environment;
 use crate::eval::call_stack;
 use crate::eval::call_stack::CallStack;
 use crate::values::error::ValueError;
+use crate::values::iter::{FakeTypedIterable, RefIterable, TypedIterable};
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
 use std::any::Any;
@@ -350,9 +351,9 @@ pub trait TypedValue: 'static {
         })
     }
 
-    /// Returns an iterator over the value of this container if this value hold an iterable
+    /// Returns an iterable over the value of this container if this value hold an iterable
     /// container.
-    fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
+    fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
         Err(ValueError::TypeNotX {
             object_type: self.get_type().to_owned(),
             op: "iterable".to_owned(),
@@ -825,8 +826,26 @@ impl Value {
         let borrowed = self.0.borrow();
         borrowed.at(index)
     }
+
+    fn borrow_mut_check_mutability(&self) -> Result<RefMut<dyn TypedValue>, ValueError> {
+        // `borrow_mut` might fail because value is borrowed immutably for iteration.
+        // In that case we should not `panic` inside `borrow_mut`
+        // but return proper error instead.
+        // So we borrow immutably to query for mutability.
+        let borrowed = match self.0.try_borrow_mut() {
+            Ok(borrowed) => borrowed,
+            Err(..) => {
+                self.0.borrow().mutability().test()?;
+                panic!("Not frozen, but cannot be mutably borrowed");
+            }
+        };
+        // Still need to check for mutability because value can be frozen.
+        borrowed.mutability().test()?;
+        Ok(borrowed)
+    }
+
     pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        let mut borrowed = self.0.borrow_mut();
+        let mut borrowed = self.borrow_mut_check_mutability()?;
         borrowed.set_at(index, new_value)
     }
     pub fn slice(
@@ -835,13 +854,21 @@ impl Value {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        let borrowed = self.0.borrow_mut();
+        let borrowed = self.0.borrow();
         borrowed.slice(start, stop, stride)
     }
-    pub fn iter<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Value> + 'a>, ValueError> {
-        let borrowed = self.0.borrow();
-        let v: Vec<Value> = borrowed.iter()?.collect();
-        Ok(Box::new(v.into_iter()))
+    pub fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
+        let borrowed: Ref<'_, dyn TypedValue> = self.0.borrow();
+        let mut err = Ok(());
+        let typed_into_iter = Ref::map(borrowed, |t| match t.iter() {
+            Ok(r) => r,
+            Err(e) => {
+                err = Err(e);
+                &FakeTypedIterable
+            }
+        });
+        err?;
+        Ok(RefIterable::new(typed_into_iter))
     }
     pub fn length(&self) -> Result<i64, ValueError> {
         let borrowed = self.0.borrow();
@@ -856,7 +883,7 @@ impl Value {
         borrowed.has_attr(attribute)
     }
     pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        let mut borrowed = self.0.borrow_mut();
+        let mut borrowed = self.borrow_mut_check_mutability()?;
         borrowed.set_attr(attribute, new_value)
     }
     pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
@@ -1081,9 +1108,8 @@ impl Value {
     ///
     /// Error is returned if the value is frozen or frozen for iteration.
     pub fn downcast_mut<T: Any + TypedValue>(&self) -> Result<Option<RefMut<T>>, ValueError> {
-        let borrow = self.0.borrow_mut();
+        let borrow = self.borrow_mut_check_mutability()?;
         if borrow.as_any().is::<T>() {
-            borrow.mutability().test()?;
             Ok(Some(RefMut::map(borrow, |r| {
                 r.as_any_mut().downcast_mut().unwrap()
             })))
@@ -1114,6 +1140,7 @@ pub mod error;
 pub mod function;
 pub mod hashed_value;
 pub mod int;
+pub mod iter;
 pub mod list;
 pub mod none;
 pub mod string;
