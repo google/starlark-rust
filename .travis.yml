@@ -13,7 +13,9 @@ matrix:
     rust: nightly
   - name: "Rust: clippy"
     env: ACTION=clippy
-    rust: stable
+    # This issue is fixed in Rust 1.36
+    # https://github.com/rust-lang/rust-clippy/issues/4133
+    rust: beta
   - name: "Rust: doc"
     env: ACTION=doc
     rust: stable
