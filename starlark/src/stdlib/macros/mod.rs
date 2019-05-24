@@ -17,6 +17,18 @@
 
 pub mod param;
 
+/// Generate param name for named or unnamed parameter
+#[doc(hidden)]
+#[macro_export]
+macro_rules! starlark_param_name {
+    ((named) $ident:tt) => {
+        stringify!($ident)
+    };
+    (# $ident:tt) => {
+        concat!("$", stringify!($ident))
+    };
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signature {
@@ -35,26 +47,30 @@ macro_rules! starlark_signature {
         $signature.push($crate::values::function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
         $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident # $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::Normal(format!("${}", stringify!($t))));
+
+    // insert `(named)` tt if param is not unnamed
+    ($signature:ident $t:ident $($rest:tt)*) => {
+        starlark_signature!($signature (named) $t $($rest)*)
+    };
+    ($signature:ident ? $t:ident $($rest:tt)*) => {
+        starlark_signature!($signature ? (named) $t $($rest)*)
+    };
+
+    // handle params without default value (both named and unnamed)
+    ($signature:ident $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+        $signature.push($crate::values::function::FunctionParameter::Normal(starlark_param_name!($is_named $t).to_owned()));
         $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::Optional(stringify!($t).to_owned()));
+    ($signature:ident ? $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+        $signature.push($crate::values::function::FunctionParameter::Optional(starlark_param_name!($is_named $t).to_owned()));
         $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident ? # $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::Optional(format!("${}", stringify!($t))));
-        $( starlark_signature!($signature $($rest)+) )?;
-    };
-    ($signature:ident $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::Normal(stringify!($t).to_owned()));
-        $( starlark_signature!($signature $($rest)+) )?;
-    };
-    ($signature:ident # $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
+
+    // handle params with default value (both named and unnamed)
+    ($signature:ident $is_named:tt $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push(
             $crate::values::function::FunctionParameter::WithDefaultValue(
-                format!("${}", stringify!($t)),
+                starlark_param_name!($is_named $t).to_owned(),
                 // explicitly specify parameter type to:
                 // * verify that default value is convertible to required type
                 // * help type inference find type parameters
@@ -63,28 +79,10 @@ macro_rules! starlark_signature {
         );
         $( starlark_signature!($signature $($rest)+) )?;
     };
-    ($signature:ident $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
+    ($signature:ident $is_named:tt $t:ident = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push(
             $crate::values::function::FunctionParameter::WithDefaultValue(
-                stringify!($t).to_owned(),
-                ::std::convert::From::<starlark_parse_param_type!(1 : $pt)>::from($e)
-            )
-        );
-        $( starlark_signature!($signature $($rest)+) )?;
-    };
-    ($signature:ident # $t:ident = $e:expr $(,$($rest:tt)+)?) => {
-        $signature.push(
-            $crate::values::function::FunctionParameter::WithDefaultValue(
-                format!("${}", stringify!($t)),
-                $crate::values::Value::from($e)
-            )
-        );
-        $( starlark_signature!($signature $($rest)+) )?;
-    };
-    ($signature:ident $t:ident = $e:expr $(,$($rest:tt)+)?) => {
-        $signature.push(
-            $crate::values::function::FunctionParameter::WithDefaultValue(
-                stringify!($t).to_owned(),
+                starlark_param_name!($is_named $t).to_owned(),
                 $crate::values::Value::from($e)
             )
         );
@@ -137,28 +135,25 @@ macro_rules! starlark_signature_extraction {
             $args.next().unwrap().into_kw_args_dict(stringify!($t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+
+    // insert `(named)` tt if param is not unnamed
+    ($args:ident $call_stack:ident $env:ident $t:ident $($rest:tt)*) => {
+        starlark_signature_extraction!($args $call_stack $env (named) $t $($rest)*);
+    };
+    ($args:ident $call_stack:ident $env:ident ? $t:ident $($rest:tt)*) => {
+        starlark_signature_extraction!($args $call_stack $env ? (named) $t $($rest)*);
+    };
+
+    ($args:ident $call_stack:ident $env:ident ? $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
-            $args.next().unwrap().into_optional(stringify!($t))?;
+            $args.next().unwrap().into_optional(starlark_param_name!(# $t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident ? # $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        #[allow(unused_mut)]
-        let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
-            $args.next().unwrap().into_optional(concat!("$", stringify!($t)))?;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
-    };
-    ($args:ident $call_stack:ident $env:ident # $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
+    ($args:ident $call_stack:ident $env:ident $is_named:tt $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
-            $args.next().unwrap().into_normal(concat!("$", stringify!($t)))?;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
-    };
-    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
-        #[allow(unused_mut)]
-        let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
-            $args.next().unwrap().into_normal(stringify!($t))?;
+            $args.next().unwrap().into_normal(starlark_param_name!($is_named $t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
 }
