@@ -209,14 +209,19 @@ impl EvaluationContext {
             env: self.env.child(name),
             globals: self.globals.clone(),
             call_stack: self.call_stack.clone(),
-            loader: Rc::new(()),
+            loader: Rc::new(UnreachableFileLoader),
             map: self.map.clone(),
         }
     }
 }
 
-// A dummy file loader for inside a function call
-impl FileLoader for () {
+/// File loader used in child environments (function eval or list or dict comprehension).
+///
+/// `load` statement is top level only, so child environments should not use
+/// this file loader.
+struct UnreachableFileLoader;
+
+impl FileLoader for UnreachableFileLoader {
     fn load(&self, _path: &str) -> Result<Environment, EvalException> {
         // If we reach here, this is a bug.
         unreachable!();
@@ -920,7 +925,7 @@ pub fn eval_def(
         call_stack: call_stack.to_owned(),
         env,
         globals,
-        loader: Rc::new(()),
+        loader: Rc::new(UnreachableFileLoader),
         map: map.clone(),
     };
     match stmts.eval(&mut ctx) {
