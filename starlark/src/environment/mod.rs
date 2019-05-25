@@ -27,6 +27,7 @@ use std::sync::Arc;
 // CM prefix = Critical Module
 const FROZEN_ENV_ERROR_CODE: &str = "CM00";
 const NOT_FOUND_ERROR_CODE: &str = "CM01";
+pub(crate) const LOAD_NOT_SUPPORTED_ERROR_CODE: &str = "CM02";
 const CANNOT_IMPORT_ERROR_CODE: &str = "CE02";
 
 #[derive(Debug)]

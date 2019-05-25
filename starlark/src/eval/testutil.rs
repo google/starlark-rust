@@ -15,6 +15,7 @@
 //! Macro to test starlark code execution
 use crate::environment;
 use crate::eval;
+use crate::eval::noload;
 use crate::syntax::dialect::Dialect;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
@@ -24,7 +25,7 @@ use std::sync;
 pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let mut env = environment::Environment::new("test");
-    match eval::simple::eval(
+    match noload::eval(
         &map,
         "<test>",
         snippet,

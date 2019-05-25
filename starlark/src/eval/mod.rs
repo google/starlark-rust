@@ -1019,6 +1019,7 @@ pub fn eval_file<T: FileLoader + 'static>(
 }
 
 pub mod interactive;
+pub mod noload;
 pub mod simple;
 
 pub mod call_stack;
