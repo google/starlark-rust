@@ -14,8 +14,8 @@
 
 use crate::environment::Environment;
 use crate::eval::testutil::starlark_no_diagnostic;
-use crate::eval::RECURSION_ERROR_CODE;
-use crate::eval::{eval, simple, testutil, EvalException, FileLoader};
+use crate::eval::{eval, testutil, EvalException, FileLoader};
+use crate::eval::{noload, RECURSION_ERROR_CODE};
 use crate::syntax::dialect::Dialect;
 use crate::values::Value;
 use codemap::CodeMap;
@@ -164,7 +164,7 @@ fn test_context_captured() {
 x = 17
 def f(): return x
 "#;
-            simple::eval(
+            noload::eval(
                 &Arc::new(Mutex::new(CodeMap::new())),
                 path,
                 f_bzl,
