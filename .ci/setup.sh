@@ -7,8 +7,4 @@ case "$1" in
     which rustfmt || cargo install --force rustfmt-nightly
     cargo +nightly fmt -- --version
     ;;
-  clippy)
-    echo "Installing clippy..."
-    rustup component add clippy || cargo install --git https://github.com/rust-lang/rust-clippy/ --force clippy
-    ;;
 esac

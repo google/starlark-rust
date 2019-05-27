@@ -11,7 +11,4 @@ case "$1" in
   doc)
     cargo doc --all
     ;;
-  clippy)
-    cargo clippy --all-targets --all-features -- -D warnings
-    ;;
 esac
