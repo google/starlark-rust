@@ -15,6 +15,7 @@
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Emitter};
 use linked_hash_map::LinkedHashMap;
+use starlark::eval::call_stack::CallStack;
 use starlark::eval::simple::eval;
 use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
@@ -68,7 +69,14 @@ def assert_(cond, msg="assertion failed"):
 
     bencher.iter(|| {
         let env = env.child("bench");
-        match bench_func.call(&[], env, Vec::new(), LinkedHashMap::new(), None, None) {
+        match bench_func.call(
+            &CallStack::default(),
+            env,
+            Vec::new(),
+            LinkedHashMap::new(),
+            None,
+            None,
+        ) {
             Ok(r) => r,
             Err(ValueError::DiagnosedError(e)) => {
                 Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[e]);

@@ -6,7 +6,7 @@ case "$1" in
     ;;
   build)
     cargo build --all
-    cargo test --all
+    cargo test --all --all-targets
     ;;
   doc)
     cargo doc --all
