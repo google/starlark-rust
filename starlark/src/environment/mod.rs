@@ -21,7 +21,7 @@ use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module
@@ -79,7 +79,7 @@ impl From<EnvironmentError> for ValueError {
 
 #[derive(Clone, Debug)]
 pub struct Environment {
-    env: Arc<RefCell<EnvironmentContent>>,
+    env: Rc<RefCell<EnvironmentContent>>,
 }
 
 #[derive(Debug)]
@@ -118,7 +118,7 @@ impl Environment {
     /// Create a new environment
     pub fn new(name: &str) -> Environment {
         Environment {
-            env: Arc::new(RefCell::new(EnvironmentContent {
+            env: Rc::new(RefCell::new(EnvironmentContent {
                 name_: name.to_owned(),
                 frozen: false,
                 parent: None,
@@ -148,7 +148,7 @@ impl Environment {
     /// Create a new child environment for this environment
     pub fn child(&self, name: &str) -> Environment {
         Environment {
-            env: Arc::new(RefCell::new(EnvironmentContent {
+            env: Rc::new(RefCell::new(EnvironmentContent {
                 name_: name.to_owned(),
                 frozen: false,
                 parent: Some(self.clone()),
