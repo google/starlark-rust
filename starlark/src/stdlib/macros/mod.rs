@@ -114,7 +114,7 @@ macro_rules! starlark_parse_param_type {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signature_extraction {
-    ($args:ident $call_stack:ident ) => {};
+    ($args:ident $call_stack:ident $env:ident) => {};
     ($args:ident $call_stack:ident $env:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
         let $e = $call_stack;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
@@ -201,6 +201,7 @@ macro_rules! starlark_signatures {
             $($($rest:tt)+)?) => {
         {
             let name = stringify!($name).trim_matches('_');
+            #[allow(unused_mut)]
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
             $env.set(name, $crate::values::function::Function::new(name.to_owned(), &$name, signature)).unwrap();
@@ -458,4 +459,23 @@ macro_rules! convert_indices {
             }
         };
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::environment::Environment;
+    use crate::values::none::NoneType;
+    use crate::values::Value;
+
+    #[test]
+    fn no_arg() {
+        starlark_module! { global =>
+            nop() {
+                Ok(Value::new(NoneType::None))
+            }
+        }
+
+        let env = global(Environment::new("root"));
+        env.get("nop").unwrap();
+    }
 }
