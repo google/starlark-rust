@@ -70,6 +70,9 @@
 //! * [list](values::list),
 //! * [tuple](values::tuple), and
 //! * [function](values::function).
+
+#![deny(intra_doc_link_resolution_failure)]
+
 pub mod environment;
 #[doc(hidden)]
 pub mod syntax;

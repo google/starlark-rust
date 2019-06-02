@@ -38,8 +38,8 @@ impl EvalError {
 ///
 /// # Arguments
 ///
-/// __This version uses the [SimpleFileLoader](SimpleFileLoader.struct.html) implementation for
-/// the file loader__
+/// __This version uses the [`SimpleFileLoader`](crate::eval::simple::SimpleFileLoader)
+/// implementation for the file loader__
 ///
 /// * path: the name of the file being evaluated, for diagnostics
 /// * content: the content to evaluate
@@ -62,8 +62,8 @@ pub fn eval(
 /// Evaluate a file, mutate the environment accordingly, and return the value of the last
 /// statement, or a printable error.
 ///
-/// __This version uses the [SimpleFileLoader](SimpleFileLoader.struct.html) implementation for
-/// the file loader__
+/// __This version uses the [`SimpleFileLoader`](crate::eval::simple::SimpleFileLoader)
+/// implementation for the file loader__
 ///
 /// # Arguments
 ///

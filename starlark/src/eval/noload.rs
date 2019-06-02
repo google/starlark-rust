@@ -41,7 +41,7 @@ impl FileLoader for NoLoadFileLoader {
 ///
 /// # Arguments
 ///
-/// __This version uses the [NoLoadFileLoader](NoLoadFileLoader.struct.html) implementation for
+/// __This version uses the [`NoLoadFileLoader`] implementation for
 /// the file loader__
 ///
 /// * map: the codemap object used for diagnostics
