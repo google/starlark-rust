@@ -27,7 +27,7 @@
 //!
 //! # Defining a new type
 //!
-//! Defining a new Starlark type can be done by implenting the [TypedValue](trait.TypedValue.html)
+//! Defining a new Starlark type can be done by implenting the [`TypedValue`](crate::values::TypedValue)
 //! trait. All method of that trait are operation needed by Starlark interpreter to understand the
 //! type. Most of `TypedValue` methods are optional with default implementations returning error.
 //!
@@ -612,15 +612,13 @@ pub trait TypedValue: Sized + 'static {
 
     /// Compare `self` with `other`.
     ///
-    /// This method returns a result of type
-    /// [Ordering](https://doc.rust-lang.org/std/cmp/enum.Ordering.html).
+    /// This method returns a result of type [`Ordering`].
     ///
     /// `other` parameter is of type `Self` so it is safe to downcast it.
     ///
     /// Default implementation returns error.
     ///
-    /// __Note__: This does not use the
-    ///       (PartialOrd)[https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html] trait as
+    /// __Note__: This does not use the [`PartialOrd`] trait as
     ///       the trait needs to know the actual type of the value we compare.
     fn compare(&self, _other: &Self) -> Result<Ordering, ValueError> {
         Err(ValueError::OperationNotSupported {

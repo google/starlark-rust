@@ -72,7 +72,7 @@ impl FileLoader for SimpleFileLoader {
 ///
 /// # Arguments
 ///
-/// __This version uses the [SimpleFileLoader](SimpleFileLoader.struct.html) implementation for
+/// __This version uses the [`SimpleFileLoader`] implementation for
 /// the file loader__
 ///
 /// * map: the codemap object used for diagnostics
@@ -101,7 +101,7 @@ pub fn eval(
 
 /// Evaluate a file, mutate the environment accordingly and return the evaluated value.
 ///
-/// __This version uses the [SimpleFileLoader](SimpleFileLoader.struct.html) implementation for
+/// __This version uses the [`SimpleFileLoader`] implementation for
 /// the file loader__
 ///
 /// # Arguments

@@ -962,7 +962,7 @@ pub fn eval_def(
 /// * dialect: starlark syntax dialect
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
-/// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+/// * file_loader: the [`FileLoader`] to react to `load()` statements.
 #[allow(clippy::too_many_arguments)]
 pub fn eval_lexer<
     T1: Iterator<Item = LexerItem>,
@@ -996,7 +996,7 @@ pub fn eval_lexer<
 ///   More information about the difference can be found in [this module's
 ///   documentation](index.html#build_file).
 /// * env: the environment to mutate during the evaluation
-/// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+/// * file_loader: the [`FileLoader`] to react to `load()` statements.
 pub fn eval<T: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
@@ -1023,7 +1023,7 @@ pub fn eval<T: FileLoader + 'static>(
 ///   More information about the difference can be found in [this module's
 ///   documentation](index.html#build_file).
 /// * env: the environment to mutate during the evaluation
-/// * file_loader: the [FileLoader](trait.FileLoader.html) to react to `load()` statements.
+/// * file_loader: the [`FileLoader`] to react to `load()` statements.
 pub fn eval_file<T: FileLoader + 'static>(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
