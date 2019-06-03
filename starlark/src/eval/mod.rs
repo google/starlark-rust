@@ -19,7 +19,7 @@
 //! All evaluation function can evaluate the full Starlark language (i.e. Bazel's
 //! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
 //! The BUILD dialect does not allow `def` statements.
-use crate::environment::{Environment, TypeValues};
+use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
@@ -34,7 +34,9 @@ use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
+use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -181,11 +183,87 @@ pub trait FileLoader: 'static {
     fn load(&self, path: &str) -> Result<Environment, EvalException>;
 }
 
+/// Stacked environment for [`EvaluationContext`].
+pub(crate) enum EvaluationContextEnvironment {
+    /// Module-level
+    Module(Environment),
+    /// Function-level
+    Function(String, Environment, RefCell<HashMap<String, Value>>),
+    /// Scope inside function, e. g. list comprenension
+    Nested(
+        String,
+        Rc<EvaluationContextEnvironment>,
+        RefCell<HashMap<String, Value>>,
+    ),
+}
+
+impl EvaluationContextEnvironment {
+    fn env(&self) -> &Environment {
+        match self {
+            EvaluationContextEnvironment::Module(ref env)
+            | EvaluationContextEnvironment::Function(_, ref env, ..) => env,
+            EvaluationContextEnvironment::Nested(_, ref parent, _) => parent.env(),
+        }
+    }
+
+    fn make_set(&self, values: Vec<Value>) -> ValueResult {
+        self.env().make_set(values)
+    }
+
+    fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
+        match self {
+            EvaluationContextEnvironment::Module(env) => env.get(name),
+            EvaluationContextEnvironment::Function(_, env, locals) => {
+                match locals.borrow().get(name).cloned() {
+                    Some(v) => Ok(v),
+                    None => env.get(name),
+                }
+            }
+            EvaluationContextEnvironment::Nested(_, parent, locals) => {
+                match locals.borrow().get(name).cloned() {
+                    Some(v) => Ok(v),
+                    None => parent.get(name),
+                }
+            }
+        }
+    }
+
+    fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
+        match self {
+            EvaluationContextEnvironment::Module(env) => env.set(name, value),
+            EvaluationContextEnvironment::Function(_, _, locals)
+            | EvaluationContextEnvironment::Nested(_, _, locals) => {
+                // TODO: check that local slot was previously allocated
+                locals.borrow_mut().insert(name.to_owned(), value);
+                Ok(())
+            }
+        }
+    }
+
+    fn name(&self) -> String {
+        match self {
+            EvaluationContextEnvironment::Module(env) => env.name(),
+            EvaluationContextEnvironment::Function(name, ..)
+            | EvaluationContextEnvironment::Nested(name, ..) => name.clone(),
+        }
+    }
+
+    fn assert_module_env(&self) -> &Environment {
+        match self {
+            EvaluationContextEnvironment::Module(env) => env,
+            EvaluationContextEnvironment::Function(..)
+            | EvaluationContextEnvironment::Nested(..) => {
+                unreachable!("this function is meant to be called only on module level")
+            }
+        }
+    }
+}
+
 /// A structure holding all the data about the evaluation context
 /// (scope, load statement resolver, ...)
 pub struct EvaluationContext {
     // Locals and captured context.
-    env: Environment,
+    env: Rc<EvaluationContextEnvironment>,
     // Globals used to resolve type values, provided by the caller.
     type_values: TypeValues,
     loader: Rc<dyn FileLoader>,
@@ -202,7 +280,7 @@ impl EvaluationContext {
     ) -> Self {
         EvaluationContext {
             call_stack: CallStack::default(),
-            env,
+            env: Rc::new(EvaluationContextEnvironment::Module(env)),
             type_values,
             loader: Rc::new(loader),
             map,
@@ -211,7 +289,11 @@ impl EvaluationContext {
 
     fn child(&self, name: &str) -> EvaluationContext {
         EvaluationContext {
-            env: self.env.child(name),
+            env: Rc::new(EvaluationContextEnvironment::Nested(
+                name.to_owned(),
+                self.env.clone(),
+                Default::default(),
+            )),
             type_values: self.type_values.clone(),
             call_stack: self.call_stack.clone(),
             loader: Rc::new(UnreachableFileLoader),
@@ -875,7 +957,7 @@ impl Evaluate for AstStatement {
                     p,
                     stmts.clone(),
                     context.map.clone(),
-                    context.env.clone(),
+                    context.env.assert_module_env().clone(),
                 );
                 t!(context.env.set(&name.node, f.clone()), name)?;
                 Ok(f)
@@ -883,7 +965,7 @@ impl Evaluate for AstStatement {
             Statement::Load(ref name, ref v) => {
                 let loadenv = context.loader.load(name)?;
                 for &(ref new_name, ref orig_name) in v.iter() {
-                    t!(context.env.import_symbol(&loadenv, &orig_name.node, &new_name.node),
+                    t!(context.env.assert_module_env().import_symbol(&loadenv, &orig_name.node, &new_name.node),
                         span new_name.span.merge(orig_name.span))?
                 }
                 Ok(Value::new(NoneType::None))
@@ -924,7 +1006,17 @@ pub fn eval_def(
     map: Arc<Mutex<CodeMap>>,
 ) -> ValueResult {
     // argument binding
-    let env = captured_env.child(&format!("{}#{}", captured_env.name(), name));
+    let mut ctx = EvaluationContext {
+        call_stack: call_stack.to_owned(),
+        env: Rc::new(EvaluationContextEnvironment::Function(
+            format!("{}#{}", captured_env.name(), name),
+            captured_env,
+            Default::default(),
+        )),
+        type_values,
+        loader: Rc::new(UnreachableFileLoader),
+        map: map.clone(),
+    };
 
     let mut it2 = args.iter();
     for s in signature.iter() {
@@ -933,7 +1025,7 @@ pub fn eval_def(
             | FunctionParameter::WithDefaultValue(ref v, ..)
             | FunctionParameter::ArgsArray(ref v)
             | FunctionParameter::KWArgsDict(ref v) => {
-                if let Err(x) = env.set(v, it2.next().unwrap().clone().into()) {
+                if let Err(x) = ctx.env.set(v, it2.next().unwrap().clone().into()) {
                     return Err(x.into());
                 }
             }
@@ -942,13 +1034,6 @@ pub fn eval_def(
             }
         }
     }
-    let mut ctx = EvaluationContext {
-        call_stack: call_stack.to_owned(),
-        env,
-        type_values: type_values,
-        loader: Rc::new(UnreachableFileLoader),
-        map: map.clone(),
-    };
     match stmts.eval(&mut ctx) {
         Err(EvalException::Return(_s, ret)) => Ok(ret),
         Err(x) => Err(ValueError::DiagnosedError(x.into())),

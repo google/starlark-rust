@@ -147,6 +147,7 @@ impl Environment {
 
     /// Create a new child environment for this environment
     pub fn child(&self, name: &str) -> Environment {
+        self.freeze();
         Environment {
             env: Rc::new(RefCell::new(EnvironmentContent {
                 name_: name.to_owned(),
@@ -182,7 +183,7 @@ impl Environment {
     }
 
     pub fn import_symbol(
-        &mut self,
+        &self,
         env: &Environment,
         symbol: &str,
         new_name: &str,
