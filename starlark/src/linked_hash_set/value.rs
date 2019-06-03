@@ -47,7 +47,7 @@ impl Set {
     pub fn compare<Return>(
         v1: &Value,
         v2: &Value,
-        f: &Fn(
+        f: &dyn Fn(
             &LinkedHashSet<HashedValue>,
             &LinkedHashSet<HashedValue>,
         ) -> Result<Return, ValueError>,
@@ -118,7 +118,9 @@ impl From<Set> for Value {
 impl TypedValue for Set {
     type Holder = Mutable<Set>;
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().map(|v| v.get_value().clone()))
     }
 
@@ -204,7 +206,7 @@ impl TypedValue for Set {
         )))
     }
 
-    fn iter(&self) -> Result<&TypedIterable, ValueError> {
+    fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
         Ok(self)
     }
 
@@ -248,7 +250,7 @@ impl TypedValue for Set {
 }
 
 impl TypedIterable for Set {
-    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().map(|v| v.get_value().clone()))
     }
 }

@@ -46,7 +46,9 @@ impl TypedValue for bool {
         Ok(self.to_int().unwrap() as u64)
     }
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(iter::empty())
     }
 

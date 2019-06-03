@@ -20,27 +20,27 @@ use crate::values::Value;
 /// Type to be implemented by types which are iterable.
 pub trait TypedIterable: 'static {
     /// Make an iterator.
-    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a>;
+    fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a>;
 }
 
 /// Iterable which contains borrowed reference to a sequence.
 pub struct RefIterable<'a> {
-    r: RefOrRef<'a, TypedIterable>,
+    r: RefOrRef<'a, dyn TypedIterable>,
 }
 
 impl<'a> RefIterable<'a> {
-    pub fn new(r: RefOrRef<'a, TypedIterable>) -> RefIterable<'a> {
+    pub fn new(r: RefOrRef<'a, dyn TypedIterable>) -> RefIterable<'a> {
         RefIterable { r }
     }
 
-    pub fn iter(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    pub fn iter(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         self.r.to_iter()
     }
 }
 
 impl<'a> IntoIterator for &'a RefIterable<'a> {
     type Item = Value;
-    type IntoIter = Box<Iterator<Item = Value> + 'a>;
+    type IntoIter = Box<dyn Iterator<Item = Value> + 'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -51,7 +51,7 @@ impl<'a> IntoIterator for &'a RefIterable<'a> {
 pub(crate) struct FakeTypedIterable;
 
 impl TypedIterable for FakeTypedIterable {
-    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         unreachable!()
     }
 }

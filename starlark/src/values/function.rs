@@ -352,7 +352,9 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
 impl TypedValue for Function {
     type Holder = Immutable<Function>;
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(iter::empty())
     }
 
@@ -466,7 +468,9 @@ impl TypedValue for Function {
 impl TypedValue for WrappedMethod {
     type Holder = Immutable<WrappedMethod>;
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(vec![self.method.clone(), self.self_obj.clone()].into_iter())
     }
 

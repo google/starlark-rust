@@ -129,7 +129,9 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone>
 impl TypedValue for Dictionary {
     type Holder = Mutable<Dictionary>;
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         // XXX: We cannot freeze the key because they are immutable in rust, is it important?
         Box::new(
             self.content
@@ -224,7 +226,7 @@ impl TypedValue for Dictionary {
 }
 
 impl TypedIterable for Dictionary {
-    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().map(|x| x.0.get_value().clone()))
     }
 }
