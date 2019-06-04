@@ -102,7 +102,7 @@ struct EnvironmentContent {
 }
 
 // Newtype so that EnvironmentContent can derive Debug.
-struct SetConstructor((Option<Box<Fn(Vec<Value>) -> ValueResult>>));
+struct SetConstructor((Option<Box<dyn Fn(Vec<Value>) -> ValueResult>>));
 
 impl std::fmt::Debug for SetConstructor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -212,7 +212,7 @@ impl Environment {
     ///
     /// The `Value` returned by this function is expected to be a one-dimensional collection
     /// containing no duplicates.
-    pub fn with_set_constructor(&self, constructor: Box<Fn(Vec<Value>) -> ValueResult>) {
+    pub fn with_set_constructor(&self, constructor: Box<dyn Fn(Vec<Value>) -> ValueResult>) {
         self.env.borrow_mut().set_constructor = SetConstructor(Some(constructor));
     }
 

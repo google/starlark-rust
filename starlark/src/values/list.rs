@@ -103,7 +103,9 @@ impl List {
 impl TypedValue for List {
     type Holder = Mutable<List>;
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().cloned())
     }
 
@@ -214,7 +216,7 @@ impl TypedValue for List {
         )))
     }
 
-    fn iter(&self) -> Result<&TypedIterable, ValueError> {
+    fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
         Ok(self)
     }
 
@@ -297,7 +299,7 @@ impl TypedValue for List {
 }
 
 impl TypedIterable for List {
-    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().cloned())
     }
 }

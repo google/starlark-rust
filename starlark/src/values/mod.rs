@@ -560,7 +560,8 @@ pub trait TypedValue: Sized + 'static {
     /// #
     /// # }
     /// ```
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a>;
+    fn values_for_descendant_check_and_freeze<'a>(&'a self)
+        -> Box<dyn Iterator<Item = Value> + 'a>;
 
     /// Return a string describing of self, as returned by the str() function.
     fn to_str(&self) -> String {
@@ -1387,7 +1388,7 @@ mod tests {
 
             fn values_for_descendant_check_and_freeze<'a>(
                 &'a self,
-            ) -> Box<Iterator<Item = Value> + 'a> {
+            ) -> Box<dyn Iterator<Item = Value> + 'a> {
                 Box::new(iter::empty())
             }
         }

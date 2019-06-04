@@ -262,7 +262,9 @@ impl<
 impl TypedValue for Tuple {
     type Holder = Immutable<Tuple>;
 
-    fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
         // Tuple are weird, immutable but with potentially mutable
         Box::new(self.content.iter().cloned())
     }
@@ -434,7 +436,7 @@ impl TypedValue for Tuple {
 }
 
 impl TypedIterable for Tuple {
-    fn to_iter<'a>(&'a self) -> Box<Iterator<Item = Value> + 'a> {
+    fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().cloned())
     }
 }
