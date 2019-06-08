@@ -325,26 +325,6 @@ trait Evaluate {
     fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult;
 }
 
-impl Evaluate for AstString {
-    fn eval(&self, _context: &mut EvaluationContext) -> EvalResult {
-        Ok(Value::new(self.node.clone()))
-    }
-
-    fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
-        Err(EvalException::IncorrectLeftValue(self.span))
-    }
-}
-
-impl Evaluate for AstInt {
-    fn eval(&self, _context: &mut EvaluationContext) -> EvalResult {
-        Ok(Value::new(self.node))
-    }
-
-    fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
-        Err(EvalException::IncorrectLeftValue(self.span))
-    }
-}
-
 fn eval_comprehension_clause(
     context: &mut EvaluationContext,
     e: &AstExpr,
@@ -451,7 +431,7 @@ fn eval_call(
     let npos = eval_vector!(pos, context);
     let mut nnamed = LinkedHashMap::new();
     for &(ref k, ref v) in named.iter() {
-        nnamed.insert(k.eval(context)?.to_str(), v.eval(context)?);
+        nnamed.insert(k.node.clone(), v.eval(context)?);
     }
     let nargs = if let Some(ref x) = args {
         Some(x.eval(context)?)
