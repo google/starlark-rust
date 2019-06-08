@@ -21,6 +21,7 @@
 //! The BUILD dialect does not allow `def` statements.
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
+use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -315,7 +316,7 @@ impl FileLoader for UnreachableFileLoader {
     }
 }
 
-// A trait to add an eval function to the AST elements
+// Expression which can be evaluated
 trait Evaluate {
     // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
     fn eval(&self, context: &mut EvaluationContext) -> EvalResult;
@@ -840,155 +841,140 @@ impl Evaluate for AstExpr {
     }
 }
 
-impl Evaluate for AstStatement {
-    fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
-        match self.node {
-            Statement::Break => Err(EvalException::Break(self.span)),
-            Statement::Continue => Err(EvalException::Continue(self.span)),
-            Statement::Pass => Ok(Value::new(NoneType::None)),
-            Statement::Return(Some(ref e)) => {
-                Err(EvalException::Return(self.span, e.eval(context)?))
-            }
-            Statement::Return(None) => {
-                Err(EvalException::Return(self.span, Value::new(NoneType::None)))
-            }
-            Statement::Expression(ref e) => e.eval(context),
-            Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
-                let rhs = rhs.eval(context)?;
-                lhs.set(context, rhs)
-            }
-            Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
-                let lhs = lhs.transform(context)?;
-                let l = lhs.eval(context)?;
-                let r = rhs.eval(context)?;
-                lhs.set(context, t!(l.add(r), self)?)
-            }
-            Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
-                let lhs = lhs.transform(context)?;
-                let l = lhs.eval(context)?;
-                let r = rhs.eval(context)?;
-                lhs.set(context, t!(l.sub(r), self)?)
-            }
-            Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
-                let lhs = lhs.transform(context)?;
-                let l = lhs.eval(context)?;
-                let r = rhs.eval(context)?;
-                lhs.set(context, t!(l.mul(r), self)?)
-            }
-            Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
-                let lhs = lhs.transform(context)?;
-                let l = lhs.eval(context)?;
-                let r = rhs.eval(context)?;
-                lhs.set(context, t!(l.div(r), self)?)
-            }
-            Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
-                let lhs = lhs.transform(context)?;
-                let l = lhs.eval(context)?;
-                let r = rhs.eval(context)?;
-                lhs.set(context, t!(l.floor_div(r), self)?)
-            }
-            Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
-                let lhs = lhs.transform(context)?;
-                let l = lhs.eval(context)?;
-                let r = rhs.eval(context)?;
-                lhs.set(context, t!(l.percent(r), self)?)
-            }
-            Statement::If(ref cond, ref st) => {
-                if cond.eval(context)?.to_bool() {
-                    st.eval(context)
-                } else {
-                    Ok(Value::new(NoneType::None))
-                }
-            }
-            Statement::IfElse(ref cond, ref st1, ref st2) => {
-                if cond.eval(context)?.to_bool() {
-                    st1.eval(context)
-                } else {
-                    st2.eval(context)
-                }
-            }
-            Statement::For(
-                AstClause {
-                    ref span,
-                    node: Clause::For(ref e1, ref e2),
-                },
-                ref st,
-            ) => {
-                let mut iterable = e2.eval(context)?;
-                let mut result = Ok(Value::new(NoneType::None));
-                iterable.freeze_for_iteration();
-                for v in &t!(iterable.iter(), span * span)? {
-                    e1.set(context, v)?;
-                    match st.eval(context) {
-                        Err(EvalException::Break(..)) => break,
-                        Err(EvalException::Continue(..)) => (),
-                        Err(x) => {
-                            result = Err(x);
-                            break;
-                        }
-                        _ => (),
-                    }
-                }
-                iterable.unfreeze_for_iteration();
-                result
-            }
-            Statement::For(
-                AstClause {
-                    span: ref _s,
-                    ref node,
-                },
-                ..
-            ) => panic!("The parser returned an invalid for clause: {:?}", node),
-            Statement::Def(ref name, ref params, ref stmts) => {
-                let mut p = Vec::new();
-                for x in params.iter() {
-                    p.push(match x.node {
-                        Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
-                        Parameter::WithDefaultValue(ref n, ref v) => {
-                            FunctionParameter::WithDefaultValue(n.node.clone(), v.eval(context)?)
-                        }
-                        Parameter::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
-                        Parameter::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
-                    })
-                }
-                let f = function::Function::new_def(
-                    name.node.clone(),
-                    context.env.name(),
-                    p,
-                    stmts.clone(),
-                    context.map.clone(),
-                    context.env.assert_module_env().clone(),
-                );
-                t!(context.env.set(&name.node, f.clone()), name)?;
-                Ok(f)
-            }
-            Statement::Load(ref name, ref v) => {
-                let loadenv = context.loader.load(name)?;
-                for &(ref new_name, ref orig_name) in v.iter() {
-                    t!(context.env.assert_module_env().import_symbol(&loadenv, &orig_name.node, &new_name.node),
-                        span new_name.span.merge(orig_name.span))?
-                }
+fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult {
+    match stmt.node {
+        Statement::Break => Err(EvalException::Break(stmt.span)),
+        Statement::Continue => Err(EvalException::Continue(stmt.span)),
+        Statement::Pass => Ok(Value::new(NoneType::None)),
+        Statement::Return(Some(ref e)) => Err(EvalException::Return(stmt.span, e.eval(context)?)),
+        Statement::Return(None) => {
+            Err(EvalException::Return(stmt.span, Value::new(NoneType::None)))
+        }
+        Statement::Expression(ref e) => e.eval(context),
+        Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
+            let rhs = rhs.eval(context)?;
+            lhs.set(context, rhs)
+        }
+        Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
+            let lhs = lhs.transform(context)?;
+            let l = lhs.eval(context)?;
+            let r = rhs.eval(context)?;
+            lhs.set(context, t!(l.add(r), stmt)?)
+        }
+        Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
+            let lhs = lhs.transform(context)?;
+            let l = lhs.eval(context)?;
+            let r = rhs.eval(context)?;
+            lhs.set(context, t!(l.sub(r), stmt)?)
+        }
+        Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
+            let lhs = lhs.transform(context)?;
+            let l = lhs.eval(context)?;
+            let r = rhs.eval(context)?;
+            lhs.set(context, t!(l.mul(r), stmt)?)
+        }
+        Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
+            let lhs = lhs.transform(context)?;
+            let l = lhs.eval(context)?;
+            let r = rhs.eval(context)?;
+            lhs.set(context, t!(l.div(r), stmt)?)
+        }
+        Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
+            let lhs = lhs.transform(context)?;
+            let l = lhs.eval(context)?;
+            let r = rhs.eval(context)?;
+            lhs.set(context, t!(l.floor_div(r), stmt)?)
+        }
+        Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
+            let lhs = lhs.transform(context)?;
+            let l = lhs.eval(context)?;
+            let r = rhs.eval(context)?;
+            lhs.set(context, t!(l.percent(r), stmt)?)
+        }
+        Statement::If(ref cond, ref st) => {
+            if cond.eval(context)?.to_bool() {
+                eval_stmt(st, context)
+            } else {
                 Ok(Value::new(NoneType::None))
             }
-            Statement::Statements(ref v) => {
-                let r = eval_vector!(v, context);
-                match r.len() {
-                    0 => Ok(Value::new(NoneType::None)),
-                    _ => Ok(r.last().unwrap().clone()),
-                }
+        }
+        Statement::IfElse(ref cond, ref st1, ref st2) => {
+            if cond.eval(context)?.to_bool() {
+                eval_stmt(st1, context)
+            } else {
+                eval_stmt(st2, context)
             }
         }
-    }
-
-    fn transform(
-        &self,
-        _context: &mut EvaluationContext,
-    ) -> Result<Box<dyn Evaluate>, EvalException> {
-        Ok(Box::new(self.clone()))
-    }
-
-    fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
-        Err(EvalException::IncorrectLeftValue(self.span))
+        Statement::For(
+            AstClause {
+                ref span,
+                node: Clause::For(ref e1, ref e2),
+            },
+            ref st,
+        ) => {
+            let mut iterable = e2.eval(context)?;
+            let mut result = Ok(Value::new(NoneType::None));
+            iterable.freeze_for_iteration();
+            for v in &t!(iterable.iter(), span * span)? {
+                e1.set(context, v)?;
+                match eval_stmt(st, context) {
+                    Err(EvalException::Break(..)) => break,
+                    Err(EvalException::Continue(..)) => (),
+                    Err(x) => {
+                        result = Err(x);
+                        break;
+                    }
+                    _ => (),
+                }
+            }
+            iterable.unfreeze_for_iteration();
+            result
+        }
+        Statement::For(
+            AstClause {
+                span: ref _s,
+                ref node,
+            },
+            ..
+        ) => panic!("The parser returned an invalid for clause: {:?}", node),
+        Statement::Def(ref name, ref params, ref stmts) => {
+            let mut p = Vec::new();
+            for x in params.iter() {
+                p.push(match x.node {
+                    Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
+                    Parameter::WithDefaultValue(ref n, ref v) => {
+                        FunctionParameter::WithDefaultValue(n.node.clone(), v.eval(context)?)
+                    }
+                    Parameter::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
+                    Parameter::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
+                })
+            }
+            let f = function::Function::new_def(
+                name.node.clone(),
+                context.env.name(),
+                p,
+                stmts.clone(),
+                context.map.clone(),
+                context.env.assert_module_env().clone(),
+            );
+            t!(context.env.set(&name.node, f.clone()), name)?;
+            Ok(f)
+        }
+        Statement::Load(ref name, ref v) => {
+            let loadenv = context.loader.load(name)?;
+            for &(ref new_name, ref orig_name) in v.iter() {
+                t!(context.env.assert_module_env().import_symbol(&loadenv, &orig_name.node, &new_name.node),
+                    span new_name.span.merge(orig_name.span))?
+            }
+            Ok(Value::new(NoneType::None))
+        }
+        Statement::Statements(ref v) => {
+            let mut r = Value::new(NoneType::None);
+            for stmt in v {
+                r = eval_stmt(stmt, context)?;
+            }
+            Ok(r)
+        }
     }
 }
 
@@ -1034,7 +1020,7 @@ pub fn eval_def(
             }
         }
     }
-    match stmts.eval(&mut ctx) {
+    match eval_stmt(stmts, &mut ctx) {
         Err(EvalException::Return(_s, ret)) => Ok(ret),
         Err(x) => Err(ValueError::DiagnosedError(x.into())),
         Ok(..) => Ok(Value::new(NoneType::None)),
@@ -1069,7 +1055,10 @@ pub fn eval_lexer<
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match parse_lexer(map, filename, content, dialect, lexer)?.eval(&mut context) {
+    match eval_stmt(
+        &parse_lexer(map, filename, content, dialect, lexer)?,
+        &mut context,
+    ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -1097,7 +1086,7 @@ pub fn eval<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match parse(map, path, content, build)?.eval(&mut context) {
+    match eval_stmt(&parse(map, path, content, build)?, &mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -1123,7 +1112,7 @@ pub fn eval_file<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match parse_file(map, path, build)?.eval(&mut context) {
+    match eval_stmt(&parse_file(map, path, build)?, &mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
