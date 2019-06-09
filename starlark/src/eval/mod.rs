@@ -21,8 +21,8 @@
 //! The BUILD dialect does not allow `def` statements.
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
-use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::*;
+use crate::syntax::ast::{AstExpr, AstStatement};
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
@@ -321,14 +321,6 @@ trait Evaluate {
     // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
     fn eval(&self, context: &mut EvaluationContext) -> EvalResult;
 
-    // An intermediate transformation that tries to evaluate parameters of function / indices.
-    // It is used to cache result of LHS in augmented assignment.
-    // This transformation by default should be a deep copy (clone).
-    fn transform(
-        &self,
-        context: &mut EvaluationContext,
-    ) -> Result<Box<dyn Evaluate>, EvalException>;
-
     // Perform an assignment on the LHS represented by this AST element
     fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult;
 }
@@ -336,13 +328,6 @@ trait Evaluate {
 impl Evaluate for AstString {
     fn eval(&self, _context: &mut EvaluationContext) -> EvalResult {
         Ok(Value::new(self.node.clone()))
-    }
-
-    fn transform(
-        &self,
-        _context: &mut EvaluationContext,
-    ) -> Result<Box<dyn Evaluate>, EvalException> {
-        Ok(Box::new(self.clone()))
     }
 
     fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
@@ -353,13 +338,6 @@ impl Evaluate for AstString {
 impl Evaluate for AstInt {
     fn eval(&self, _context: &mut EvaluationContext) -> EvalResult {
         Ok(Value::new(self.node))
-    }
-
-    fn transform(
-        &self,
-        _context: &mut EvaluationContext,
-    ) -> Result<Box<dyn Evaluate>, EvalException> {
-        Ok(Box::new(*self))
     }
 
     fn set(&self, _context: &mut EvaluationContext, _new_value: Value) -> EvalResult {
@@ -576,13 +554,6 @@ enum TransformedExpr {
 }
 
 impl Evaluate for TransformedExpr {
-    fn transform(
-        &self,
-        _context: &mut EvaluationContext,
-    ) -> Result<Box<dyn Evaluate>, EvalException> {
-        panic!("Transform should not be called on an already transformed object");
-    }
-
     fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
         let ok = Ok(Value::new(NoneType::None));
         match self {
@@ -650,38 +621,43 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
         .map_err(|err| EvalException::DiagnosedError(err.to_diagnostic(span)))
 }
 
-impl Evaluate for AstExpr {
-    fn transform(
-        &self,
-        context: &mut EvaluationContext,
-    ) -> Result<Box<dyn Evaluate>, EvalException> {
-        match self.node {
-            Expr::Dot(ref e, ref s) => Ok(Box::new(TransformedExpr::Dot(
-                e.eval(context)?,
-                s.node.clone(),
-                self.span,
-            ))),
-            Expr::ArrayIndirection(ref e, ref idx) => Ok(Box::new(
-                TransformedExpr::ArrayIndirection(e.eval(context)?, idx.eval(context)?, self.span),
-            )),
-            Expr::List(ref v) => {
-                let mut r = Vec::new();
-                for val in v.iter() {
-                    r.push(val.transform(context)?)
-                }
-                Ok(Box::new(TransformedExpr::List(r, self.span)))
+// An intermediate transformation that tries to evaluate parameters of function / indices.
+// It is used to cache result of LHS in augmented assignment.
+// This transformation by default should be a deep copy (clone).
+fn transform(
+    expr: &AstExpr,
+    context: &mut EvaluationContext,
+) -> Result<Box<dyn Evaluate>, EvalException> {
+    match expr.node {
+        Expr::Dot(ref e, ref s) => Ok(Box::new(TransformedExpr::Dot(
+            e.eval(context)?,
+            s.node.clone(),
+            expr.span,
+        ))),
+        Expr::ArrayIndirection(ref e, ref idx) => Ok(Box::new(TransformedExpr::ArrayIndirection(
+            e.eval(context)?,
+            idx.eval(context)?,
+            expr.span,
+        ))),
+        Expr::List(ref v) => {
+            let mut r = Vec::new();
+            for val in v.iter() {
+                r.push(transform(val, context)?)
             }
-            Expr::Tuple(ref v) => {
-                let mut r = Vec::new();
-                for val in v.iter() {
-                    r.push(val.transform(context)?)
-                }
-                Ok(Box::new(TransformedExpr::Tuple(r, self.span)))
-            }
-            _ => Ok(Box::new(self.clone())),
+            Ok(Box::new(TransformedExpr::List(r, expr.span)))
         }
+        Expr::Tuple(ref v) => {
+            let mut r = Vec::new();
+            for val in v.iter() {
+                r.push(transform(val, context)?)
+            }
+            Ok(Box::new(TransformedExpr::Tuple(r, expr.span)))
+        }
+        _ => Ok(Box::new(expr.clone())),
     }
+}
 
+impl Evaluate for AstExpr {
     #[allow(unconditional_recursion)]
     fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
         match self.node {
@@ -856,37 +832,37 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             lhs.set(context, rhs)
         }
         Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
-            let lhs = lhs.transform(context)?;
+            let lhs = transform(lhs, context)?;
             let l = lhs.eval(context)?;
             let r = rhs.eval(context)?;
             lhs.set(context, t!(l.add(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
-            let lhs = lhs.transform(context)?;
+            let lhs = transform(lhs, context)?;
             let l = lhs.eval(context)?;
             let r = rhs.eval(context)?;
             lhs.set(context, t!(l.sub(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
-            let lhs = lhs.transform(context)?;
+            let lhs = transform(lhs, context)?;
             let l = lhs.eval(context)?;
             let r = rhs.eval(context)?;
             lhs.set(context, t!(l.mul(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
-            let lhs = lhs.transform(context)?;
+            let lhs = transform(lhs, context)?;
             let l = lhs.eval(context)?;
             let r = rhs.eval(context)?;
             lhs.set(context, t!(l.div(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
-            let lhs = lhs.transform(context)?;
+            let lhs = transform(lhs, context)?;
             let l = lhs.eval(context)?;
             let r = rhs.eval(context)?;
             lhs.set(context, t!(l.floor_div(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
-            let lhs = lhs.transform(context)?;
+            let lhs = transform(lhs, context)?;
             let l = lhs.eval(context)?;
             let r = rhs.eval(context)?;
             lhs.set(context, t!(l.percent(r), stmt)?)
