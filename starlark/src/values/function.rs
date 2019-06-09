@@ -22,7 +22,6 @@ use crate::values::error::RuntimeError;
 use crate::values::none::NoneType;
 use codemap::CodeMap;
 use std::convert::TryInto;
-use std::iter;
 use std::mem;
 use std::sync::{Arc, Mutex};
 
@@ -350,12 +349,23 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
 
 /// Define the function type
 impl TypedValue for Function {
-    type Holder = Immutable<Function>;
+    type Holder = ImmutableWithValues<Function>;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,
     ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
+        Box::new(self.signature.iter().flat_map(|p| match p {
+            FunctionParameter::WithDefaultValue(_, default_value) => Some(default_value.clone()),
+            _ => None,
+        }))
+    }
+
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for param in &self.signature {
+            if let FunctionParameter::WithDefaultValue(_, default_value) = param {
+                visitor(default_value);
+            }
+        }
     }
 
     fn to_str(&self) -> String {
@@ -466,7 +476,7 @@ impl TypedValue for Function {
 }
 
 impl TypedValue for WrappedMethod {
-    type Holder = Immutable<WrappedMethod>;
+    type Holder = ImmutableWithValues<WrappedMethod>;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

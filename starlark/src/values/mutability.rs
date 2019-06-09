@@ -14,7 +14,7 @@
 
 //! Mutability-related utilities.
 
-use crate::values::ValueError;
+use crate::values::{TypedValue, ValueError};
 use std::cell::{BorrowError, Cell, Ref, RefCell, RefMut};
 use std::fmt;
 use std::ops::Deref;
@@ -25,6 +25,7 @@ pub enum IterableMutability {
     Mutable,
     Immutable,
     FrozenForIteration,
+    GarbageCollected,
 }
 
 impl IterableMutability {
@@ -37,6 +38,7 @@ impl IterableMutability {
             IterableMutability::Mutable => Ok(()),
             IterableMutability::Immutable => Err(ValueError::CannotMutateImmutableValue),
             IterableMutability::FrozenForIteration => Err(ValueError::MutationDuringIteration),
+            IterableMutability::GarbageCollected => Err(ValueError::GarbageCollected),
         }
     }
 }
@@ -75,9 +77,10 @@ pub trait RefCellOrImmutable {
     type Content;
 
     fn new(value: Self::Content) -> Self;
-    fn borrow(&self) -> RefOrRef<'_, Self::Content>;
+    fn borrow(&self, reason: &'static str) -> RefOrRef<'_, Self::Content>;
     fn try_borrow(&self) -> Result<RefOrRef<Self::Content>, BorrowError>;
-    fn borrow_mut(&self) -> RefMut<'_, Self::Content>;
+    fn borrow_mut(&self, reason: &'static str) -> RefMut<'_, Self::Content>;
+    fn clear(&self);
     fn as_ptr(&self) -> *const Self::Content;
 }
 
@@ -85,27 +88,60 @@ pub trait RefCellOrImmutable {
 #[derive(Debug)]
 pub struct ImmutableCell<T>(T);
 
-impl<T> RefCellOrImmutable for RefCell<T> {
+/// Container for mutable data
+#[derive(Debug)]
+pub struct MutableCell<T: TypedValue + Default> {
+    ref_cell: RefCell<T>,
+    last_borrow_reason: Cell<&'static str>,
+}
+
+impl<T: TypedValue + Default> RefCellOrImmutable for MutableCell<T> {
     type Content = T;
 
     fn new(value: T) -> Self {
-        RefCell::new(value)
-    }
-
-    fn borrow(&self) -> RefOrRef<T> {
-        RefOrRef::Borrowed(RefCell::borrow(self))
+        MutableCell {
+            ref_cell: RefCell::new(value),
+            last_borrow_reason: Cell::new("never borrowed"),
+        }
     }
 
     fn try_borrow(&self) -> Result<RefOrRef<T>, BorrowError> {
-        RefCell::try_borrow(self).map(RefOrRef::Borrowed)
+        RefCell::try_borrow(&self.ref_cell).map(RefOrRef::Borrowed)
     }
 
-    fn borrow_mut(&self) -> RefMut<Self::Content> {
-        RefCell::borrow_mut(self)
+    fn borrow(&self, reason: &'static str) -> RefOrRef<T> {
+        match self.try_borrow() {
+            Ok(re) => {
+                self.last_borrow_reason.set(reason);
+                re
+            }
+            Err(_) => panic!(
+                "cannot borrow immutably: already borrowed for {}",
+                self.last_borrow_reason.get()
+            ),
+        }
+    }
+
+    fn borrow_mut(&self, reason: &'static str) -> RefMut<Self::Content> {
+        match RefCell::try_borrow_mut(&self.ref_cell) {
+            Ok(re) => {
+                self.last_borrow_reason.set(reason);
+                re
+            }
+            Err(_) => panic!(
+                "cannot borrow {} mutably: already borrowed for {}",
+                T::TYPE,
+                self.last_borrow_reason.get()
+            ),
+        }
+    }
+
+    fn clear(&self) {
+        *self.borrow_mut("clear") = T::default();
     }
 
     fn as_ptr(&self) -> *const T {
-        RefCell::as_ptr(self)
+        RefCell::as_ptr(&self.ref_cell)
     }
 }
 
@@ -116,7 +152,7 @@ impl<T> RefCellOrImmutable for ImmutableCell<T> {
         ImmutableCell(value)
     }
 
-    fn borrow(&self) -> RefOrRef<T> {
+    fn borrow(&self, _reason: &'static str) -> RefOrRef<T> {
         RefOrRef::Ptr(&self.0)
     }
 
@@ -124,8 +160,15 @@ impl<T> RefCellOrImmutable for ImmutableCell<T> {
         Ok(RefOrRef::Ptr(&self.0))
     }
 
-    fn borrow_mut(&self) -> RefMut<Self::Content> {
-        panic!("immutable value cannot be mutably borrowed")
+    fn borrow_mut(&self, reason: &'static str) -> RefMut<Self::Content> {
+        panic!(
+            "immutable value cannot be mutably borrowed (for {})",
+            reason
+        );
+    }
+
+    fn clear(&self) {
+        panic!("immutable cannot be cleared");
     }
 
     fn as_ptr(&self) -> *const T {
@@ -175,6 +218,7 @@ impl MutabilityCell for MutableMutability {
             IterableMutability::FrozenForIteration => panic!("attempt to freeze during iteration"),
             IterableMutability::Immutable => {}
             IterableMutability::Mutable => self.0.set(IterableMutability::Immutable),
+            IterableMutability::GarbageCollected => panic!("garbage collected"),
         }
     }
 
@@ -184,6 +228,7 @@ impl MutabilityCell for MutableMutability {
             IterableMutability::Immutable => {}
             IterableMutability::FrozenForIteration => panic!("already frozen"),
             IterableMutability::Mutable => self.0.set(IterableMutability::FrozenForIteration),
+            IterableMutability::GarbageCollected => panic!("garbage collected"),
         }
     }
 
@@ -193,6 +238,7 @@ impl MutabilityCell for MutableMutability {
             IterableMutability::Immutable => {}
             IterableMutability::FrozenForIteration => self.0.set(IterableMutability::Mutable),
             IterableMutability::Mutable => panic!("not frozen"),
+            IterableMutability::GarbageCollected => panic!("garbage collected"),
         }
     }
 

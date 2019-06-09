@@ -21,6 +21,8 @@
 //! The BUILD dialect does not allow `def` statements.
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
+use crate::gc;
+use crate::gc::{GcRoots, Temporaries};
 use crate::syntax::ast::*;
 use crate::syntax::ast::{AstExpr, AstStatement};
 use crate::syntax::dialect::Dialect;
@@ -38,14 +40,16 @@ use linked_hash_map::LinkedHashMap;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex};
 
 macro_rules! eval_vector {
-    ($v:expr, $ctx:expr) => {{
+    ($v:expr, $ctx:expr, $temp:expr) => {{
         let mut r = Vec::new();
         for s in $v.iter() {
-            r.push(eval_expr(s, $ctx)?)
+            let v = eval_expr_store_temp(s, $ctx, $temp)?;
+            $temp.add(v.clone());
+            r.push(v);
         }
         r
     }};
@@ -202,18 +206,51 @@ pub trait FileLoader: 'static {
     fn load(&self, path: &str) -> Result<Environment, EvalException>;
 }
 
+#[derive(Default)]
+pub(crate) struct VarMapContent {
+    map: RefCell<HashMap<String, Value>>,
+}
+
+#[derive(Default)]
+pub(crate) struct VarMap(Rc<VarMapContent>);
+
+#[derive(Default)]
+pub(crate) struct VarMapWeak(Weak<VarMapContent>);
+
+impl VarMap {
+    fn get(&self, name: &str) -> Option<Value> {
+        self.0.map.borrow().get(name).cloned()
+    }
+
+    fn set(&self, name: String, value: Value) {
+        self.0.map.borrow_mut().insert(name, value);
+    }
+}
+
+impl GcRoots for VarMap {
+    type Weak = VarMapWeak;
+
+    fn upgrade(weak: VarMapWeak) -> Option<VarMap> {
+        weak.0.upgrade().map(VarMap)
+    }
+
+    fn downgrade(strong: &VarMap) -> VarMapWeak {
+        VarMapWeak(Rc::downgrade(&strong.0))
+    }
+
+    fn roots(strong: &VarMap, roots: &mut Vec<Value>) {
+        roots.extend(strong.0.map.borrow().values().cloned());
+    }
+}
+
 /// Stacked environment for [`EvaluationContext`].
 pub(crate) enum EvaluationContextEnvironment {
     /// Module-level
     Module(Environment),
     /// Function-level
-    Function(String, Environment, RefCell<HashMap<String, Value>>),
+    Function(String, Environment, VarMap),
     /// Scope inside function, e. g. list comprenension
-    Nested(
-        String,
-        Rc<EvaluationContextEnvironment>,
-        RefCell<HashMap<String, Value>>,
-    ),
+    Nested(String, Rc<EvaluationContextEnvironment>, VarMap),
 }
 
 impl EvaluationContextEnvironment {
@@ -232,18 +269,14 @@ impl EvaluationContextEnvironment {
     fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env) => env.get(name),
-            EvaluationContextEnvironment::Function(_, env, locals) => {
-                match locals.borrow().get(name).cloned() {
-                    Some(v) => Ok(v),
-                    None => env.get(name),
-                }
-            }
-            EvaluationContextEnvironment::Nested(_, parent, locals) => {
-                match locals.borrow().get(name).cloned() {
-                    Some(v) => Ok(v),
-                    None => parent.get(name),
-                }
-            }
+            EvaluationContextEnvironment::Function(_, env, locals) => match locals.get(name) {
+                Some(v) => Ok(v),
+                None => env.get(name),
+            },
+            EvaluationContextEnvironment::Nested(_, parent, locals) => match locals.get(name) {
+                Some(v) => Ok(v),
+                None => parent.get(name),
+            },
         }
     }
 
@@ -253,7 +286,7 @@ impl EvaluationContextEnvironment {
             EvaluationContextEnvironment::Function(_, _, locals)
             | EvaluationContextEnvironment::Nested(_, _, locals) => {
                 // TODO: check that local slot was previously allocated
-                locals.borrow_mut().insert(name.to_owned(), value);
+                locals.set(name.to_owned(), value);
                 Ok(())
             }
         }
@@ -307,17 +340,25 @@ impl EvaluationContext {
     }
 
     fn child(&self, name: &str) -> EvaluationContext {
+        let local_map = Default::default();
+        self.env.env().heap().register_local_map(&local_map);
         EvaluationContext {
             env: Rc::new(EvaluationContextEnvironment::Nested(
                 name.to_owned(),
                 self.env.clone(),
-                Default::default(),
+                local_map,
             )),
             type_values: self.type_values.clone(),
             call_stack: self.call_stack.clone(),
             loader: Rc::new(UnreachableFileLoader),
             map: self.map.clone(),
         }
+    }
+
+    fn new_temporaries(&self) -> Temporaries {
+        let temporaries = Temporaries::default();
+        self.env.env().heap().register_temporaries(&temporaries);
+        temporaries
     }
 }
 
@@ -339,28 +380,32 @@ fn eval_comprehension_clause(
     e: &AstExpr,
     clauses: &[AstClause],
 ) -> Result<Vec<Value>, EvalException> {
+    let temporaries = context.new_temporaries();
+
     let mut result = Vec::new();
     if let Some((c, tl)) = clauses.split_first() {
         match c.node {
             Clause::If(ref cond) => {
                 if eval_expr(cond, context)?.to_bool() {
                     if tl.is_empty() {
-                        result.push(eval_expr(e, context)?);
+                        result.push(eval_expr_store_temp(e, context, &temporaries)?);
                     } else {
                         let mut other = eval_comprehension_clause(context, e, tl)?;
+                        temporaries.add_all(other.iter().cloned());
                         result.append(&mut other);
                     }
                 };
             }
             Clause::For(ref k, ref v) => {
-                let mut iterable = eval_expr(v, context)?;
+                let mut iterable = eval_expr_store_temp(v, context, &temporaries)?;
                 iterable.freeze_for_iteration();
                 for i in &t(iterable.iter(), c)? {
                     set_expr(k, context, i)?;
                     if tl.is_empty() {
-                        result.push(eval_expr(e, context)?);
+                        result.push(eval_expr_store_temp(e, context, &temporaries)?);
                     } else {
                         let mut other = eval_comprehension_clause(context, e, tl)?;
+                        temporaries.add_all(other.iter().cloned());
                         result.append(&mut other);
                     }
                 }
@@ -381,7 +426,8 @@ fn eval_compare<F>(
 where
     F: Fn(Ordering) -> bool,
 {
-    let l = eval_expr(left, context)?;
+    let temporaries = context.new_temporaries();
+    let l = eval_expr_store_temp(left, context, &temporaries)?;
     let r = eval_expr(right, context)?;
     Ok(Value::new(cmp(t(l.compare(&r), this)?)))
 }
@@ -396,7 +442,8 @@ fn eval_equals<F>(
 where
     F: Fn(bool) -> bool,
 {
-    let l = eval_expr(left, context)?;
+    let temporaries = context.new_temporaries();
+    let l = eval_expr_store_temp(left, context, &temporaries)?;
     let r = eval_expr(right, context)?;
     Ok(Value::new(cmp(t(
         l.equals(&r).map_err(Into::<ValueError>::into),
@@ -412,13 +459,14 @@ fn eval_slice(
     stride: &Option<AstExpr>,
     context: &mut EvaluationContext,
 ) -> EvalResult {
-    let a = eval_expr(a, context)?;
+    let temporaries = context.new_temporaries();
+    let a = eval_expr_store_temp(a, context, &temporaries)?;
     let start = match start {
-        Some(ref e) => Some(eval_expr(e, context)?),
+        Some(ref e) => Some(eval_expr_store_temp(e, context, &temporaries)?),
         None => None,
     };
     let stop = match stop {
-        Some(ref e) => Some(eval_expr(e, context)?),
+        Some(ref e) => Some(eval_expr_store_temp(e, context, &temporaries)?),
         None => None,
     };
     let stride = match stride {
@@ -437,22 +485,27 @@ fn eval_call(
     kwargs: &Option<AstExpr>,
     context: &mut EvaluationContext,
 ) -> EvalResult {
-    let npos = eval_vector!(pos, context);
+    let temporaries = context.new_temporaries();
+
+    let npos = eval_vector!(pos, context, &temporaries);
     let mut nnamed = LinkedHashMap::new();
     for &(ref k, ref v) in named.iter() {
-        nnamed.insert(k.node.clone(), eval_expr(v, context)?);
+        nnamed.insert(
+            k.node.clone(),
+            eval_expr_store_temp(v, context, &temporaries)?,
+        );
     }
     let nargs = if let Some(ref x) = args {
-        Some(eval_expr(x, context)?)
+        Some(eval_expr_store_temp(x, context, &temporaries)?)
     } else {
         None
     };
     let nkwargs = if let Some(ref x) = kwargs {
-        Some(eval_expr(x, context)?)
+        Some(eval_expr_store_temp(x, context, &temporaries)?)
     } else {
         None
     };
-    let f = eval_expr(e, context)?;
+    let f = eval_expr_store_temp(e, context, &temporaries)?;
     let descr = f.to_str();
     let mut new_stack = context.call_stack.clone();
     if context.call_stack.contains(f.function_id()) {
@@ -587,20 +640,32 @@ fn set_transformed(
     }
 }
 
-fn eval_transformed(transformed: &TransformedExpr, context: &mut EvaluationContext) -> EvalResult {
+fn eval_transformed(
+    transformed: &TransformedExpr,
+    context: &mut EvaluationContext,
+    temporaries: &Temporaries,
+) -> EvalResult {
     match transformed {
         TransformedExpr::Tuple(ref v, ..) => {
-            let r = v
+            let r: Vec<Value> = v
                 .iter()
-                .map(|i| eval_transformed(i, context))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|i| {
+                    let r = eval_transformed(i, context, temporaries)?;
+                    temporaries.add(r.clone());
+                    Ok(r)
+                })
+                .collect::<Result<Vec<Value>, EvalException>>()?;
             Ok(Value::new(tuple::Tuple::new(r.as_slice())))
         }
         TransformedExpr::List(ref v, ..) => {
-            let r = v
+            let r: Vec<Value> = v
                 .iter()
-                .map(|i| eval_transformed(i, context))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|i| {
+                    let r = eval_transformed(i, context, temporaries)?;
+                    temporaries.add(r.clone());
+                    Ok(r)
+                })
+                .collect::<Result<Vec<Value>, EvalException>>()?;
             Ok(Value::from(r))
         }
         TransformedExpr::Dot(ref left, ref s, ref span) => {
@@ -633,29 +698,30 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
 fn transform(
     expr: &AstExpr,
     context: &mut EvaluationContext,
+    temporaries: &Temporaries,
 ) -> Result<TransformedExpr, EvalException> {
     match expr.node {
         Expr::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
-            eval_expr(e, context)?,
+            eval_expr_store_temp(e, context, temporaries)?,
             s.node.clone(),
             expr.span,
         )),
         Expr::ArrayIndirection(ref e, ref idx) => Ok(TransformedExpr::ArrayIndirection(
-            eval_expr(e, context)?,
-            eval_expr(idx, context)?,
+            eval_expr_store_temp(e, context, temporaries)?,
+            eval_expr_store_temp(idx, context, temporaries)?,
             expr.span,
         )),
         Expr::List(ref v) => {
             let mut r = Vec::new();
             for val in v.iter() {
-                r.push(transform(val, context)?)
+                r.push(transform(val, context, temporaries)?)
             }
             Ok(TransformedExpr::List(r, expr.span))
         }
         Expr::Tuple(ref v) => {
             let mut r = Vec::new();
             for val in v.iter() {
-                r.push(transform(val, context)?)
+                r.push(transform(val, context, temporaries)?)
             }
             Ok(TransformedExpr::Tuple(r, expr.span))
         }
@@ -667,7 +733,8 @@ fn transform(
 fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
     match expr.node {
         Expr::Tuple(ref v) => {
-            let r = eval_vector!(v, context);
+            let temporaries = context.new_temporaries();
+            let r = eval_vector!(v, context, &temporaries);
             Ok(Value::new(tuple::Tuple::new(r.as_slice())))
         }
         Expr::Dot(ref e, ref s) => eval_dot(expr, e, s, context),
@@ -675,7 +742,8 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             eval_call(expr, e, pos, named, args, kwargs, context)
         }
         Expr::ArrayIndirection(ref e, ref idx) => {
-            let idx = eval_expr(idx, context)?;
+            let temporaries = context.new_temporaries();
+            let idx = eval_expr_store_temp(idx, context, &temporaries)?;
             t(eval_expr(e, context)?.at(idx), expr)
         }
         Expr::Slice(ref a, ref start, ref stop, ref stride) => {
@@ -688,7 +756,8 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
         Expr::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
         Expr::Plus(ref s) => t(eval_expr(s, context)?.plus(), expr),
         Expr::Op(BinOp::Or, ref l, ref r) => {
-            let l = eval_expr(l, context)?;
+            let temporaries = context.new_temporaries();
+            let l = eval_expr_store_temp(l, context, &temporaries)?;
             Ok(if l.to_bool() {
                 l
             } else {
@@ -696,7 +765,8 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             })
         }
         Expr::Op(BinOp::And, ref l, ref r) => {
-            let l = eval_expr(l, context)?;
+            let temporaries = context.new_temporaries();
+            let l = eval_expr_store_temp(l, context, &temporaries)?;
             Ok(if !l.to_bool() {
                 l
             } else {
@@ -717,32 +787,55 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
         Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
             eval_compare(expr, l, r, |x| x != Ordering::Less, context)
         }
-        Expr::Op(BinOp::In, ref l, ref r) => t(
-            eval_expr(r, context)?
-                .is_in(&eval_expr(l, context)?)
-                .map(Value::new),
-            expr,
-        ),
-        Expr::Op(BinOp::NotIn, ref l, ref r) => t(
-            eval_expr(r, context)?
-                .is_in(&eval_expr(l, context)?)
-                .map(|r| Value::new(!r)),
-            expr,
-        ),
+        Expr::Op(BinOp::In, ref l, ref r) => {
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(r, context, &temporaries)?
+                    .is_in(&eval_expr(l, context)?)
+                    .map(Value::new),
+                expr,
+            )
+        }
+        Expr::Op(BinOp::NotIn, ref l, ref r) => {
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(r, context, &temporaries)?
+                    .is_in(&eval_expr(l, context)?)
+                    .map(|r| Value::new(!r)),
+                expr,
+            )
+        }
         Expr::Op(BinOp::Substraction, ref l, ref r) => {
-            t(eval_expr(l, context)?.sub(eval_expr(r, context)?), expr)
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(l, context, &temporaries)?.sub(eval_expr(r, context)?),
+                expr,
+            )
         }
         Expr::Op(BinOp::Addition, ref l, ref r) => {
-            t(eval_expr(l, context)?.add(eval_expr(r, context)?), expr)
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(l, context, &temporaries)?.add(eval_expr(r, context)?),
+                expr,
+            )
         }
         Expr::Op(BinOp::Multiplication, ref l, ref r) => {
-            t(eval_expr(l, context)?.mul(eval_expr(r, context)?), expr)
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(l, context, &temporaries)?.mul(eval_expr(r, context)?),
+                expr,
+            )
         }
         Expr::Op(BinOp::Percent, ref l, ref r) => {
-            t(eval_expr(l, context)?.percent(eval_expr(r, context)?), expr)
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(l, context, &temporaries)?.percent(eval_expr(r, context)?),
+                expr,
+            )
         }
         Expr::Op(BinOp::Division, ref l, ref r) => {
-            let l = eval_expr(l, context)?;
+            let temporaries = context.new_temporaries();
+            let l = eval_expr_store_temp(l, context, &temporaries)?;
             let r = eval_expr(r, context)?;
             // No types currently support / so always error.
             let err = ValueError::OperationNotSupported {
@@ -752,12 +845,19 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             };
             Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)))
         }
-        Expr::Op(BinOp::FloorDivision, ref l, ref r) => t(
-            eval_expr(l, context)?.floor_div(eval_expr(r, context)?),
-            expr,
-        ),
+        Expr::Op(BinOp::FloorDivision, ref l, ref r) => {
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(l, context, &temporaries)?.floor_div(eval_expr(r, context)?),
+                expr,
+            )
+        }
         Expr::Op(BinOp::Pipe, ref l, ref r) => {
-            t(eval_expr(l, context)?.pipe(eval_expr(r, context)?), expr)
+            let temporaries = context.new_temporaries();
+            t(
+                eval_expr_store_temp(l, context, &temporaries)?.pipe(eval_expr(r, context)?),
+                expr,
+            )
         }
         Expr::If(ref cond, ref v1, ref v2) => {
             if eval_expr(cond, context)?.to_bool() {
@@ -767,21 +867,30 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             }
         }
         Expr::List(ref v) => {
-            let r = eval_vector!(v, context);
+            let temporaries = context.new_temporaries();
+            let r = eval_vector!(v, context, &temporaries);
             Ok(Value::from(r))
         }
         Expr::Dict(ref v) => {
+            let temporaries = context.new_temporaries();
             let mut r = dict::Dictionary::new();
             for s in v.iter() {
                 t(
-                    r.set_at(eval_expr(&s.0, context)?, eval_expr(&s.1, context)?),
+                    r.set_at(
+                        eval_expr_store_temp(&s.0, context, &temporaries)?,
+                        eval_expr(&s.1, context)?,
+                    ),
                     expr,
                 )?
             }
             Ok(r)
         }
         Expr::Set(ref v) => {
-            let values: Result<Vec<_>, _> = v.iter().map(|s| eval_expr(s, context)).collect();
+            let temporaries = context.new_temporaries();
+            let values: Result<Vec<_>, _> = v
+                .iter()
+                .map(|s| eval_expr_store_temp(s, context, &temporaries))
+                .collect();
             make_set(values?, context, expr.span)
         }
         Expr::ListComprehension(ref e, ref clauses) => eval_list_comprehension(e, clauses, context),
@@ -793,6 +902,16 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             make_set(values, context, expr.span)
         }
     }
+}
+
+fn eval_expr_store_temp(
+    expr: &AstExpr,
+    context: &mut EvaluationContext,
+    temporaries: &Temporaries,
+) -> EvalResult {
+    let r = eval_expr(expr, context)?;
+    temporaries.add(r.clone());
+    Ok(r)
 }
 
 // Perform an assignment on the LHS represented by this AST element
@@ -827,8 +946,10 @@ fn set_expr(expr: &AstExpr, context: &mut EvaluationContext, new_value: Value) -
             ok
         }
         Expr::ArrayIndirection(ref e, ref idx) => {
+            let temporaries = context.new_temporaries();
             t(
-                eval_expr(e, context)?.set_at(eval_expr(idx, context)?, new_value),
+                eval_expr_store_temp(e, context, &temporaries)?
+                    .set_at(eval_expr(idx, context)?, new_value),
                 expr,
             )?;
             ok
@@ -847,13 +968,16 @@ fn eval_assign_modify<F>(
 where
     F: FnOnce(&Value, Value) -> Result<Value, ValueError>,
 {
-    let lhs = transform(lhs, context)?;
-    let l = eval_transformed(&lhs, context)?;
-    let r = eval_expr(rhs, context)?;
+    let temporaries = context.new_temporaries();
+    let lhs = transform(lhs, context, &temporaries)?;
+    let l = eval_transformed(&lhs, context, &temporaries)?;
+    let r = eval_expr_store_temp(rhs, context, &temporaries)?;
     set_transformed(&lhs, context, t(op(&l, r), stmt)?)
 }
 
 fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult {
+    gc::gc_if_needed();
+
     match stmt.node {
         Statement::Break => Err(EvalException::Break(stmt.span)),
         Statement::Continue => Err(EvalException::Continue(stmt.span)),
@@ -866,7 +990,8 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
         }
         Statement::Expression(ref e) => eval_expr(e, context),
         Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
-            let rhs = eval_expr(rhs, context)?;
+            let temporaries = context.new_temporaries();
+            let rhs = eval_expr_store_temp(rhs, context, &temporaries)?;
             set_expr(lhs, context, rhs)
         }
         Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
@@ -908,7 +1033,8 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             },
             ref st,
         ) => {
-            let mut iterable = eval_expr(e2, context)?;
+            let temporaries = context.new_temporaries();
+            let mut iterable = eval_expr_store_temp(e2, context, &temporaries)?;
             let mut result = Ok(Value::new(NoneType::None));
             iterable.freeze_for_iteration();
             for v in &t(iterable.iter(), span)? {
@@ -934,12 +1060,16 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             ..
         ) => panic!("The parser returned an invalid for clause: {:?}", node),
         Statement::Def(ref name, ref params, ref stmts) => {
+            let temporaries = context.new_temporaries();
             let mut p = Vec::new();
             for x in params.iter() {
                 p.push(match x.node {
                     Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
                     Parameter::WithDefaultValue(ref n, ref v) => {
-                        FunctionParameter::WithDefaultValue(n.node.clone(), eval_expr(v, context)?)
+                        FunctionParameter::WithDefaultValue(
+                            n.node.clone(),
+                            eval_expr_store_temp(v, context, &temporaries)?,
+                        )
                     }
                     Parameter::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
                     Parameter::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
@@ -994,12 +1124,14 @@ pub fn eval_def(
     map: Arc<Mutex<CodeMap>>,
 ) -> ValueResult {
     // argument binding
+    let local_map = Default::default();
+    captured_env.heap().register_local_map(&local_map);
     let mut ctx = EvaluationContext {
         call_stack: call_stack.to_owned(),
         env: Rc::new(EvaluationContextEnvironment::Function(
             format!("{}#{}", captured_env.name(), name),
             captured_env,
-            Default::default(),
+            local_map,
         )),
         type_values,
         loader: Rc::new(UnreachableFileLoader),
@@ -1057,6 +1189,7 @@ pub fn eval_lexer<
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
+    let _heap_guard = gc::push_heap(env.heap());
     match eval_stmt(
         &parse_lexer(map, filename, content, dialect, lexer)?,
         &mut context,
@@ -1088,6 +1221,7 @@ pub fn eval<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
+    let _heap_guard = gc::push_heap(env.heap());
     match eval_stmt(&parse(map, path, content, build)?, &mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -1114,6 +1248,7 @@ pub fn eval_file<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
+    let _heap_guard = gc::push_heap(env.heap());
     match eval_stmt(&parse_file(map, path, build)?, &mut context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),

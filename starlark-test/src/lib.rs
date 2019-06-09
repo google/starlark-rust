@@ -25,6 +25,7 @@ use linked_hash_map::LinkedHashMap;
 use starlark::environment::TypeValues;
 use starlark::eval::call_stack::CallStack;
 use starlark::eval::simple::eval;
+use starlark::gc;
 use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::error::ValueError;
@@ -200,6 +201,8 @@ def assert_(cond, msg="assertion failed"):
     env.freeze();
 
     let bench_func = env.get("bench").expect("bench function is not found");
+
+    let _heap_guard = gc::push_heap(env.heap());
 
     bencher.iter(|| {
         let env = env.child("bench");

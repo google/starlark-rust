@@ -74,6 +74,7 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 pub mod environment;
+pub mod gc;
 #[doc(hidden)]
 pub mod syntax;
 #[macro_use]

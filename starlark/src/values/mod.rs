@@ -34,7 +34,7 @@
 //! For example the `NoneType` trait implementation is the following:
 //!
 //! ```rust
-//! # use starlark::values::{TypedValue, Value, Immutable};
+//! # use starlark::values::{TypedValue, Value, ImmutableNoValues};
 //! # use starlark::values::error::ValueError;
 //! # use std::cmp::Ordering;
 //! # use std::iter;
@@ -45,7 +45,7 @@
 //! }
 //!
 //! impl TypedValue for NoneType {
-//!     type Holder = Immutable<Self>;
+//!     type Holder = ImmutableNoValues<Self>;
 //!     const TYPE: &'static str = "NoneType";
 //!
 //!     fn compare(&self, _other: &NoneType) -> Result<Ordering, ValueError> {
@@ -89,11 +89,11 @@ use crate::values::iter::{FakeTypedIterable, RefIterable, TypedIterable};
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
 use std::any::Any;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefMut;
 use std::cmp::Ordering;
 use std::fmt;
 use std::marker;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 /// A value in Starlark.
 ///
@@ -101,35 +101,21 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct Value(Rc<dyn ValueHolderDyn>);
 
+#[derive(Clone)]
+pub struct ValueWeak(Weak<dyn ValueHolderDyn>);
+
 pub type ValueResult = Result<Value, ValueError>;
 
 impl Value {
     /// Create a new `Value` from a static value.
     pub fn new<T: TypedValue>(t: T) -> Value {
-        Value(Rc::new(ValueHolder::new(t)))
+        let value = Value(Rc::new(ValueHolder::new(t)));
+        gc::register(&value);
+        value
     }
 
-    /// Clone for inserting into the other container, using weak reference if we do a
-    /// recursive insertion.
-    pub fn clone_for_container<T: TypedValue>(&self, container: &T) -> Result<Value, ValueError> {
-        if self.is_descendant(DataPtr::from(container)) {
-            Err(ValueError::UnsupportedRecursiveDataStructure)
-        } else {
-            Ok(self.clone())
-        }
-    }
-
-    pub fn clone_for_container_value(&self, other: &Value) -> Result<Value, ValueError> {
-        if self.is_descendant_value(other) {
-            Err(ValueError::UnsupportedRecursiveDataStructure)
-        } else {
-            Ok(self.clone())
-        }
-    }
-
-    /// Determine if the value pointed by other is a descendant of self
-    pub fn is_descendant_value(&self, other: &Value) -> bool {
-        self.0.is_descendant(other.0.data_ptr())
+    pub(crate) fn downgrade(&self) -> ValueWeak {
+        ValueWeak(Rc::downgrade(&self.0))
     }
 
     /// Object data pointer.
@@ -143,54 +129,81 @@ impl Value {
     }
 }
 
+impl ValueWeak {
+    pub(crate) fn upgrade(self) -> Option<Value> {
+        self.0.upgrade().map(Value)
+    }
+}
+
 pub trait Mutability {
     type Content: TypedValue;
 
     /// This type is mutable or immutable.
     const MUTABLE: bool;
+    const HAS_VALUES: bool;
 
     /// Type of cell which contains the object.
     type Cell: RefCellOrImmutable<Content = Self::Content>;
 
     /// Type of cell which contains mutability flag.
     type MutabilityCell: MutabilityCell;
+
+    /// Type of cell which contains GC header.
+    type GcHeaderCell: GcHeaderCell;
 }
 
 struct ValueHolder<T: TypedValue> {
     mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell,
     content: <<T as TypedValue>::Holder as Mutability>::Cell,
+    gc_header: <<T as TypedValue>::Holder as Mutability>::GcHeaderCell,
 }
 
 impl<T: TypedValue> ValueHolder<T> {
     fn new(value: T) -> ValueHolder<T> {
         ValueHolder {
+            gc_header: <<T as TypedValue>::Holder as Mutability>::GcHeaderCell::new(),
             mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell::new(),
             content: <<T as TypedValue>::Holder as Mutability>::Cell::new(value),
         }
     }
 }
 
-/// Type parameter for immutable types.
-pub struct Immutable<T>(marker::PhantomData<T>);
+/// Type parameter for immutable types with no references to other `Value`.
+pub struct ImmutableNoValues<T>(marker::PhantomData<T>);
+/// Type parameter for immutable types with references to other `Value`.
+pub struct ImmutableWithValues<T>(marker::PhantomData<T>);
 /// Type parameter for mutable types.
-pub struct Mutable<T>(marker::PhantomData<T>);
+pub struct Mutable<T: Default>(marker::PhantomData<T>);
 
-impl<T: TypedValue> Mutability for Mutable<T> {
+impl<T: TypedValue + Default> Mutability for Mutable<T> {
     type Content = T;
     const MUTABLE: bool = true;
-    type Cell = RefCell<T>;
+    const HAS_VALUES: bool = true;
+    type Cell = MutableCell<T>;
     type MutabilityCell = MutableMutability;
+    type GcHeaderCell = GcHeaderMutable;
 }
 
-impl<T: TypedValue> Mutability for Immutable<T> {
+impl<T: TypedValue> Mutability for ImmutableNoValues<T> {
     type Content = T;
     const MUTABLE: bool = false;
+    const HAS_VALUES: bool = false;
     type Cell = ImmutableCell<T>;
     type MutabilityCell = ImmutableMutability;
+    type GcHeaderCell = GcHeaderNoValue;
+}
+
+impl<T: TypedValue> Mutability for ImmutableWithValues<T> {
+    type Content = T;
+    const MUTABLE: bool = false;
+    const HAS_VALUES: bool = true;
+    type Cell = ImmutableCell<T>;
+    type MutabilityCell = ImmutableMutability;
+    type GcHeaderCell = GcHeaderMutable;
 }
 
 /// Pointer to data, used for cycle checks.
-#[derive(Copy, Clone, Debug, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DataPtr(*const ());
 
 impl<T: TypedValue> From<*const T> for DataPtr {
@@ -211,9 +224,9 @@ impl From<Value> for DataPtr {
     }
 }
 
-impl PartialEq for DataPtr {
-    fn eq(&self, other: &DataPtr) -> bool {
-        self.0 == other.0
+impl fmt::Display for DataPtr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
     }
 }
 
@@ -223,9 +236,10 @@ pub struct FunctionId(pub DataPtr);
 
 impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     fn as_any_mut(&self) -> Result<Option<RefMut<'_, dyn Any>>, ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
         self.mutability.get().test()?;
         Ok(if T::Holder::MUTABLE {
-            Some(RefMut::map(self.content.borrow_mut(), |v| {
+            Some(RefMut::map(self.content.borrow_mut("as_any_mut"), |v| {
                 v as &mut dyn Any
             }))
         } else {
@@ -234,7 +248,26 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     }
 
     fn as_any_ref(&self) -> RefOrRef<'_, dyn Any> {
-        RefOrRef::map(self.content.borrow(), |v| v as &dyn Any)
+        self.gc_header.assert_alive(T::TYPE);
+        RefOrRef::map(self.content.borrow("as_any_ref"), |v| v as &dyn Any)
+    }
+
+    fn get_gc_header(&self) -> Option<&GcHeader> {
+        self.gc_header.get_gc_header()
+    }
+
+    fn gc(&self) {
+        if T::Holder::MUTABLE {
+            self.content.clear();
+        }
+    }
+
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        if !T::Holder::HAS_VALUES {
+            return;
+        }
+
+        self.content.borrow("visit_links").visit_links(visitor);
     }
 
     fn data_ptr(&self) -> DataPtr {
@@ -243,17 +276,18 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
 
     fn function_id(&self) -> FunctionId {
         self.content
-            .borrow()
+            .borrow("function_id")
             .function_id()
             .unwrap_or(FunctionId(self.data_ptr()))
     }
 
     /// Freezes the current value.
     fn freeze(&self) {
+        self.gc_header.assert_alive(T::TYPE);
         self.mutability.freeze();
         for mut value in self
             .content
-            .borrow()
+            .borrow("freeze")
             .values_for_descendant_check_and_freeze()
         {
             value.freeze();
@@ -262,20 +296,24 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
 
     /// Freezes the current value for iterating over.
     fn freeze_for_iteration(&self) {
+        self.gc_header.assert_alive(T::TYPE);
         self.mutability.freeze_for_iteration();
     }
 
     /// Unfreezes the current value for iterating over.
     fn unfreeze_for_iteration(&self) {
+        self.gc_header.assert_alive(T::TYPE);
         self.mutability.unfreeze_for_iteration();
     }
 
     fn to_str(&self) -> String {
-        self.content.borrow().to_str()
+        self.gc_header.assert_alive(T::TYPE);
+        self.content.borrow("to_str").to_str()
     }
 
     fn to_repr(&self) -> String {
-        self.content.borrow().to_repr()
+        self.gc_header.assert_alive(T::TYPE);
+        self.content.borrow("to_repr").to_repr()
     }
 
     fn get_type(&self) -> &'static str {
@@ -283,46 +321,38 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     }
 
     fn to_bool(&self) -> bool {
-        self.content.borrow().to_bool()
+        self.gc_header.assert_alive(T::TYPE);
+        self.content.borrow("to_bool").to_bool()
     }
 
     fn to_int(&self) -> Result<i64, ValueError> {
-        self.content.borrow().to_int()
+        self.gc_header.assert_alive(T::TYPE);
+        self.content.borrow("to_int").to_int()
     }
 
     fn get_hash(&self) -> Result<u64, ValueError> {
-        self.content.borrow().get_hash()
-    }
-
-    fn is_descendant(&self, other: DataPtr) -> bool {
-        if self.data_ptr() == other {
-            return true;
-        }
-        if let Ok(borrow) = self.content.try_borrow() {
-            borrow
-                .values_for_descendant_check_and_freeze()
-                .any(|x| x.is_descendant(other))
-        } else {
-            // We have already borrowed mutably this value,
-            // which means we are trying to mutate it, assigning other to it.
-            true
-        }
+        self.gc_header.assert_alive(T::TYPE);
+        self.content.borrow("get_hash").get_hash()
     }
 
     fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
+
         let _stack_depth_guard = call_stack::try_inc()?;
 
         match other.downcast_ref::<T>() {
-            Some(other) => self.content.borrow().equals(&*other),
+            Some(other) => self.content.borrow("equals").equals(&*other),
             None => Ok(false),
         }
     }
 
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
+
         let _stack_depth_guard = call_stack::try_inc()?;
 
         match other.downcast_ref::<T>() {
-            Some(other) => self.content.borrow().compare(&*other),
+            Some(other) => self.content.borrow("compare").compare(&*other),
             None => Err(ValueError::OperationNotSupported {
                 op: "compare".to_owned(),
                 left: self.get_type().to_owned(),
@@ -340,16 +370,22 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
+        self.gc_header.assert_alive(T::TYPE);
+
         self.content
-            .borrow()
+            .borrow("call")
             .call(call_stack, type_values, positional, named, args, kwargs)
     }
 
     fn at(&self, index: Value) -> Result<Value, ValueError> {
-        self.content.borrow().at(index)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("at").at(index)
     }
 
     fn set_at(&self, index: Value, new_value: Value) -> Result<(), ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
+
         // must explicitly check for mutability, otherwise `borrow_mut` below will fail
         if !T::Holder::MUTABLE {
             return Err(ValueError::OperationNotSupported {
@@ -359,7 +395,7 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
             });
         }
         self.mutability.get().test()?;
-        self.content.borrow_mut().set_at(index, new_value)
+        self.content.borrow_mut("set_at").set_at(index, new_value)
     }
 
     fn slice(
@@ -368,11 +404,15 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> Result<Value, ValueError> {
-        self.content.borrow().slice(start, stop, stride)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("slice").slice(start, stop, stride)
     }
 
     fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
-        let borrowed: RefOrRef<'_, T> = self.content.borrow();
+        self.gc_header.assert_alive(T::TYPE);
+
+        let borrowed: RefOrRef<'_, T> = self.content.borrow("iter");
         let mut err = Ok(());
         let typed_into_iter = RefOrRef::map(borrowed, |t| match t.iter() {
             Ok(r) => r,
@@ -386,18 +426,26 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     }
 
     fn length(&self) -> Result<i64, ValueError> {
-        self.content.borrow().length()
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("length").length()
     }
 
     fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {
-        self.content.borrow().get_attr(attribute)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("get_attr").get_attr(attribute)
     }
 
     fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        self.content.borrow().has_attr(attribute)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("has_attr").has_attr(attribute)
     }
 
     fn set_attr(&self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
+
         // must explicitly check for mutability, otherwise `borrow_mut` below will fail
         if !T::Holder::MUTABLE {
             return Err(ValueError::OperationNotSupported {
@@ -407,57 +455,81 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
             });
         }
         self.mutability.get().test()?;
-        self.content.borrow_mut().set_attr(attribute, new_value)
+        self.content
+            .borrow_mut("set_attr")
+            .set_attr(attribute, new_value)
     }
 
     fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        self.content.borrow().dir_attr()
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("dir_attr").dir_attr()
     }
 
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        self.content.borrow().is_in(other)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("is_in").is_in(other)
     }
 
     fn plus(&self) -> Result<Value, ValueError> {
-        self.content.borrow().plus().map(Value::new)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("plus").plus().map(Value::new)
     }
 
     fn minus(&self) -> Result<Value, ValueError> {
-        self.content.borrow().minus().map(Value::new)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("minus").minus().map(Value::new)
     }
 
     fn add(&self, other: Value) -> Result<Value, ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
+
         match other.downcast_ref::<T>() {
-            Some(other) => self.content.borrow().add(&*other).map(Value::new),
+            Some(other) => self.content.borrow("add").add(&*other).map(Value::new),
             None => Err(ValueError::IncorrectParameterType),
         }
     }
 
     fn sub(&self, other: Value) -> Result<Value, ValueError> {
+        self.gc_header.assert_alive(T::TYPE);
+
         match other.downcast_ref() {
-            Some(other) => self.content.borrow().sub(&*other).map(Value::new),
+            Some(other) => self.content.borrow("sub").sub(&*other).map(Value::new),
             None => Err(ValueError::IncorrectParameterType),
         }
     }
 
     fn mul(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().mul(other)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("mul").mul(other)
     }
 
     fn percent(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().percent(other)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("percent").percent(other)
     }
 
     fn div(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().div(other)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("div").div(other)
     }
 
     fn floor_div(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().floor_div(other)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("floor_div").floor_div(other)
     }
 
     fn pipe(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().pipe(other)
+        self.gc_header.assert_alive(T::TYPE);
+
+        self.content.borrow("pipe").pipe(other)
     }
 }
 
@@ -472,6 +544,12 @@ trait ValueHolderDyn {
 
     /// This function panics if value is mutably borrowed.
     fn as_any_ref(&self) -> RefOrRef<'_, dyn Any>;
+
+    fn get_gc_header(&self) -> Option<&GcHeader>;
+
+    fn gc(&self);
+
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value));
 
     /// Pointer to `TypedValue` object, used for cycle checks.
     fn data_ptr(&self) -> DataPtr;
@@ -496,8 +574,6 @@ trait ValueHolderDyn {
     fn to_int(&self) -> Result<i64, ValueError>;
 
     fn get_hash(&self) -> Result<u64, ValueError>;
-
-    fn is_descendant(&self, other: DataPtr) -> bool;
 
     fn equals(&self, other: &Value) -> Result<bool, ValueError>;
     fn compare(&self, other: &Value) -> Result<Ordering, ValueError>;
@@ -575,7 +651,7 @@ pub trait TypedValue: Sized + 'static {
     /// # struct MyType;
     ///
     /// # impl TypedValue for MyType {
-    /// #    type Holder = Immutable<MyType>;
+    /// #    type Holder = ImmutableNoValues<MyType>;
     /// #    const TYPE: &'static str = "MyType";
     /// #
     /// fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item=Value> + 'a> {
@@ -592,6 +668,10 @@ pub trait TypedValue: Sized + 'static {
     /// If `None` is returned, object id is used.
     fn function_id(&self) -> Option<FunctionId> {
         None
+    }
+
+    fn visit_links(&self, _visitor: &mut dyn FnMut(&Value)) {
+        unimplemented!("must be implemented for {}", Self::TYPE);
     }
 
     /// Return a string describing of self, as returned by the str() function.
@@ -1051,6 +1131,21 @@ impl Value {
     pub fn get_type(&self) -> &'static str {
         self.0.get_type()
     }
+    pub fn get_gc_header(&self) -> Option<&GcHeader> {
+        self.0.get_gc_header()
+    }
+    pub fn debug_str(&self) -> String {
+        format!("{}@{}", self.get_type(), self.0.data_ptr())
+    }
+    // Explicitly destroy the object on GC.
+    //
+    // This operation must "clean" the object to break refcounter cycles.
+    pub fn gc(&self) {
+        self.0.gc()
+    }
+    pub fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        self.0.visit_links(visitor)
+    }
     pub fn to_bool(&self) -> bool {
         self.0.to_bool()
     }
@@ -1065,10 +1160,6 @@ impl Value {
     }
     pub fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
         self.0.compare(other)
-    }
-
-    pub fn is_descendant(&self, other: DataPtr) -> bool {
-        self.0.is_descendant(other)
     }
 
     pub fn call(
@@ -1320,7 +1411,7 @@ impl Value {
     /// This function panics if the `Value` is borrowed.
     ///
     /// Error is returned if the value is frozen or frozen for iteration.
-    pub fn downcast_mut<T: TypedValue<Holder = Mutable<T>>>(
+    pub fn downcast_mut<T: TypedValue<Holder = Mutable<T>> + Default>(
         &self,
     ) -> Result<Option<RefMut<'_, T>>, ValueError> {
         let any = match self.0.as_any_mut()? {
@@ -1353,9 +1444,11 @@ pub mod none;
 pub mod string;
 pub mod tuple;
 
+use crate::gc;
+use crate::gc::{GcHeader, GcHeaderCell, GcHeaderMutable, GcHeaderNoValue};
 use crate::values::mutability::{
-    ImmutableCell, ImmutableMutability, MutabilityCell, MutableMutability, RefCellOrImmutable,
-    RefOrRef,
+    ImmutableCell, ImmutableMutability, MutabilityCell, MutableCell, MutableMutability,
+    RefCellOrImmutable, RefOrRef,
 };
 
 #[cfg(test)]
@@ -1415,7 +1508,7 @@ mod tests {
                 Ok(std::cmp::Ord::cmp(self, other))
             }
 
-            type Holder = Immutable<WrappedNumber>;
+            type Holder = ImmutableNoValues<WrappedNumber>;
 
             fn values_for_descendant_check_and_freeze<'a>(
                 &'a self,

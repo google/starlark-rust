@@ -47,18 +47,12 @@ impl List {
     }
 
     pub fn push(&mut self, value: Value) -> Result<(), ValueError> {
-        let value = value.clone_for_container(self)?;
         self.content.push(value);
         Ok(())
     }
 
     pub fn extend(&mut self, other: Value) -> Result<(), ValueError> {
-        let other: Vec<Value> = other
-            .iter()?
-            .iter()
-            .map(|v| v.clone_for_container(self))
-            .collect::<Result<_, _>>()?;
-        self.content.extend(other);
+        self.content.extend(other.iter()?.iter());
         Ok(())
     }
 
@@ -67,7 +61,6 @@ impl List {
     }
 
     pub fn insert(&mut self, index: usize, value: Value) -> Result<(), ValueError> {
-        let value = value.clone_for_container(self)?;
         self.content.insert(index, value);
         Ok(())
     }
@@ -109,12 +102,19 @@ impl TypedValue for List {
         Box::new(self.content.iter().cloned())
     }
 
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for item in &self.content {
+            visitor(item)
+        }
+    }
+
     /// Returns a string representation for the list
     ///
     /// # Examples:
     /// ```
     /// # use starlark::values::*;
     /// # use starlark::values::list::List;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// assert_eq!("[1, 2, 3]", Value::from(vec![1, 2, 3]).to_str());
     /// assert_eq!("[1, [2, 3]]",
     ///            Value::from(vec![Value::from(1), Value::from(vec![2, 3])]).to_str());
@@ -229,6 +229,7 @@ impl TypedValue for List {
     /// ```rust
     /// # use starlark::values::*;
     /// # use starlark::values::list::List;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// # assert!(
     /// // [1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]
     /// Value::from(vec![1,2,3]).add(Value::from(vec![2,3])).unwrap()
@@ -257,6 +258,7 @@ impl TypedValue for List {
     /// ```rust
     /// # use starlark::values::*;
     /// # use starlark::values::list::List;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// # assert!(
     /// // [1, 2, 3] * 3 == [1, 2, 3, 1, 2, 3, 1, 2, 3]
     /// Value::from(vec![1,2,3]).mul(Value::from(3)).unwrap()
@@ -286,6 +288,7 @@ impl TypedValue for List {
     /// ```
     /// # use starlark::values::*;
     /// # use starlark::values::list::List;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// let mut v = Value::from(vec![1, 2, 3]);
     /// v.set_at(Value::from(1), Value::from(1)).unwrap();
     /// v.set_at(Value::from(2), Value::from(vec![2, 3])).unwrap();
@@ -293,7 +296,7 @@ impl TypedValue for List {
     /// ```
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         let i = index.convert_index(self.length()?)? as usize;
-        self.content[i] = new_value.clone_for_container(self)?;
+        self.content[i] = new_value;
         Ok(())
     }
 }
@@ -307,9 +310,13 @@ impl TypedIterable for List {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gc::push_heap;
+    use crate::gc::Heap;
 
     #[test]
     fn test_to_str() {
+        let _heap_guard = push_heap(Heap::default());
+
         assert_eq!("[1, 2, 3]", Value::from(vec![1, 2, 3]).to_str());
         assert_eq!(
             "[1, [2, 3]]",
@@ -321,6 +328,8 @@ mod tests {
 
     #[test]
     fn test_mutate_list() {
+        let _heap_guard = push_heap(Heap::default());
+
         let mut v = Value::from(vec![1, 2, 3]);
         v.set_at(Value::from(1), Value::from(1)).unwrap();
         v.set_at(Value::from(2), Value::from(vec![2, 3])).unwrap();
@@ -329,6 +338,8 @@ mod tests {
 
     #[test]
     fn test_arithmetic_on_list() {
+        let _heap_guard = push_heap(Heap::default());
+
         // [1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]
         assert_eq!(
             Value::from(vec![1, 2, 3])
@@ -345,28 +356,12 @@ mod tests {
 
     #[test]
     fn test_value_alias() {
+        let _heap_guard = push_heap(Heap::default());
+
         let v1 = Value::from(vec![1, 2, 3]);
         let mut v2 = v1.clone();
         v2.set_at(Value::from(2), Value::from(4)).unwrap();
         assert_eq!(v2.to_str(), "[1, 2, 4]");
         assert_eq!(v1.to_str(), "[1, 2, 4]");
-    }
-
-    #[test]
-    fn test_is_descendant() {
-        let v1 = Value::from(vec![1, 2, 3]);
-        let v2 = Value::from(vec![Value::new(1), Value::new(2), v1.clone()]);
-        let v3 = Value::from(vec![Value::new(1), Value::new(2), v2.clone()]);
-        assert!(v3.is_descendant_value(&v2));
-        assert!(v3.is_descendant_value(&v1));
-        assert!(v3.is_descendant_value(&v3));
-
-        assert!(v2.is_descendant_value(&v1));
-        assert!(v2.is_descendant_value(&v2));
-        assert!(!v2.is_descendant_value(&v3));
-
-        assert!(v1.is_descendant_value(&v1));
-        assert!(!v1.is_descendant_value(&v2));
-        assert!(!v1.is_descendant_value(&v3));
     }
 }

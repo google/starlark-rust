@@ -339,6 +339,9 @@ macro_rules! starlark_module {
 
         #[doc(hidden)]
         pub fn $name(env: $crate::environment::Environment) -> $crate::environment::Environment {
+            /// Register thread-local heap so default values
+            /// can be registered in that heap.
+            let _heap_guard = $crate::gc::push_heap(env.heap());
             starlark_signatures!{ env,
                 $($t)*
             }

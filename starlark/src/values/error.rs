@@ -40,6 +40,7 @@ pub const INTEGER_OVERFLOW_ERROR_CODE: &str = "CV16";
 pub const INTERPOLATION_UNEXPECTED_EOF_CLOSING_PAREN: &str = "CV17";
 pub const INTERPOLATION_UNEXPECTED_EOF_PERCENT: &str = "CV18";
 pub const INTERPOLATION_UNKNOWN_SPECIFIER: &str = "CV19";
+pub const GARBAGE_COLLECTED_ERROR_CODE: &str = "CV20";
 
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Clone, Debug)]
@@ -58,6 +59,8 @@ pub enum ValueError {
     IntegerOverflow,
     /// Trying to modify an immutable value.
     CannotMutateImmutableValue,
+    /// Object is garbage collected.
+    GarbageCollected,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
     IncorrectParameterType,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
@@ -138,6 +141,7 @@ impl SyntaxError for ValueError {
                         ValueError::DivisionByZero => "Division by zero".to_owned(),
                         ValueError::IntegerOverflow => "Integer overflow".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
+                        ValueError::GarbageCollected => "Garbage collected".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
                         }
@@ -184,6 +188,7 @@ impl SyntaxError for ValueError {
                         ValueError::DivisionByZero => "Cannot divide by zero".to_owned(),
                         ValueError::IntegerOverflow => "Integer overflow".to_owned(),
                         ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
+                        ValueError::GarbageCollected => "Garbage collected".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
                         }
@@ -216,6 +221,7 @@ impl SyntaxError for ValueError {
                             ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
                             ValueError::IntegerOverflow => INTEGER_OVERFLOW_ERROR_CODE,
                             ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,
+                            ValueError::GarbageCollected => GARBAGE_COLLECTED_ERROR_CODE,
                             ValueError::IncorrectParameterType | ValueError::IncorrectParameterTypeNamed(..) => {
                                 INCORRECT_PARAMETER_TYPE_ERROR_CODE
                             }

@@ -25,7 +25,7 @@ pub mod interpolation;
 use std::iter;
 
 impl TypedValue for String {
-    type Holder = Immutable<String>;
+    type Holder = ImmutableNoValues<String>;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,
@@ -188,6 +188,7 @@ impl TypedValue for String {
     /// # use starlark::values::string;
     /// # use std::collections::HashMap;
     /// # use std::convert::TryFrom;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// # assert!(
     /// // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
     /// Value::from("Hello %s, your score is %d").percent(Value::from(("Bob", 75))).unwrap()

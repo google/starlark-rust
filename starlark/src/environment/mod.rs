@@ -17,11 +17,12 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::gc::{GcRoots, Heap};
 use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module
@@ -82,12 +83,19 @@ pub struct Environment {
     env: Rc<RefCell<EnvironmentContent>>,
 }
 
+/// Weak reference to environment
+pub(crate) struct EnvironmentWeak {
+    env: Weak<RefCell<EnvironmentContent>>,
+}
+
 #[derive(Debug)]
 struct EnvironmentContent {
     /// A name for this environment, used mainly for debugging.
     name_: String,
     /// Whether the environment is frozen or not.
     frozen: bool,
+    /// Heap associated with this environment.
+    heap: Heap,
     /// Super environment that represent a higher scope than the current one
     parent: Option<Environment>,
     /// List of variable bindings
@@ -117,19 +125,22 @@ impl std::fmt::Debug for SetConstructor {
 impl Environment {
     /// Create a new environment
     pub fn new(name: &str) -> Environment {
-        Environment {
+        let heap = Heap::default();
+        let env = Environment {
             env: Rc::new(RefCell::new(EnvironmentContent {
                 name_: name.to_owned(),
                 frozen: false,
+                heap: heap.clone(),
                 parent: None,
                 variables: HashMap::new(),
                 type_objs: HashMap::new(),
                 set_constructor: SetConstructor(None),
             })),
-        }
+        };
+        heap.register_env(&env);
+        env
     }
 
-    /// Get the object of type `obj_type`, and create it if none exists
     /// Get the object of type `obj_type`, and create it if none exists
     pub fn add_type_value(&self, obj: &str, attr: &str, value: Value) {
         self.env.borrow_mut().add_type_value(obj, attr, value)
@@ -148,16 +159,20 @@ impl Environment {
     /// Create a new child environment for this environment
     pub fn child(&self, name: &str) -> Environment {
         self.freeze();
-        Environment {
+        let heap = self.env.borrow().heap.clone();
+        let env = Environment {
             env: Rc::new(RefCell::new(EnvironmentContent {
                 name_: name.to_owned(),
                 frozen: false,
+                heap: heap.clone(),
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
                 type_objs: HashMap::new(),
                 set_constructor: SetConstructor(None),
             })),
-        }
+        };
+        heap.register_env(&env);
+        env
     }
 
     /// Create a new child environment
@@ -229,6 +244,11 @@ impl Environment {
                 }
             }
         }
+    }
+
+    /// Get heap associated with this environment
+    pub fn heap(&self) -> Heap {
+        self.env.borrow().heap.clone()
     }
 }
 
@@ -314,6 +334,26 @@ impl EnvironmentContent {
     /// Return the parent environment (or `None` if there is no parent).
     pub fn get_parent(&self) -> Option<Environment> {
         self.parent.clone()
+    }
+}
+
+impl GcRoots for Environment {
+    type Weak = EnvironmentWeak;
+
+    fn upgrade(weak: EnvironmentWeak) -> Option<Environment> {
+        weak.env.upgrade().map(|env| Environment { env })
+    }
+
+    fn downgrade(strong: &Environment) -> EnvironmentWeak {
+        EnvironmentWeak {
+            env: Rc::downgrade(&strong.env),
+        }
+    }
+
+    fn roots(strong: &Environment, roots: &mut Vec<Value>) {
+        let env = strong.env.borrow();
+        roots.extend(env.variables.values().cloned());
+        roots.extend(env.type_objs.values().flat_map(|v| v.values()).cloned());
     }
 }
 

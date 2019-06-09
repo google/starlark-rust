@@ -81,7 +81,7 @@ where
 
 /// Define the int type
 impl TypedValue for i64 {
-    type Holder = Immutable<Self>;
+    type Holder = ImmutableNoValues<Self>;
     const TYPE: &'static str = "int";
     fn equals(&self, other: &i64) -> Result<bool, ValueError> {
         Ok(self == other)

@@ -346,12 +346,15 @@ impl ArgsFormat {
 
 #[cfg(test)]
 mod test {
+    use crate::gc::{push_heap, Heap};
     use crate::values::Value;
     use std::collections::HashMap;
     use std::convert::TryFrom;
 
     #[test]
     fn test_string_interpolation() {
+        let _heap_guard = push_heap(Heap::default());
+
         // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
         assert_eq!(
             Value::from("Hello %s, your score is %d")

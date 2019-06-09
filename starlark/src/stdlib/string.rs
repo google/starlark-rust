@@ -1336,6 +1336,7 @@ mod tests {
     use super::super::starlark_default;
     use super::super::tests::starlark_default_fail;
     use super::*;
+    use crate::gc::{push_heap, Heap};
     use crate::values::dict;
 
     macro_rules! starlark_ok {
@@ -1348,6 +1349,8 @@ mod tests {
 
     #[test]
     fn test_format_capture() {
+        let _heap_guard = push_heap(Heap::default());
+
         let args = Value::from(vec!["1", "2", "3"]);
         let mut kwargs = dict::Dictionary::new();
         let it = args.iter().unwrap();

@@ -27,7 +27,7 @@ pub enum NoneType {
 
 /// Define the NoneType type
 impl TypedValue for NoneType {
-    type Holder = Immutable<Self>;
+    type Holder = ImmutableNoValues<Self>;
     const TYPE: &'static str = "NoneType";
 
     fn equals(&self, _other: &NoneType) -> Result<bool, ValueError> {

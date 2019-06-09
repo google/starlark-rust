@@ -24,7 +24,7 @@ pub struct StarlarkStruct {
 }
 
 impl TypedValue for StarlarkStruct {
-    type Holder = Immutable<StarlarkStruct>;
+    type Holder = ImmutableWithValues<StarlarkStruct>;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

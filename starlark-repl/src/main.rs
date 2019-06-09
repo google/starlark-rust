@@ -18,6 +18,7 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use getopts::Options;
 use starlark::eval::interactive::{eval, eval_file, EvalError};
+use starlark::gc;
 use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::ast::AstStatement;
 use starlark::syntax::dialect::Dialect;
@@ -91,6 +92,7 @@ fn main() {
                 }
 
                 let global = print_function(global_environment_with_extensions());
+                let global = gc::globals(global);
                 global.freeze();
 
                 let dialect = if build_file {

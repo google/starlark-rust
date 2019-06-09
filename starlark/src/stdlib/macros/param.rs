@@ -16,6 +16,7 @@
 
 use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
+use crate::values::none::NoneType;
 use crate::values::{TypedValue, Value};
 use linked_hash_map::LinkedHashMap;
 use std::convert::TryInto;
@@ -111,6 +112,18 @@ pub enum EitherValueOrNone<T> {
     NotNone(T),
 }
 
+impl<T> From<EitherValueOrNone<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(v: EitherValueOrNone<T>) -> Self {
+        match v {
+            EitherValueOrNone::None => Value::new(NoneType::None),
+            EitherValueOrNone::NotNone(v) => v.into(),
+        }
+    }
+}
+
 impl<T: TryParamConvertFromValue> TryParamConvertFromValue for EitherValueOrNone<T> {
     fn try_from(source: Value) -> Result<Self, ValueError> {
         if source.get_type() == "NoneType" {
@@ -133,6 +146,7 @@ mod test {
 
     use crate::environment::TypeValues;
     use crate::eval::noload::eval;
+    use crate::gc::push_heap;
     use crate::stdlib::global_environment;
     use crate::syntax::dialect::Dialect;
     use crate::values::Value;
@@ -163,6 +177,8 @@ mod test {
             TypeValues::new(env),
         )
         .unwrap();
+
+        let _heap_guard = push_heap(child.heap());
 
         assert_eq!(r#""star" ["a.cc", "b.cc"]"#, r.to_str());
     }

@@ -27,7 +27,7 @@ impl From<bool> for Value {
 
 /// Define the bool type
 impl TypedValue for bool {
-    type Holder = Immutable<Self>;
+    type Holder = ImmutableNoValues<Self>;
     const TYPE: &'static str = "bool";
     fn to_repr(&self) -> String {
         if *self {

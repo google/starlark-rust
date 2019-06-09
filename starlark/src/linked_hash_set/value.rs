@@ -39,7 +39,6 @@ impl Set {
     }
 
     pub fn insert_if_absent(&mut self, v: Value) -> Result<(), ValueError> {
-        let v = v.clone_for_container(self)?;
         self.content.insert_if_absent(HashedValue::new(v.clone())?);
         Ok(())
     }
@@ -82,7 +81,6 @@ impl Set {
     }
 
     pub fn insert(&mut self, value: Value) -> Result<(), ValueError> {
-        let value = value.clone_for_container(self)?;
         let value = HashedValue::new(value)?;
         self.content.insert(value);
         Ok(())
@@ -130,6 +128,7 @@ impl TypedValue for Set {
     /// ```
     /// # use starlark::values::*;
     /// # use starlark::values::list::List;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// assert_eq!("[1, 2, 3]", Value::from(vec![1, 2, 3]).to_str());
     /// assert_eq!("[1, [2, 3]]",
     ///            Value::from(vec![Value::from(1), Value::from(vec![2, 3])]).to_str());
@@ -219,6 +218,7 @@ impl TypedValue for Set {
     /// ```rust
     /// # use starlark::values::*;
     /// # use starlark::values::list::List;
+    /// # let _heap_guard = starlark::gc::push_heap(starlark::gc::Heap::default());
     /// # assert!(
     /// // {1, 2, 3} + {2, 3, 4} == {1, 2, 3, 4}
     /// Value::from(vec![1,2,3]).add(Value::from(vec![2,3])).unwrap()
@@ -258,9 +258,13 @@ impl TypedIterable for Set {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gc::push_heap;
+    use crate::gc::Heap;
 
     #[test]
     fn test_to_str() {
+        let _heap_guard = push_heap(Heap::default());
+
         assert_eq!("{1, 2, 3}", Set::from(vec![1, 2, 3]).unwrap().to_str());
         assert_eq!(
             "{1, {2, 3}}",
@@ -274,6 +278,8 @@ mod tests {
 
     #[test]
     fn equality_ignores_order() {
+        let _heap_guard = push_heap(Heap::default());
+
         assert_eq!(
             Set::from(vec![1, 2, 3]).unwrap(),
             Set::from(vec![3, 2, 1]).unwrap(),
@@ -282,6 +288,8 @@ mod tests {
 
     #[test]
     fn test_value_alias() {
+        let _heap_guard = push_heap(Heap::default());
+
         let v1 = Set::from(vec![1, 2]).unwrap();
         let v2 = v1.clone();
         v2.downcast_mut::<Set>()
@@ -291,23 +299,5 @@ mod tests {
             .unwrap();
         assert_eq!(v2.to_str(), "{1, 2, 3}");
         assert_eq!(v1.to_str(), "{1, 2, 3}");
-    }
-
-    #[test]
-    fn test_is_descendant() {
-        let v1 = Set::from(vec![1, 2, 3]).unwrap();
-        let v2 = Set::from(vec![Value::new(1), Value::new(2), v1.clone()]).unwrap();
-        let v3 = Set::from(vec![Value::new(1), Value::new(2), v2.clone()]).unwrap();
-        assert!(v3.is_descendant_value(&v2));
-        assert!(v3.is_descendant_value(&v1));
-        assert!(v3.is_descendant_value(&v3));
-
-        assert!(v2.is_descendant_value(&v1));
-        assert!(v2.is_descendant_value(&v2));
-        assert!(!v2.is_descendant_value(&v3));
-
-        assert!(v1.is_descendant_value(&v1));
-        assert!(!v1.is_descendant_value(&v2));
-        assert!(!v1.is_descendant_value(&v3));
     }
 }

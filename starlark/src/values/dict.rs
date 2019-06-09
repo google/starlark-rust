@@ -77,9 +77,7 @@ impl Dictionary {
     }
 
     pub fn insert(&mut self, key: Value, value: Value) -> Result<Value, ValueError> {
-        let key = key.clone_for_container(self)?;
         let key = HashedValue::new(key)?;
-        let value = value.clone_for_container(self)?;
         self.content.insert(key, value);
         Ok(Value::new(NoneType::None))
     }
@@ -138,6 +136,13 @@ impl TypedValue for Dictionary {
                 .iter()
                 .flat_map(|(k, v)| vec![k.get_value().clone(), v.clone()].into_iter()),
         )
+    }
+
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for (k, v) in &self.content {
+            visitor(k.get_value());
+            visitor(v);
+        }
     }
 
     fn to_repr(&self) -> String {
@@ -200,7 +205,6 @@ impl TypedValue for Dictionary {
 
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         let index_key = HashedValue::new(index)?;
-        let new_value = new_value.clone_for_container(self)?;
         {
             if let Some(x) = self.content.get_mut(&index_key) {
                 *x = new_value;
@@ -254,9 +258,12 @@ impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gc::{push_heap, Heap};
 
     #[test]
     fn test_mutate_dict() {
+        let _heap_guard = push_heap(Heap::default());
+
         let mut map = LinkedHashMap::<HashedValue, Value>::new();
         map.insert(HashedValue::new(Value::from(1)).unwrap(), Value::from(2));
         map.insert(HashedValue::new(Value::from(2)).unwrap(), Value::from(4));
@@ -266,28 +273,5 @@ mod tests {
         assert_eq!("{1: 2, 2: 3}", d.to_str());
         d.set_at(Value::from((3, 4)), Value::from(5)).unwrap();
         assert_eq!("{1: 2, 2: 3, (3, 4): 5}", d.to_str());
-    }
-
-    #[test]
-    fn test_is_descendant() {
-        let mut map = LinkedHashMap::<HashedValue, Value>::new();
-        map.insert(HashedValue::new(Value::from(1)).unwrap(), Value::from(2));
-        map.insert(HashedValue::new(Value::from(2)).unwrap(), Value::from(4));
-        let v1 = Value::try_from(map.clone()).unwrap();
-        map.insert(HashedValue::new(Value::from(3)).unwrap(), v1.clone());
-        let v2 = Value::try_from(map.clone()).unwrap();
-        map.insert(HashedValue::new(Value::from(3)).unwrap(), v2.clone());
-        let v3 = Value::try_from(map).unwrap();
-        assert!(v3.is_descendant_value(&v2));
-        assert!(v3.is_descendant_value(&v1));
-        assert!(v3.is_descendant_value(&v3));
-
-        assert!(v2.is_descendant_value(&v1));
-        assert!(v2.is_descendant_value(&v2));
-        assert!(!v2.is_descendant_value(&v3));
-
-        assert!(v1.is_descendant_value(&v1));
-        assert!(!v1.is_descendant_value(&v2));
-        assert!(!v1.is_descendant_value(&v3));
     }
 }
