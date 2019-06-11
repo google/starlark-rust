@@ -104,7 +104,7 @@ fn sets_disabled() {
     let err = starlark_no_diagnostic(
         &mut crate::stdlib::global_environment(),
         "s = {1, 2, 3}",
-        crate::stdlib::global_environment(),
+        TypeValues::new(crate::stdlib::global_environment()),
     )
     .unwrap_err();
     assert_eq!(
@@ -129,7 +129,7 @@ fn sets() {
         assert!(starlark_no_diagnostic(
             &mut env_with_set(),
             snippet,
-            crate::stdlib::global_environment()
+            TypeValues::new(crate::stdlib::global_environment())
         )
         .unwrap());
     }
@@ -145,7 +145,7 @@ fn sets() {
     assert!(starlark_no_diagnostic(
         &mut parent_env.child("child"),
         "len({1, 2}) == 2",
-        parent_env.clone()
+        TypeValues::new(parent_env.clone())
     )
     .unwrap());
 }

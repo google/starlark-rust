@@ -14,6 +14,7 @@
 
 //! Macro to test starlark code execution
 use crate::environment;
+use crate::environment::TypeValues;
 use crate::eval;
 use crate::eval::noload;
 use crate::syntax::dialect::Dialect;
@@ -46,7 +47,7 @@ pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
     starlark_no_diagnostic(
         &mut environment::Environment::new("test"),
         snippet,
-        environment::Environment::new("test-loader"),
+        TypeValues::new(environment::Environment::new("no-type-values")),
     )
 }
 
@@ -54,10 +55,10 @@ pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
 pub fn starlark_no_diagnostic(
     env: &mut environment::Environment,
     snippet: &str,
-    file_loader_env: environment::Environment,
+    type_values: environment::TypeValues,
 ) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    Ok(eval::simple::eval(&map, "<test>", snippet, Dialect::Bzl, env, file_loader_env)?.to_bool())
+    Ok(eval::noload::eval(&map, "<test>", snippet, Dialect::Bzl, env, type_values)?.to_bool())
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.
