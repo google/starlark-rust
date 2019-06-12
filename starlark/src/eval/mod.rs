@@ -45,7 +45,7 @@ macro_rules! eval_vector {
     ($v:expr, $ctx:expr) => {{
         let mut r = Vec::new();
         for s in $v.iter() {
-            r.push(s.eval($ctx)?)
+            r.push(eval_expr(s, $ctx)?)
         }
         r
     }};
@@ -316,15 +316,6 @@ impl FileLoader for UnreachableFileLoader {
     }
 }
 
-// Expression which can be evaluated
-trait Evaluate {
-    // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
-    fn eval(&self, context: &mut EvaluationContext) -> EvalResult;
-
-    // Perform an assignment on the LHS represented by this AST element
-    fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult;
-}
-
 fn eval_comprehension_clause(
     context: &mut EvaluationContext,
     e: &AstExpr,
@@ -334,9 +325,9 @@ fn eval_comprehension_clause(
     if let Some((c, tl)) = clauses.split_first() {
         match c.node {
             Clause::If(ref cond) => {
-                if cond.eval(context)?.to_bool() {
+                if eval_expr(cond, context)?.to_bool() {
                     if tl.is_empty() {
-                        result.push(e.eval(context)?);
+                        result.push(eval_expr(e, context)?);
                     } else {
                         let mut other = eval_comprehension_clause(context, e, tl)?;
                         result.append(&mut other);
@@ -344,12 +335,12 @@ fn eval_comprehension_clause(
                 };
             }
             Clause::For(ref k, ref v) => {
-                let mut iterable = v.eval(context)?;
+                let mut iterable = eval_expr(v, context)?;
                 iterable.freeze_for_iteration();
                 for i in &t!(iterable.iter(), c)? {
-                    k.set(context, i)?;
+                    set_expr(k, context, i)?;
                     if tl.is_empty() {
-                        result.push(e.eval(context)?);
+                        result.push(eval_expr(e, context)?);
                     } else {
                         let mut other = eval_comprehension_clause(context, e, tl)?;
                         result.append(&mut other);
@@ -372,8 +363,8 @@ fn eval_compare<F>(
 where
     F: Fn(Ordering) -> bool,
 {
-    let l = left.eval(context)?;
-    let r = right.eval(context)?;
+    let l = eval_expr(left, context)?;
+    let r = eval_expr(right, context)?;
     Ok(Value::new(cmp(t!(l.compare(&r), this)?)))
 }
 
@@ -387,8 +378,8 @@ fn eval_equals<F>(
 where
     F: Fn(bool) -> bool,
 {
-    let l = left.eval(context)?;
-    let r = right.eval(context)?;
+    let l = eval_expr(left, context)?;
+    let r = eval_expr(right, context)?;
     Ok(Value::new(cmp(t!(
         l.equals(&r).map_err(Into::<ValueError>::into),
         this
@@ -403,17 +394,17 @@ fn eval_slice(
     stride: &Option<AstExpr>,
     context: &mut EvaluationContext,
 ) -> EvalResult {
-    let a = a.eval(context)?;
+    let a = eval_expr(a, context)?;
     let start = match start {
-        Some(ref e) => Some(e.eval(context)?),
+        Some(ref e) => Some(eval_expr(e, context)?),
         None => None,
     };
     let stop = match stop {
-        Some(ref e) => Some(e.eval(context)?),
+        Some(ref e) => Some(eval_expr(e, context)?),
         None => None,
     };
     let stride = match stride {
-        Some(ref e) => Some(e.eval(context)?),
+        Some(ref e) => Some(eval_expr(e, context)?),
         None => None,
     };
     t!(a.slice(start, stop, stride), this)
@@ -431,19 +422,19 @@ fn eval_call(
     let npos = eval_vector!(pos, context);
     let mut nnamed = LinkedHashMap::new();
     for &(ref k, ref v) in named.iter() {
-        nnamed.insert(k.node.clone(), v.eval(context)?);
+        nnamed.insert(k.node.clone(), eval_expr(v, context)?);
     }
     let nargs = if let Some(ref x) = args {
-        Some(x.eval(context)?)
+        Some(eval_expr(x, context)?)
     } else {
         None
     };
     let nkwargs = if let Some(ref x) = kwargs {
-        Some(x.eval(context)?)
+        Some(eval_expr(x, context)?)
     } else {
         None
     };
-    let f = e.eval(context)?;
+    let f = eval_expr(e, context)?;
     let fname = f.to_repr();
     let descr = f.to_str();
     let mut new_stack = context.call_stack.clone();
@@ -453,7 +444,7 @@ fn eval_call(
         let loc = { context.map.lock().unwrap().look_up_pos(this.span.low()) };
         new_stack.push(&fname, &descr, loc.file.name(), loc.position.line as u32);
         t!(
-            e.eval(context,)?.call(
+            eval_expr(e, context)?.call(
                 &new_stack,
                 context.type_values.clone(),
                 npos,
@@ -472,7 +463,7 @@ fn eval_dot(
     s: &AstString,
     context: &mut EvaluationContext,
 ) -> EvalResult {
-    let left = e.eval(context)?;
+    let left = eval_expr(e, context)?;
     if let Some(v) = context.type_values.get_type_value(&left, &s.node) {
         if v.get_type() == "function" {
             // Insert self so the method see the object it is acting on
@@ -529,68 +520,83 @@ fn eval_list_comprehension(
 enum TransformedExpr {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
-    List(Vec<Box<dyn Evaluate>>, Span),
-    Tuple(Vec<Box<dyn Evaluate>>, Span),
+    List(Vec<TransformedExpr>, Span),
+    Tuple(Vec<TransformedExpr>, Span),
+    OtherExpr(AstExpr),
 }
 
-impl Evaluate for TransformedExpr {
-    fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
-        let ok = Ok(Value::new(NoneType::None));
-        match self {
-            TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
-                let l = v.len() as i64;
-                let nvl = t!(new_value.length(), span * span)?;
-                if nvl != l {
-                    Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
-                } else {
-                    let mut r = Vec::new();
-                    let mut it1 = v.iter();
-                    // TODO: the span here should probably include the rvalue
-                    let it2 = t!(new_value.iter(), span * span)?;
-                    let mut it2 = it2.iter();
-                    for _ in 0..l {
-                        r.push(it1.next().unwrap().set(context, it2.next().unwrap())?)
-                    }
-                    ok
+fn set_transformed(
+    transformed: &TransformedExpr,
+    context: &mut EvaluationContext,
+    new_value: Value,
+) -> EvalResult {
+    let ok = Ok(Value::new(NoneType::None));
+    match transformed {
+        TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
+            let l = v.len() as i64;
+            let nvl = t!(new_value.length(), span * span)?;
+            if nvl != l {
+                Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
+            } else {
+                let mut r = Vec::new();
+                let mut it1 = v.iter();
+                // TODO: the span here should probably include the rvalue
+                let it2 = t!(new_value.iter(), span * span)?;
+                let mut it2 = it2.iter();
+                for _ in 0..l {
+                    r.push(set_transformed(
+                        it1.next().unwrap(),
+                        context,
+                        it2.next().unwrap(),
+                    )?)
                 }
-            }
-            TransformedExpr::Dot(ref e, ref s, ref span) => {
-                t!(e.clone().set_attr(&s, new_value), span * span)?;
-                ok
-            }
-            TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
-                t!(e.clone().set_at(idx.clone(), new_value), span * span)?;
                 ok
             }
         }
+        TransformedExpr::Dot(ref e, ref s, ref span) => {
+            t!(e.clone().set_attr(&s, new_value), span * span)?;
+            ok
+        }
+        TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+            t!(e.clone().set_at(idx.clone(), new_value), span * span)?;
+            ok
+        }
+        TransformedExpr::OtherExpr(ref e) => set_expr(e, context, new_value),
     }
+}
 
-    fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
-        match self {
-            TransformedExpr::Tuple(ref v, ..) => {
-                let r = eval_vector!(v, context);
-                Ok(Value::new(tuple::Tuple::new(r.as_slice())))
-            }
-            TransformedExpr::List(ref v, ..) => {
-                let r = eval_vector!(v, context);
-                Ok(Value::from(r))
-            }
-            TransformedExpr::Dot(ref left, ref s, ref span) => {
-                if let Some(v) = context.type_values.get_type_value(left, &s) {
-                    if v.get_type() == "function" {
-                        // Insert self so the method see the object it is acting on
-                        Ok(function::Function::new_self_call(left.clone(), v))
-                    } else {
-                        Ok(v)
-                    }
+fn eval_transformed(transformed: &TransformedExpr, context: &mut EvaluationContext) -> EvalResult {
+    match transformed {
+        TransformedExpr::Tuple(ref v, ..) => {
+            let r = v
+                .iter()
+                .map(|i| eval_transformed(i, context))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+        }
+        TransformedExpr::List(ref v, ..) => {
+            let r = v
+                .iter()
+                .map(|i| eval_transformed(i, context))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Value::from(r))
+        }
+        TransformedExpr::Dot(ref left, ref s, ref span) => {
+            if let Some(v) = context.type_values.get_type_value(left, &s) {
+                if v.get_type() == "function" {
+                    // Insert self so the method see the object it is acting on
+                    Ok(function::Function::new_self_call(left.clone(), v))
                 } else {
-                    t!(left.get_attr(&s), span span.clone())
+                    Ok(v)
                 }
-            }
-            TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
-                t!(e.at(idx.clone()), span span.clone())
+            } else {
+                t!(left.get_attr(&s), span span.clone())
             }
         }
+        TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
+            t!(e.at(idx.clone()), span span.clone())
+        }
+        TransformedExpr::OtherExpr(ref e) => eval_expr(e, context),
     }
 }
 
@@ -607,193 +613,207 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
 fn transform(
     expr: &AstExpr,
     context: &mut EvaluationContext,
-) -> Result<Box<dyn Evaluate>, EvalException> {
+) -> Result<TransformedExpr, EvalException> {
     match expr.node {
-        Expr::Dot(ref e, ref s) => Ok(Box::new(TransformedExpr::Dot(
-            e.eval(context)?,
+        Expr::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
+            eval_expr(e, context)?,
             s.node.clone(),
             expr.span,
-        ))),
-        Expr::ArrayIndirection(ref e, ref idx) => Ok(Box::new(TransformedExpr::ArrayIndirection(
-            e.eval(context)?,
-            idx.eval(context)?,
+        )),
+        Expr::ArrayIndirection(ref e, ref idx) => Ok(TransformedExpr::ArrayIndirection(
+            eval_expr(e, context)?,
+            eval_expr(idx, context)?,
             expr.span,
-        ))),
+        )),
         Expr::List(ref v) => {
             let mut r = Vec::new();
             for val in v.iter() {
                 r.push(transform(val, context)?)
             }
-            Ok(Box::new(TransformedExpr::List(r, expr.span)))
+            Ok(TransformedExpr::List(r, expr.span))
         }
         Expr::Tuple(ref v) => {
             let mut r = Vec::new();
             for val in v.iter() {
                 r.push(transform(val, context)?)
             }
-            Ok(Box::new(TransformedExpr::Tuple(r, expr.span)))
+            Ok(TransformedExpr::Tuple(r, expr.span))
         }
-        _ => Ok(Box::new(expr.clone())),
+        _ => Ok(TransformedExpr::OtherExpr(expr.clone())),
     }
 }
 
-impl Evaluate for AstExpr {
-    #[allow(unconditional_recursion)]
-    fn eval(&self, context: &mut EvaluationContext) -> EvalResult {
-        match self.node {
-            Expr::Tuple(ref v) => {
-                let r = eval_vector!(v, context);
-                Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+// Evaluate the AST element, i.e. mutate the environment and return an evaluation result
+fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
+    match expr.node {
+        Expr::Tuple(ref v) => {
+            let r = eval_vector!(v, context);
+            Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+        }
+        Expr::Dot(ref e, ref s) => eval_dot(expr, e, s, context),
+        Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
+            eval_call(expr, e, pos, named, args, kwargs, context)
+        }
+        Expr::ArrayIndirection(ref e, ref idx) => {
+            let idx = eval_expr(idx, context)?;
+            t!(eval_expr(e, context)?.at(idx), expr)
+        }
+        Expr::Slice(ref a, ref start, ref stop, ref stride) => {
+            eval_slice(expr, a, start, stop, stride, context)
+        }
+        Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
+        Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
+        Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
+        Expr::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
+        Expr::Minus(ref s) => t!(eval_expr(s, context)?.minus(), expr),
+        Expr::Plus(ref s) => t!(eval_expr(s, context)?.plus(), expr),
+        Expr::Op(BinOp::Or, ref l, ref r) => {
+            let l = eval_expr(l, context)?;
+            Ok(if l.to_bool() {
+                l
+            } else {
+                eval_expr(r, context)?
+            })
+        }
+        Expr::Op(BinOp::And, ref l, ref r) => {
+            let l = eval_expr(l, context)?;
+            Ok(if !l.to_bool() {
+                l
+            } else {
+                eval_expr(r, context)?
+            })
+        }
+        Expr::Op(BinOp::EqualsTo, ref l, ref r) => eval_equals(expr, l, r, |x| x, context),
+        Expr::Op(BinOp::Different, ref l, ref r) => eval_equals(expr, l, r, |x| !x, context),
+        Expr::Op(BinOp::LowerThan, ref l, ref r) => {
+            eval_compare(expr, l, r, |x| x == Ordering::Less, context)
+        }
+        Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
+            eval_compare(expr, l, r, |x| x == Ordering::Greater, context)
+        }
+        Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
+            eval_compare(expr, l, r, |x| x != Ordering::Greater, context)
+        }
+        Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
+            eval_compare(expr, l, r, |x| x != Ordering::Less, context)
+        }
+        Expr::Op(BinOp::In, ref l, ref r) => t!(
+            eval_expr(r, context)?
+                .is_in(&eval_expr(l, context)?)
+                .map(Value::new),
+            expr
+        ),
+        Expr::Op(BinOp::NotIn, ref l, ref r) => t!(
+            eval_expr(r, context)?
+                .is_in(&eval_expr(l, context)?)
+                .map(|r| Value::new(!r)),
+            expr
+        ),
+        Expr::Op(BinOp::Substraction, ref l, ref r) => {
+            t!(eval_expr(l, context)?.sub(eval_expr(r, context)?), expr)
+        }
+        Expr::Op(BinOp::Addition, ref l, ref r) => {
+            t!(eval_expr(l, context)?.add(eval_expr(r, context)?), expr)
+        }
+        Expr::Op(BinOp::Multiplication, ref l, ref r) => {
+            t!(eval_expr(l, context)?.mul(eval_expr(r, context)?), expr)
+        }
+        Expr::Op(BinOp::Percent, ref l, ref r) => {
+            t!(eval_expr(l, context)?.percent(eval_expr(r, context)?), expr)
+        }
+        Expr::Op(BinOp::Division, ref l, ref r) => {
+            let l = eval_expr(l, context)?;
+            let r = eval_expr(r, context)?;
+            // No types currently support / so always error.
+            let err = ValueError::OperationNotSupported {
+                op: "/".to_string(),
+                left: l.get_type().to_string(),
+                right: Some(r.get_type().to_string()),
+            };
+            Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)))
+        }
+        Expr::Op(BinOp::FloorDivision, ref l, ref r) => t!(
+            eval_expr(l, context)?.floor_div(eval_expr(r, context)?),
+            expr
+        ),
+        Expr::Op(BinOp::Pipe, ref l, ref r) => {
+            t!(eval_expr(l, context)?.pipe(eval_expr(r, context)?), expr)
+        }
+        Expr::If(ref cond, ref v1, ref v2) => {
+            if eval_expr(cond, context)?.to_bool() {
+                eval_expr(v1, context)
+            } else {
+                eval_expr(v2, context)
             }
-            Expr::Dot(ref e, ref s) => eval_dot(self, e, s, context),
-            Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
-                eval_call(self, e, pos, named, args, kwargs, context)
+        }
+        Expr::List(ref v) => {
+            let r = eval_vector!(v, context);
+            Ok(Value::from(r))
+        }
+        Expr::Dict(ref v) => {
+            let mut r = dict::Dictionary::new();
+            for s in v.iter() {
+                t!(
+                    r.set_at(eval_expr(&s.0, context)?, eval_expr(&s.1, context)?),
+                    expr
+                )?
             }
-            Expr::ArrayIndirection(ref e, ref idx) => {
-                let idx = idx.eval(context)?;
-                t!(e.eval(context)?.at(idx), self)
-            }
-            Expr::Slice(ref a, ref start, ref stop, ref stride) => {
-                eval_slice(self, a, start, stop, stride, context)
-            }
-            Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
-            Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
-            Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
-            Expr::Not(ref s) => Ok(Value::new(!s.eval(context)?.to_bool())),
-            Expr::Minus(ref s) => t!(s.eval(context)?.minus(), self),
-            Expr::Plus(ref s) => t!(s.eval(context)?.plus(), self),
-            Expr::Op(BinOp::Or, ref l, ref r) => {
-                let l = l.eval(context)?;
-                Ok(if l.to_bool() { l } else { r.eval(context)? })
-            }
-            Expr::Op(BinOp::And, ref l, ref r) => {
-                let l = l.eval(context)?;
-                Ok(if !l.to_bool() { l } else { r.eval(context)? })
-            }
-            Expr::Op(BinOp::EqualsTo, ref l, ref r) => eval_equals(self, l, r, |x| x, context),
-            Expr::Op(BinOp::Different, ref l, ref r) => eval_equals(self, l, r, |x| !x, context),
-            Expr::Op(BinOp::LowerThan, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x == Ordering::Less, context)
-            }
-            Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x == Ordering::Greater, context)
-            }
-            Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x != Ordering::Greater, context)
-            }
-            Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
-                eval_compare(self, l, r, |x| x != Ordering::Less, context)
-            }
-            Expr::Op(BinOp::In, ref l, ref r) => t!(
-                r.eval(context)?.is_in(&l.eval(context)?).map(Value::new),
-                self
-            ),
-            Expr::Op(BinOp::NotIn, ref l, ref r) => t!(
-                r.eval(context)?
-                    .is_in(&l.eval(context)?)
-                    .map(|r| Value::new(!r)),
-                self
-            ),
-            Expr::Op(BinOp::Substraction, ref l, ref r) => {
-                t!(l.eval(context)?.sub(r.eval(context)?), self)
-            }
-            Expr::Op(BinOp::Addition, ref l, ref r) => {
-                t!(l.eval(context)?.add(r.eval(context)?), self)
-            }
-            Expr::Op(BinOp::Multiplication, ref l, ref r) => {
-                t!(l.eval(context)?.mul(r.eval(context)?), self)
-            }
-            Expr::Op(BinOp::Percent, ref l, ref r) => {
-                t!(l.eval(context)?.percent(r.eval(context)?), self)
-            }
-            Expr::Op(BinOp::Division, ref l, ref r) => {
-                let l = l.eval(context)?;
-                let r = r.eval(context)?;
-                // No types currently support / so always error.
-                let err = ValueError::OperationNotSupported {
-                    op: "/".to_string(),
-                    left: l.get_type().to_string(),
-                    right: Some(r.get_type().to_string()),
-                };
-                Err(EvalException::DiagnosedError(err.to_diagnostic(self.span)))
-            }
-            Expr::Op(BinOp::FloorDivision, ref l, ref r) => {
-                t!(l.eval(context)?.floor_div(r.eval(context)?), self)
-            }
-            Expr::Op(BinOp::Pipe, ref l, ref r) => {
-                t!(l.eval(context)?.pipe(r.eval(context)?), self)
-            }
-            Expr::If(ref cond, ref v1, ref v2) => {
-                if cond.eval(context)?.to_bool() {
-                    v1.eval(context)
-                } else {
-                    v2.eval(context)
-                }
-            }
-            Expr::List(ref v) => {
-                let r = eval_vector!(v, context);
-                Ok(Value::from(r))
-            }
-            Expr::Dict(ref v) => {
-                let mut r = dict::Dictionary::new();
-                for s in v.iter() {
-                    t!(r.set_at(s.0.eval(context)?, s.1.eval(context)?), self)?
-                }
-                Ok(r)
-            }
-            Expr::Set(ref v) => {
-                let values: Result<Vec<_>, _> = v.iter().map(|s| s.eval(context)).collect();
-                make_set(values?, context, self.span)
-            }
-            Expr::ListComprehension(ref e, ref clauses) => {
-                eval_list_comprehension(e, clauses, context)
-            }
-            Expr::DictComprehension((ref k, ref v), ref clauses) => {
-                eval_dict_comprehension(k, v, clauses, context)
-            }
-            Expr::SetComprehension(ref e, ref clauses) => {
-                let values = eval_one_dimensional_comprehension(e, clauses, context)?;
-                make_set(values, context, self.span)
-            }
+            Ok(r)
+        }
+        Expr::Set(ref v) => {
+            let values: Result<Vec<_>, _> = v.iter().map(|s| eval_expr(s, context)).collect();
+            make_set(values?, context, expr.span)
+        }
+        Expr::ListComprehension(ref e, ref clauses) => eval_list_comprehension(e, clauses, context),
+        Expr::DictComprehension((ref k, ref v), ref clauses) => {
+            eval_dict_comprehension(k, v, clauses, context)
+        }
+        Expr::SetComprehension(ref e, ref clauses) => {
+            let values = eval_one_dimensional_comprehension(e, clauses, context)?;
+            make_set(values, context, expr.span)
         }
     }
+}
 
-    fn set(&self, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
-        let ok = Ok(Value::new(NoneType::None));
-        match self.node {
-            Expr::Tuple(ref v) | Expr::List(ref v) => {
-                // TODO: the span here should probably include the rvalue
-                let new_values: Vec<Value> = t!(new_value.iter(), self)?.iter().collect();
-                let l = v.len();
-                if new_values.len() != l {
-                    Err(EvalException::IncorrectNumberOfValueToUnpack(
-                        self.span,
-                        l as i64,
-                        new_values.len() as i64,
-                    ))
-                } else {
-                    let mut it1 = v.iter();
-                    let mut it2 = new_values.into_iter();
-                    for _ in 0..l {
-                        it1.next().unwrap().set(context, it2.next().unwrap())?;
-                    }
-                    ok
+// Perform an assignment on the LHS represented by this AST element
+fn set_expr(expr: &AstExpr, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
+    let ok = Ok(Value::new(NoneType::None));
+    match expr.node {
+        Expr::Tuple(ref v) | Expr::List(ref v) => {
+            // TODO: the span here should probably include the rvalue
+            let new_values: Vec<Value> = t!(new_value.iter(), expr)?.iter().collect();
+            let l = v.len();
+            if new_values.len() != l {
+                Err(EvalException::IncorrectNumberOfValueToUnpack(
+                    expr.span,
+                    l as i64,
+                    new_values.len() as i64,
+                ))
+            } else {
+                let mut it1 = v.iter();
+                let mut it2 = new_values.into_iter();
+                for _ in 0..l {
+                    set_expr(it1.next().unwrap(), context, it2.next().unwrap())?;
                 }
-            }
-            Expr::Dot(ref e, ref s) => {
-                t!(e.eval(context)?.set_attr(&(s.node), new_value), self)?;
                 ok
             }
-            Expr::Identifier(ref i) => {
-                t!(context.env.set(&i.node, new_value), self)?;
-                ok
-            }
-            Expr::ArrayIndirection(ref e, ref idx) => {
-                t!(e.eval(context)?.set_at(idx.eval(context)?, new_value), self)?;
-                ok
-            }
-            _ => Err(EvalException::IncorrectLeftValue(self.span)),
         }
+        Expr::Dot(ref e, ref s) => {
+            t!(eval_expr(e, context)?.set_attr(&(s.node), new_value), expr)?;
+            ok
+        }
+        Expr::Identifier(ref i) => {
+            t!(context.env.set(&i.node, new_value), expr)?;
+            ok
+        }
+        Expr::ArrayIndirection(ref e, ref idx) => {
+            t!(
+                eval_expr(e, context)?.set_at(eval_expr(idx, context)?, new_value),
+                expr
+            )?;
+            ok
+        }
+        _ => Err(EvalException::IncorrectLeftValue(expr.span)),
     }
 }
 
@@ -802,60 +822,62 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
         Statement::Break => Err(EvalException::Break(stmt.span)),
         Statement::Continue => Err(EvalException::Continue(stmt.span)),
         Statement::Pass => Ok(Value::new(NoneType::None)),
-        Statement::Return(Some(ref e)) => Err(EvalException::Return(stmt.span, e.eval(context)?)),
+        Statement::Return(Some(ref e)) => {
+            Err(EvalException::Return(stmt.span, eval_expr(e, context)?))
+        }
         Statement::Return(None) => {
             Err(EvalException::Return(stmt.span, Value::new(NoneType::None)))
         }
-        Statement::Expression(ref e) => e.eval(context),
+        Statement::Expression(ref e) => eval_expr(e, context),
         Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
-            let rhs = rhs.eval(context)?;
-            lhs.set(context, rhs)
+            let rhs = eval_expr(rhs, context)?;
+            set_expr(lhs, context, rhs)
         }
         Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
             let lhs = transform(lhs, context)?;
-            let l = lhs.eval(context)?;
-            let r = rhs.eval(context)?;
-            lhs.set(context, t!(l.add(r), stmt)?)
+            let l = eval_transformed(&lhs, context)?;
+            let r = eval_expr(rhs, context)?;
+            set_transformed(&lhs, context, t!(l.add(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
             let lhs = transform(lhs, context)?;
-            let l = lhs.eval(context)?;
-            let r = rhs.eval(context)?;
-            lhs.set(context, t!(l.sub(r), stmt)?)
+            let l = eval_transformed(&lhs, context)?;
+            let r = eval_expr(rhs, context)?;
+            set_transformed(&lhs, context, t!(l.sub(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
             let lhs = transform(lhs, context)?;
-            let l = lhs.eval(context)?;
-            let r = rhs.eval(context)?;
-            lhs.set(context, t!(l.mul(r), stmt)?)
+            let l = eval_transformed(&lhs, context)?;
+            let r = eval_expr(rhs, context)?;
+            set_transformed(&lhs, context, t!(l.mul(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
             let lhs = transform(lhs, context)?;
-            let l = lhs.eval(context)?;
-            let r = rhs.eval(context)?;
-            lhs.set(context, t!(l.div(r), stmt)?)
+            let l = eval_transformed(&lhs, context)?;
+            let r = eval_expr(rhs, context)?;
+            set_transformed(&lhs, context, t!(l.div(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
             let lhs = transform(lhs, context)?;
-            let l = lhs.eval(context)?;
-            let r = rhs.eval(context)?;
-            lhs.set(context, t!(l.floor_div(r), stmt)?)
+            let l = eval_transformed(&lhs, context)?;
+            let r = eval_expr(rhs, context)?;
+            set_transformed(&lhs, context, t!(l.floor_div(r), stmt)?)
         }
         Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
             let lhs = transform(lhs, context)?;
-            let l = lhs.eval(context)?;
-            let r = rhs.eval(context)?;
-            lhs.set(context, t!(l.percent(r), stmt)?)
+            let l = eval_transformed(&lhs, context)?;
+            let r = eval_expr(rhs, context)?;
+            set_transformed(&lhs, context, t!(l.percent(r), stmt)?)
         }
         Statement::If(ref cond, ref st) => {
-            if cond.eval(context)?.to_bool() {
+            if eval_expr(cond, context)?.to_bool() {
                 eval_stmt(st, context)
             } else {
                 Ok(Value::new(NoneType::None))
             }
         }
         Statement::IfElse(ref cond, ref st1, ref st2) => {
-            if cond.eval(context)?.to_bool() {
+            if eval_expr(cond, context)?.to_bool() {
                 eval_stmt(st1, context)
             } else {
                 eval_stmt(st2, context)
@@ -868,11 +890,11 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             },
             ref st,
         ) => {
-            let mut iterable = e2.eval(context)?;
+            let mut iterable = eval_expr(e2, context)?;
             let mut result = Ok(Value::new(NoneType::None));
             iterable.freeze_for_iteration();
             for v in &t!(iterable.iter(), span * span)? {
-                e1.set(context, v)?;
+                set_expr(e1, context, v)?;
                 match eval_stmt(st, context) {
                     Err(EvalException::Break(..)) => break,
                     Err(EvalException::Continue(..)) => (),
@@ -899,7 +921,7 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
                 p.push(match x.node {
                     Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
                     Parameter::WithDefaultValue(ref n, ref v) => {
-                        FunctionParameter::WithDefaultValue(n.node.clone(), v.eval(context)?)
+                        FunctionParameter::WithDefaultValue(n.node.clone(), eval_expr(v, context)?)
                     }
                     Parameter::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
                     Parameter::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
