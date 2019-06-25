@@ -444,8 +444,7 @@ starlark_module! {global_functions =>
                     Some("0b") | Some("0B") => 2,
                     Some("0o") | Some("0O") => 8,
                     Some("0x") | Some("0X") => 16,
-                    Some(x) => if x.get(0..0).unwrap() == "0" { 8 } else { 10 },
-                    None => 10
+                    _ => 10
                 }
             } else { base as u32 };
             let s = match base {
@@ -454,8 +453,6 @@ starlark_module! {global_functions =>
                 } else { s },
                 8 => if s.starts_with("0o") || s.starts_with("0O") {
                     s.get(2..).unwrap().to_string()
-                } else if s.starts_with('0') {
-                    s.get(1..).unwrap().to_string()
                 } else {
                     s
                 },
