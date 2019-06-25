@@ -310,7 +310,7 @@ impl ArgsFormat {
 
     pub fn format(self, other: Value) -> Result<String, ValueError> {
         let mut r = self.init;
-        let mut other_iter;
+        let other_iter;
         let mut arg_iter: Box<dyn Iterator<Item = Value>> = if self.positional_count > 1 {
             other_iter = Some(other.iter()?);
             other_iter.as_ref().unwrap().iter()
