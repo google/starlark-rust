@@ -817,6 +817,22 @@ fn set_expr(expr: &AstExpr, context: &mut EvaluationContext, new_value: Value) -
     }
 }
 
+fn eval_assign_modify<F>(
+    stmt: &AstStatement,
+    lhs: &AstExpr,
+    rhs: &AstExpr,
+    context: &mut EvaluationContext,
+    op: F,
+) -> EvalResult
+where
+    F: FnOnce(&Value, Value) -> Result<Value, ValueError>,
+{
+    let lhs = transform(lhs, context)?;
+    let l = eval_transformed(&lhs, context)?;
+    let r = eval_expr(rhs, context)?;
+    set_transformed(&lhs, context, t!(op(&l, r), stmt)?)
+}
+
 fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult {
     match stmt.node {
         Statement::Break => Err(EvalException::Break(stmt.span)),
@@ -834,40 +850,22 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             set_expr(lhs, context, rhs)
         }
         Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
-            let lhs = transform(lhs, context)?;
-            let l = eval_transformed(&lhs, context)?;
-            let r = eval_expr(rhs, context)?;
-            set_transformed(&lhs, context, t!(l.add(r), stmt)?)
+            eval_assign_modify(stmt, lhs, rhs, context, Value::add)
         }
         Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
-            let lhs = transform(lhs, context)?;
-            let l = eval_transformed(&lhs, context)?;
-            let r = eval_expr(rhs, context)?;
-            set_transformed(&lhs, context, t!(l.sub(r), stmt)?)
+            eval_assign_modify(stmt, lhs, rhs, context, Value::sub)
         }
         Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
-            let lhs = transform(lhs, context)?;
-            let l = eval_transformed(&lhs, context)?;
-            let r = eval_expr(rhs, context)?;
-            set_transformed(&lhs, context, t!(l.mul(r), stmt)?)
+            eval_assign_modify(stmt, lhs, rhs, context, Value::mul)
         }
         Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
-            let lhs = transform(lhs, context)?;
-            let l = eval_transformed(&lhs, context)?;
-            let r = eval_expr(rhs, context)?;
-            set_transformed(&lhs, context, t!(l.div(r), stmt)?)
+            eval_assign_modify(stmt, lhs, rhs, context, Value::div)
         }
         Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
-            let lhs = transform(lhs, context)?;
-            let l = eval_transformed(&lhs, context)?;
-            let r = eval_expr(rhs, context)?;
-            set_transformed(&lhs, context, t!(l.floor_div(r), stmt)?)
+            eval_assign_modify(stmt, lhs, rhs, context, Value::floor_div)
         }
         Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
-            let lhs = transform(lhs, context)?;
-            let l = eval_transformed(&lhs, context)?;
-            let r = eval_expr(rhs, context)?;
-            set_transformed(&lhs, context, t!(l.percent(r), stmt)?)
+            eval_assign_modify(stmt, lhs, rhs, context, Value::percent)
         }
         Statement::If(ref cond, ref st) => {
             if eval_expr(cond, context)?.to_bool() {
