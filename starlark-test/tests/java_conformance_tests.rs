@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod testutil;
-use crate::testutil::do_conformance_test;
+use starlark_test::do_conformance_test;
 
-include!(concat!(env!("OUT_DIR"), "/tests/go-testcases.rs"));
+include!(concat!(env!("OUT_DIR"), "/tests/java-testcases.rs"));

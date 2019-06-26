@@ -1,2 +1,2 @@
 [workspace]
-members = ["starlark", "starlark-repl"]
+members = ["starlark", "starlark-repl", "starlark-test"]

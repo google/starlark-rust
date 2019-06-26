@@ -1,14 +1,15 @@
 [package]
-name = "starlark"
+name = "starlark-test"
 edition = "2018"
-version = "0.3.0-pre"
+version = "0.0.0"
 authors = [
     "Damien Martin-Guillerez <dmarting@google.com>",
     "Stepan Koltsov <stepan.koltsov@gmail.com>",
 ]
 build = "build.rs"
+publish = false
 
-description = "An implementation in Rust of the Starlark language."
+description = "Tests for starlark crate."
 documentation = "https://docs.rs/crate/starlark"
 homepage = "https://github.com/google/starlark-rust"
 repository = "https://github.com/google/starlark-rust"
@@ -17,21 +18,14 @@ keywords = ["starlark", "skylark", "bazel", "language", "interpreter"]
 categories = ["development-tools"]
 license = "Apache-2.0"
 
-[badges]
-travis-ci = { repository = "google/starlark-rust", branch = "master" }
-maintenance = { status = "passively-maintained" }
-
-[build-dependencies]
-lalrpop = "0.16.0"
-
 [dependencies]
+starlark = { path = "../starlark" }
 codemap = "0.1.1"
 codemap-diagnostic = "0.1.1"
-lalrpop-util = "0.16.0"
 linked-hash-map = "0.5.1"
 
 [lib]
 bench = false
-
-[features]
-trace = []
+test = false
+doctest = false
+doc = false
