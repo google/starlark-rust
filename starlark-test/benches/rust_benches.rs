@@ -1,4 +1,4 @@
-// Copyright 2018 The Starlark in Rust Authors
+// Copyright 2019 The Starlark in Rust Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod testutil;
-use crate::testutil::do_conformance_test;
+// `#[feature(test)]` only works in nightly
+#![cfg(rustc_nightly)]
+#![feature(test)]
 
-include!(concat!(env!("OUT_DIR"), "/tests/rust-testcases.rs"));
+extern crate test;
+use starlark_test::do_bench;
+use test::Bencher;
+
+include!(concat!(env!("OUT_DIR"), "/benches/rust-benches.rs"));

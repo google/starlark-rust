@@ -2,7 +2,10 @@
 name = "starlark-repl"
 edition = "2018"
 version = "0.3.0-pre"
-authors = ["Damien Martin-Guillerez <dmarting@google.com>"]
+authors = [
+    "Damien Martin-Guillerez <dmarting@google.com>",
+    "Stepan Koltsov <stepan.koltsov@gmail.com>",
+]
 
 description = "A REPL for the implementation in Rust of the Starlark language."
 documentation = "https://docs.rs/crate/starlark-repl"

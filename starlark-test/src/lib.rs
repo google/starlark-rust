@@ -12,17 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Utility to test the conformance tests from other implementation of Starlark
+//! Utility to test the tests and benches
+
+#![cfg_attr(rustc_nightly, feature(test))]
+
+#[cfg(rustc_nightly)]
+extern crate test;
 
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use linked_hash_map::LinkedHashMap;
+use starlark::environment::TypeValues;
+use starlark::eval::call_stack::CallStack;
 use starlark::eval::simple::eval;
 use starlark::stdlib::global_environment_with_extensions;
+use starlark::syntax::dialect::Dialect;
+use starlark::values::error::ValueError;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+#[cfg(rustc_nightly)]
+use test::Bencher;
 
 /// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
 fn read_input(path: &str) -> Vec<(usize, String)> {
@@ -144,4 +156,69 @@ pub fn do_conformance_test(path: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
     let path = path.to_str().unwrap();
     assert!(run_conformance_test(path));
+}
+
+#[cfg(rustc_nightly)]
+pub fn do_bench(bencher: &mut Bencher, path: &str) {
+    let mut content = String::new();
+    let mut file = File::open(path).unwrap();
+    file.read_to_string(&mut content).unwrap();
+    drop(file);
+
+    let map = Arc::new(Mutex::new(CodeMap::new()));
+    let global = global_environment_with_extensions();
+    global.freeze();
+    let mut prelude = global.child("PRELUDE");
+    eval(
+        &map,
+        "PRELUDE",
+        r#"
+def assert_eq(x, y):
+  if x != y:
+    fail("%r != %r" % (x, y))
+
+def assert_(cond, msg="assertion failed"):
+  if not cond:
+    fail(msg)
+"#,
+        starlark::syntax::dialect::Dialect::Bzl,
+        &mut prelude,
+        global.clone(),
+    )
+    .unwrap();
+    prelude.freeze();
+
+    let mut env = prelude.child("run");
+    match eval(&map, path, &content, Dialect::Bzl, &mut env, global) {
+        Ok(_) => (),
+        Err(p) => {
+            Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
+            panic!();
+        }
+    }
+
+    env.freeze();
+
+    let bench_func = env.get("bench").expect("bench function is not found");
+
+    bencher.iter(|| {
+        let env = env.child("bench");
+        match bench_func.call(
+            &CallStack::default(),
+            TypeValues::new(env),
+            Vec::new(),
+            LinkedHashMap::new(),
+            None,
+            None,
+        ) {
+            Ok(r) => r,
+            Err(ValueError::DiagnosedError(e)) => {
+                Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[e]);
+                panic!();
+            }
+            Err(e) => {
+                panic!("{:?}", e);
+            }
+        }
+    });
 }
