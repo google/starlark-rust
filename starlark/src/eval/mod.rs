@@ -91,19 +91,37 @@ impl From<Diagnostic> for EvalException {
 
 type EvalResult = Result<Value, EvalException>;
 
-macro_rules! t {
-    ($v:expr,span $el:expr) => {{
-        match $v {
-            Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el))),
-            Ok(v) => Ok(v),
-        }
-    }};
-    ($v:expr, $el:expr) => {{
-        match $v {
-            Err(e) => Err(EvalException::DiagnosedError(e.to_diagnostic($el.span))),
-            Ok(v) => Ok(v),
-        }
-    }};
+/// An object with [`Span`]
+trait AsSpan {
+    fn as_span(&self) -> Span;
+}
+
+impl AsSpan for Span {
+    fn as_span(&self) -> Span {
+        *self
+    }
+}
+
+impl<T> AsSpan for Spanned<T> {
+    fn as_span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<T> AsSpan for Box<Spanned<T>> {
+    fn as_span(&self) -> Span {
+        self.span
+    }
+}
+
+/// Convert syntax error to spanned evaluation exception
+fn t<T, E: SyntaxError, S: AsSpan>(r: Result<T, E>, spanned: &S) -> Result<T, EvalException> {
+    match r {
+        Ok(v) => Ok(v),
+        Err(e) => Err(EvalException::DiagnosedError(
+            e.to_diagnostic(spanned.as_span()),
+        )),
+    }
 }
 
 impl Into<Diagnostic> for EvalException {
@@ -337,7 +355,7 @@ fn eval_comprehension_clause(
             Clause::For(ref k, ref v) => {
                 let mut iterable = eval_expr(v, context)?;
                 iterable.freeze_for_iteration();
-                for i in &t!(iterable.iter(), c)? {
+                for i in &t(iterable.iter(), c)? {
                     set_expr(k, context, i)?;
                     if tl.is_empty() {
                         result.push(eval_expr(e, context)?);
@@ -365,7 +383,7 @@ where
 {
     let l = eval_expr(left, context)?;
     let r = eval_expr(right, context)?;
-    Ok(Value::new(cmp(t!(l.compare(&r), this)?)))
+    Ok(Value::new(cmp(t(l.compare(&r), this)?)))
 }
 
 fn eval_equals<F>(
@@ -380,9 +398,9 @@ where
 {
     let l = eval_expr(left, context)?;
     let r = eval_expr(right, context)?;
-    Ok(Value::new(cmp(t!(
+    Ok(Value::new(cmp(t(
         l.equals(&r).map_err(Into::<ValueError>::into),
-        this
+        this,
     )?)))
 }
 
@@ -407,7 +425,7 @@ fn eval_slice(
         Some(ref e) => Some(eval_expr(e, context)?),
         None => None,
     };
-    t!(a.slice(start, stop, stride), this)
+    t(a.slice(start, stop, stride), this)
 }
 
 fn eval_call(
@@ -443,7 +461,7 @@ fn eval_call(
     } else {
         let loc = { context.map.lock().unwrap().look_up_pos(this.span.low()) };
         new_stack.push(&fname, &descr, loc.file.name(), loc.position.line as u32);
-        t!(
+        t(
             eval_expr(e, context)?.call(
                 &new_stack,
                 context.type_values.clone(),
@@ -452,7 +470,7 @@ fn eval_call(
                 nargs,
                 nkwargs,
             ),
-            this
+            this,
         )
     }
 }
@@ -472,7 +490,7 @@ fn eval_dot(
             Ok(v)
         }
     } else {
-        t!(left.get_attr(&s.node), this)
+        t(left.get_attr(&s.node), this)
     }
 }
 
@@ -489,9 +507,9 @@ fn eval_dict_comprehension(
     });
     let mut context = context.child("dict_comprehension");
     for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
-        let k = t!(e.at(Value::from(0)), tuple)?;
-        let v = t!(e.at(Value::from(1)), tuple)?;
-        t!(r.set_at(k, v), tuple)?;
+        let k = t(e.at(Value::from(0)), &tuple)?;
+        let v = t(e.at(Value::from(1)), &tuple)?;
+        t(r.set_at(k, v), &tuple)?;
     }
     Ok(Value::new(r))
 }
@@ -534,14 +552,14 @@ fn set_transformed(
     match transformed {
         TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
             let l = v.len() as i64;
-            let nvl = t!(new_value.length(), span * span)?;
+            let nvl = t(new_value.length(), span)?;
             if nvl != l {
                 Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
             } else {
                 let mut r = Vec::new();
                 let mut it1 = v.iter();
                 // TODO: the span here should probably include the rvalue
-                let it2 = t!(new_value.iter(), span * span)?;
+                let it2 = t(new_value.iter(), span)?;
                 let mut it2 = it2.iter();
                 for _ in 0..l {
                     r.push(set_transformed(
@@ -554,11 +572,11 @@ fn set_transformed(
             }
         }
         TransformedExpr::Dot(ref e, ref s, ref span) => {
-            t!(e.clone().set_attr(&s, new_value), span * span)?;
+            t(e.clone().set_attr(&s, new_value), span)?;
             ok
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
-            t!(e.clone().set_at(idx.clone(), new_value), span * span)?;
+            t(e.clone().set_at(idx.clone(), new_value), span)?;
             ok
         }
         TransformedExpr::OtherExpr(ref e) => set_expr(e, context, new_value),
@@ -590,12 +608,10 @@ fn eval_transformed(transformed: &TransformedExpr, context: &mut EvaluationConte
                     Ok(v)
                 }
             } else {
-                t!(left.get_attr(&s), span span.clone())
+                t(left.get_attr(&s), span)
             }
         }
-        TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => {
-            t!(e.at(idx.clone()), span span.clone())
-        }
+        TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
         TransformedExpr::OtherExpr(ref e) => eval_expr(e, context),
     }
 }
@@ -656,17 +672,17 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
         }
         Expr::ArrayIndirection(ref e, ref idx) => {
             let idx = eval_expr(idx, context)?;
-            t!(eval_expr(e, context)?.at(idx), expr)
+            t(eval_expr(e, context)?.at(idx), expr)
         }
         Expr::Slice(ref a, ref start, ref stop, ref stride) => {
             eval_slice(expr, a, start, stop, stride, context)
         }
-        Expr::Identifier(ref i) => t!(context.env.get(&i.node), i),
+        Expr::Identifier(ref i) => t(context.env.get(&i.node), i),
         Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
         Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
         Expr::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
-        Expr::Minus(ref s) => t!(eval_expr(s, context)?.minus(), expr),
-        Expr::Plus(ref s) => t!(eval_expr(s, context)?.plus(), expr),
+        Expr::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
+        Expr::Plus(ref s) => t(eval_expr(s, context)?.plus(), expr),
         Expr::Op(BinOp::Or, ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if l.to_bool() {
@@ -697,29 +713,29 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
         Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
             eval_compare(expr, l, r, |x| x != Ordering::Less, context)
         }
-        Expr::Op(BinOp::In, ref l, ref r) => t!(
+        Expr::Op(BinOp::In, ref l, ref r) => t(
             eval_expr(r, context)?
                 .is_in(&eval_expr(l, context)?)
                 .map(Value::new),
-            expr
+            expr,
         ),
-        Expr::Op(BinOp::NotIn, ref l, ref r) => t!(
+        Expr::Op(BinOp::NotIn, ref l, ref r) => t(
             eval_expr(r, context)?
                 .is_in(&eval_expr(l, context)?)
                 .map(|r| Value::new(!r)),
-            expr
+            expr,
         ),
         Expr::Op(BinOp::Substraction, ref l, ref r) => {
-            t!(eval_expr(l, context)?.sub(eval_expr(r, context)?), expr)
+            t(eval_expr(l, context)?.sub(eval_expr(r, context)?), expr)
         }
         Expr::Op(BinOp::Addition, ref l, ref r) => {
-            t!(eval_expr(l, context)?.add(eval_expr(r, context)?), expr)
+            t(eval_expr(l, context)?.add(eval_expr(r, context)?), expr)
         }
         Expr::Op(BinOp::Multiplication, ref l, ref r) => {
-            t!(eval_expr(l, context)?.mul(eval_expr(r, context)?), expr)
+            t(eval_expr(l, context)?.mul(eval_expr(r, context)?), expr)
         }
         Expr::Op(BinOp::Percent, ref l, ref r) => {
-            t!(eval_expr(l, context)?.percent(eval_expr(r, context)?), expr)
+            t(eval_expr(l, context)?.percent(eval_expr(r, context)?), expr)
         }
         Expr::Op(BinOp::Division, ref l, ref r) => {
             let l = eval_expr(l, context)?;
@@ -732,12 +748,12 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             };
             Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)))
         }
-        Expr::Op(BinOp::FloorDivision, ref l, ref r) => t!(
+        Expr::Op(BinOp::FloorDivision, ref l, ref r) => t(
             eval_expr(l, context)?.floor_div(eval_expr(r, context)?),
-            expr
+            expr,
         ),
         Expr::Op(BinOp::Pipe, ref l, ref r) => {
-            t!(eval_expr(l, context)?.pipe(eval_expr(r, context)?), expr)
+            t(eval_expr(l, context)?.pipe(eval_expr(r, context)?), expr)
         }
         Expr::If(ref cond, ref v1, ref v2) => {
             if eval_expr(cond, context)?.to_bool() {
@@ -753,9 +769,9 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
         Expr::Dict(ref v) => {
             let mut r = dict::Dictionary::new();
             for s in v.iter() {
-                t!(
+                t(
                     r.set_at(eval_expr(&s.0, context)?, eval_expr(&s.1, context)?),
-                    expr
+                    expr,
                 )?
             }
             Ok(r)
@@ -781,7 +797,7 @@ fn set_expr(expr: &AstExpr, context: &mut EvaluationContext, new_value: Value) -
     match expr.node {
         Expr::Tuple(ref v) | Expr::List(ref v) => {
             // TODO: the span here should probably include the rvalue
-            let new_values: Vec<Value> = t!(new_value.iter(), expr)?.iter().collect();
+            let new_values: Vec<Value> = t(new_value.iter(), expr)?.iter().collect();
             let l = v.len();
             if new_values.len() != l {
                 Err(EvalException::IncorrectNumberOfValueToUnpack(
@@ -799,17 +815,17 @@ fn set_expr(expr: &AstExpr, context: &mut EvaluationContext, new_value: Value) -
             }
         }
         Expr::Dot(ref e, ref s) => {
-            t!(eval_expr(e, context)?.set_attr(&(s.node), new_value), expr)?;
+            t(eval_expr(e, context)?.set_attr(&(s.node), new_value), expr)?;
             ok
         }
         Expr::Identifier(ref i) => {
-            t!(context.env.set(&i.node, new_value), expr)?;
+            t(context.env.set(&i.node, new_value), expr)?;
             ok
         }
         Expr::ArrayIndirection(ref e, ref idx) => {
-            t!(
+            t(
                 eval_expr(e, context)?.set_at(eval_expr(idx, context)?, new_value),
-                expr
+                expr,
             )?;
             ok
         }
@@ -830,7 +846,7 @@ where
     let lhs = transform(lhs, context)?;
     let l = eval_transformed(&lhs, context)?;
     let r = eval_expr(rhs, context)?;
-    set_transformed(&lhs, context, t!(op(&l, r), stmt)?)
+    set_transformed(&lhs, context, t(op(&l, r), stmt)?)
 }
 
 fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult {
@@ -891,7 +907,7 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             let mut iterable = eval_expr(e2, context)?;
             let mut result = Ok(Value::new(NoneType::None));
             iterable.freeze_for_iteration();
-            for v in &t!(iterable.iter(), span * span)? {
+            for v in &t(iterable.iter(), span)? {
                 set_expr(e1, context, v)?;
                 match eval_stmt(st, context) {
                     Err(EvalException::Break(..)) => break,
@@ -933,14 +949,20 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
                 context.map.clone(),
                 context.env.assert_module_env().clone(),
             );
-            t!(context.env.set(&name.node, f.clone()), name)?;
+            t(context.env.set(&name.node, f.clone()), name)?;
             Ok(f)
         }
         Statement::Load(ref name, ref v) => {
             let loadenv = context.loader.load(name)?;
             for &(ref new_name, ref orig_name) in v.iter() {
-                t!(context.env.assert_module_env().import_symbol(&loadenv, &orig_name.node, &new_name.node),
-                    span new_name.span.merge(orig_name.span))?
+                t(
+                    context.env.assert_module_env().import_symbol(
+                        &loadenv,
+                        &orig_name.node,
+                        &new_name.node,
+                    ),
+                    &new_name.span.merge(orig_name.span),
+                )?
             }
             Ok(Value::new(NoneType::None))
         }
