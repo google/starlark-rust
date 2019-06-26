@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 case "$1" in
   format)
     echo "Installing rustfmt..."
