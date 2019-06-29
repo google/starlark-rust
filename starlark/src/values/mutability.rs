@@ -82,7 +82,7 @@ pub trait RefCellOrImmutable {
 }
 
 /// Container for immutable data
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImmutableCell<T>(T);
 
 impl<T> RefCellOrImmutable for RefCell<T> {
@@ -142,7 +142,7 @@ pub trait MutabilityCell: fmt::Debug {
     fn new() -> Self;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImmutableMutability;
 #[derive(Debug)]
 pub struct MutableMutability(Cell<IterableMutability>);

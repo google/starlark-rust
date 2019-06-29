@@ -83,6 +83,11 @@ where
 impl TypedValue for i64 {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "int";
+
+    fn new_value(self) -> Value {
+        Value(ValueInner::Int(ValueHolder::new(self)))
+    }
+
     fn equals(&self, other: &i64) -> Result<bool, ValueError> {
         Ok(self == other)
     }

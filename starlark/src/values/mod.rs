@@ -95,18 +95,37 @@ use std::fmt;
 use std::marker;
 use std::rc::Rc;
 
+/// ValueInner wraps the actual value or a memory pointer
+/// to the actual value for complex type.
+#[derive(Clone)]
+enum ValueInner {
+    None(ValueHolder<NoneType>),
+    Bool(ValueHolder<bool>),
+    Int(ValueHolder<i64>),
+    Other(Rc<dyn ValueHolderDyn>),
+}
+
 /// A value in Starlark.
 ///
 /// This is a wrapper around a [TypedValue] which is cheap to clone and safe to pass around.
 #[derive(Clone)]
-pub struct Value(Rc<dyn ValueHolderDyn>);
+pub struct Value(ValueInner);
 
 pub type ValueResult = Result<Value, ValueError>;
 
 impl Value {
     /// Create a new `Value` from a static value.
     pub fn new<T: TypedValue>(t: T) -> Value {
-        Value(Rc::new(ValueHolder::new(t)))
+        t.new_value()
+    }
+
+    fn value_holder(&self) -> &(dyn ValueHolderDyn + 'static) {
+        match &self.0 {
+            ValueInner::None(n) => n,
+            ValueInner::Int(i) => i,
+            ValueInner::Bool(b) => b,
+            ValueInner::Other(rc) => &**rc,
+        }
     }
 
     /// Clone for inserting into the other container, using weak reference if we do a
@@ -129,17 +148,17 @@ impl Value {
 
     /// Determine if the value pointed by other is a descendant of self
     pub fn is_descendant_value(&self, other: &Value) -> bool {
-        self.0.is_descendant(other.0.data_ptr())
+        self.value_holder().is_descendant(other.data_ptr())
     }
 
     /// Object data pointer.
     pub fn data_ptr(&self) -> DataPtr {
-        self.0.data_ptr()
+        self.value_holder().data_ptr()
     }
 
     /// Function id used to detect recursion.
     pub fn function_id(&self) -> FunctionId {
-        self.0.function_id()
+        self.value_holder().function_id()
     }
 }
 
@@ -166,6 +185,15 @@ impl<T: TypedValue> ValueHolder<T> {
         ValueHolder {
             mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell::new(),
             content: <<T as TypedValue>::Holder as Mutability>::Cell::new(value),
+        }
+    }
+}
+
+impl<T: TypedValue<Holder = Immutable<T>> + Clone> Clone for ValueHolder<T> {
+    fn clone(&self) -> Self {
+        ValueHolder {
+            mutability: self.mutability.clone(),
+            content: self.content.clone(),
         }
     }
 }
@@ -207,7 +235,7 @@ impl<T: TypedValue> From<&'_ T> for DataPtr {
 
 impl From<Value> for DataPtr {
     fn from(v: Value) -> Self {
-        v.0.data_ptr()
+        v.data_ptr()
     }
 }
 
@@ -563,6 +591,14 @@ pub trait TypedValue: Sized + 'static {
 
     /// Return a string describing the type of self, as returned by the type() function.
     const TYPE: &'static str;
+
+    /// Create a value for `TypedValue`.
+    ///
+    /// This function should be overridden only by builtin types.
+    #[doc(hidden)]
+    fn new_value(self) -> Value {
+        Value(ValueInner::Other(Rc::new(ValueHolder::new(self))))
+    }
 
     /// Return a list of values to be used in freeze or descendant check operations.
     ///
@@ -1034,41 +1070,41 @@ impl fmt::Debug for Value {
 
 impl Value {
     pub fn freeze(&mut self) {
-        self.0.freeze()
+        self.value_holder().freeze()
     }
     pub fn freeze_for_iteration(&mut self) {
-        self.0.freeze_for_iteration()
+        self.value_holder().freeze_for_iteration()
     }
     pub fn unfreeze_for_iteration(&mut self) {
-        self.0.unfreeze_for_iteration()
+        self.value_holder().unfreeze_for_iteration()
     }
     pub fn to_str(&self) -> String {
-        self.0.to_str()
+        self.value_holder().to_str()
     }
     pub fn to_repr(&self) -> String {
-        self.0.to_repr()
+        self.value_holder().to_repr()
     }
     pub fn get_type(&self) -> &'static str {
-        self.0.get_type()
+        self.value_holder().get_type()
     }
     pub fn to_bool(&self) -> bool {
-        self.0.to_bool()
+        self.value_holder().to_bool()
     }
     pub fn to_int(&self) -> Result<i64, ValueError> {
-        self.0.to_int()
+        self.value_holder().to_int()
     }
     pub fn get_hash(&self) -> Result<u64, ValueError> {
-        self.0.get_hash()
+        self.value_holder().get_hash()
     }
     pub fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        self.0.equals(other)
+        self.value_holder().equals(other)
     }
     pub fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        self.0.compare(other)
+        self.value_holder().compare(other)
     }
 
     pub fn is_descendant(&self, other: DataPtr) -> bool {
-        self.0.is_descendant(other)
+        self.value_holder().is_descendant(other)
     }
 
     pub fn call(
@@ -1080,16 +1116,16 @@ impl Value {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        self.0
+        self.value_holder()
             .call(call_stack, type_values, positional, named, args, kwargs)
     }
 
     pub fn at(&self, index: Value) -> ValueResult {
-        self.0.at(index)
+        self.value_holder().at(index)
     }
 
     pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.0.set_at(index, new_value)
+        self.value_holder().set_at(index, new_value)
     }
     pub fn slice(
         &self,
@@ -1097,55 +1133,55 @@ impl Value {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        self.0.slice(start, stop, stride)
+        self.value_holder().slice(start, stop, stride)
     }
     pub fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
-        self.0.iter()
+        self.value_holder().iter()
     }
     pub fn length(&self) -> Result<i64, ValueError> {
-        self.0.length()
+        self.value_holder().length()
     }
     pub fn get_attr(&self, attribute: &str) -> ValueResult {
-        self.0.get_attr(attribute)
+        self.value_holder().get_attr(attribute)
     }
     pub fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        self.0.has_attr(attribute)
+        self.value_holder().has_attr(attribute)
     }
     pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        self.0.set_attr(attribute, new_value)
+        self.value_holder().set_attr(attribute, new_value)
     }
     pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        self.0.dir_attr()
+        self.value_holder().dir_attr()
     }
     pub fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        self.0.is_in(other)
+        self.value_holder().is_in(other)
     }
     pub fn plus(&self) -> ValueResult {
-        self.0.plus()
+        self.value_holder().plus()
     }
     pub fn minus(&self) -> ValueResult {
-        self.0.minus()
+        self.value_holder().minus()
     }
     pub fn add(&self, other: Value) -> ValueResult {
-        self.0.add(other)
+        self.value_holder().add(other)
     }
     pub fn sub(&self, other: Value) -> ValueResult {
-        self.0.sub(other)
+        self.value_holder().sub(other)
     }
     pub fn mul(&self, other: Value) -> ValueResult {
-        self.0.mul(other)
+        self.value_holder().mul(other)
     }
     pub fn percent(&self, other: Value) -> ValueResult {
-        self.0.percent(other)
+        self.value_holder().percent(other)
     }
     pub fn div(&self, other: Value) -> ValueResult {
-        self.0.div(other)
+        self.value_holder().div(other)
     }
     pub fn floor_div(&self, other: Value) -> ValueResult {
-        self.0.floor_div(other)
+        self.value_holder().floor_div(other)
     }
     pub fn pipe(&self, other: Value) -> ValueResult {
-        self.0.pipe(other)
+        self.value_holder().pipe(other)
     }
 }
 
@@ -1306,7 +1342,7 @@ impl Value {
     ///
     /// This function panics if the `Value` is borrowed mutably.
     pub fn downcast_ref<T: TypedValue>(&self) -> Option<RefOrRef<'_, T>> {
-        let any = self.0.as_any_ref();
+        let any = self.value_holder().as_any_ref();
         if any.is::<T>() {
             Some(RefOrRef::map(any, |any| any.downcast_ref().unwrap()))
         } else {
@@ -1323,7 +1359,7 @@ impl Value {
     pub fn downcast_mut<T: TypedValue<Holder = Mutable<T>>>(
         &self,
     ) -> Result<Option<RefMut<'_, T>>, ValueError> {
-        let any = match self.0.as_any_mut()? {
+        let any = match self.value_holder().as_any_mut()? {
             Some(any) => any,
             None => return Ok(None),
         };
@@ -1335,7 +1371,7 @@ impl Value {
     }
 
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
-        self.0.convert_index(len)
+        self.value_holder().convert_index(len)
     }
 }
 
@@ -1357,6 +1393,7 @@ use crate::values::mutability::{
     ImmutableCell, ImmutableMutability, MutabilityCell, MutableMutability, RefCellOrImmutable,
     RefOrRef,
 };
+use crate::values::none::NoneType;
 
 #[cfg(test)]
 mod tests {
