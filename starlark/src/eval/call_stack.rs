@@ -14,20 +14,21 @@
 //! Starlark call stack.
 
 use crate::values::error::ValueError;
+use crate::values::FunctionId;
 use std::cell::Cell;
 use std::fmt;
 
 /// Starlark call stack.
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct CallStack {
-    stack: Vec<(String, String)>,
+    stack: Vec<(FunctionId, String)>,
 }
 
 impl CallStack {
     /// Push an element to the stack
-    pub fn push(&mut self, function_id: &str, call_descr: &str, file_name: &str, line: u32) {
+    pub fn push(&mut self, function_id: FunctionId, call_descr: &str, file_name: &str, line: u32) {
         self.stack.push((
-            function_id.to_owned(),
+            function_id,
             format!(
                 "call to {} at {}:{}",
                 call_descr,
@@ -38,8 +39,8 @@ impl CallStack {
     }
 
     /// Test if call stack contains a function with given id.
-    pub fn contains(&self, function_id: &str) -> bool {
-        self.stack.iter().any(|(n, _)| n == function_id)
+    pub fn contains(&self, function_id: FunctionId) -> bool {
+        self.stack.iter().any(|(n, _)| n == &function_id)
     }
 
     /// Print call stack as multiline string

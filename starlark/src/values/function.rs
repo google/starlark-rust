@@ -474,6 +474,10 @@ impl TypedValue for WrappedMethod {
         Box::new(vec![self.method.clone(), self.self_obj.clone()].into_iter())
     }
 
+    fn function_id(&self) -> Option<FunctionId> {
+        Some(FunctionId(self.method.data_ptr()))
+    }
+
     fn to_str(&self) -> String {
         self.method.to_str()
     }
