@@ -131,6 +131,16 @@ impl Value {
     pub fn is_descendant_value(&self, other: &Value) -> bool {
         self.0.is_descendant(other.0.data_ptr())
     }
+
+    /// Object data pointer.
+    pub fn data_ptr(&self) -> DataPtr {
+        self.0.data_ptr()
+    }
+
+    /// Function id used to detect recursion.
+    pub fn function_id(&self) -> FunctionId {
+        self.0.function_id()
+    }
 }
 
 pub trait Mutability {
@@ -180,7 +190,7 @@ impl<T: TypedValue> Mutability for Immutable<T> {
 }
 
 /// Pointer to data, used for cycle checks.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq)]
 pub struct DataPtr(*const ());
 
 impl<T: TypedValue> From<*const T> for DataPtr {
@@ -207,6 +217,10 @@ impl PartialEq for DataPtr {
     }
 }
 
+/// Function identity to detect recursion.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FunctionId(pub DataPtr);
+
 impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
     fn as_any_mut(&self) -> Result<Option<RefMut<'_, dyn Any>>, ValueError> {
         self.mutability.get().test()?;
@@ -225,6 +239,13 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
 
     fn data_ptr(&self) -> DataPtr {
         DataPtr::from(self.content.as_ptr())
+    }
+
+    fn function_id(&self) -> FunctionId {
+        self.content
+            .borrow()
+            .function_id()
+            .unwrap_or(FunctionId(self.data_ptr()))
     }
 
     /// Freezes the current value.
@@ -455,6 +476,9 @@ trait ValueHolderDyn {
     /// Pointer to `TypedValue` object, used for cycle checks.
     fn data_ptr(&self) -> DataPtr;
 
+    /// Id used to detect recursion (which is prohibited in Starlark)
+    fn function_id(&self) -> FunctionId;
+
     fn freeze(&self);
 
     fn freeze_for_iteration(&self);
@@ -562,6 +586,13 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn values_for_descendant_check_and_freeze<'a>(&'a self)
         -> Box<dyn Iterator<Item = Value> + 'a>;
+
+    /// Return function id to detect recursion.
+    ///
+    /// If `None` is returned, object id is used.
+    fn function_id(&self) -> Option<FunctionId> {
+        None
+    }
 
     /// Return a string describing of self, as returned by the str() function.
     fn to_str(&self) -> String {

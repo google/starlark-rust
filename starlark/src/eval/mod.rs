@@ -453,14 +453,18 @@ fn eval_call(
         None
     };
     let f = eval_expr(e, context)?;
-    let fname = f.to_repr();
     let descr = f.to_str();
     let mut new_stack = context.call_stack.clone();
-    if context.call_stack.contains(&fname) {
-        Err(EvalException::Recursion(this.span, fname, new_stack))
+    if context.call_stack.contains(f.function_id()) {
+        Err(EvalException::Recursion(this.span, f.to_repr(), new_stack))
     } else {
         let loc = { context.map.lock().unwrap().look_up_pos(this.span.low()) };
-        new_stack.push(&fname, &descr, loc.file.name(), loc.position.line as u32);
+        new_stack.push(
+            f.function_id(),
+            &descr,
+            loc.file.name(),
+            loc.position.line as u32,
+        );
         t(
             eval_expr(e, context)?.call(
                 &new_stack,
