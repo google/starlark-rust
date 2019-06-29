@@ -29,6 +29,11 @@ impl From<bool> for Value {
 impl TypedValue for bool {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "bool";
+
+    fn new_value(self) -> Value {
+        Value(ValueInner::Bool(ValueHolder::new(self)))
+    }
+
     fn to_repr(&self) -> String {
         if *self {
             "True".to_owned()

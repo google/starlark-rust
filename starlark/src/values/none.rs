@@ -20,7 +20,7 @@ use std::cmp::Ordering;
 use std::iter;
 
 /// Define the NoneType type
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NoneType {
     None,
 }
@@ -29,6 +29,10 @@ pub enum NoneType {
 impl TypedValue for NoneType {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "NoneType";
+
+    fn new_value(self) -> Value {
+        Value(ValueInner::None(ValueHolder::new(self)))
+    }
 
     fn equals(&self, _other: &NoneType) -> Result<bool, ValueError> {
         Ok(true)
