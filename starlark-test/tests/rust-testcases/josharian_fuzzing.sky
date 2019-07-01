@@ -13,6 +13,9 @@ assert_eq(0in[1,2,3], False)
 assert_eq('a'.find('', 1, 0), -1)
 assert_eq('a'.rfind('', 1, 0), -1)
 'a'.index('', 1, 0)  ### [UF00]
+---
+assert_eq('a'.find('', 1, 0), -1)
+assert_eq('a'.rfind('', 1, 0), -1)
 'a'.rindex('', 1, 0)  ### [UF00]
 ---
 # https://github.com/google/starlark-rust/issues/64: alphabetize dir entries

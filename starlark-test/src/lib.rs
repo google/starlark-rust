@@ -31,27 +31,9 @@ use starlark::values::error::ValueError;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Write};
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 #[cfg(rustc_nightly)]
 use test::Bencher;
-
-/// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
-fn read_input(path: &str) -> Vec<(usize, String)> {
-    let mut content = String::new();
-    let mut file = File::open(path).unwrap();
-    file.read_to_string(&mut content).unwrap();
-    let mut v: Vec<(usize, String)> = content
-        .split("\n---\n")
-        .map(|x| (0, x.to_owned()))
-        .collect();
-    let mut idx = 0;
-    for mut el in &mut v {
-        el.0 = idx;
-        idx += el.1.chars().filter(|x| *x == '\n').count() + 2 // 2 = separator new lines
-    }
-    v
-}
 
 fn assert_diagnostic(
     d: Diagnostic,
@@ -85,7 +67,7 @@ fn assert_diagnostic(
     }
 }
 
-fn run_conformance_test(path: &str) -> bool {
+pub fn do_conformance_test(path: &str, content: &str) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
     let global = global_environment_with_extensions();
     global.freeze();
@@ -108,54 +90,61 @@ def assert_(cond, msg="assertion failed"):
     )
     .unwrap();
     prelude.freeze();
-    for (offset, content) in read_input(path) {
-        let err = if let Some(x) = content.find("###") {
-            let err = content.get(x + 3..).unwrap().trim();
-            err.get(..err.find('\n').unwrap_or_else(|| err.len()))
-                .unwrap()
-        } else {
-            ""
-        };
-        let content = std::iter::repeat("\n").take(offset).collect::<String>() + &content;
-        match eval(
-            &map,
-            &path,
-            &content,
-            starlark::syntax::dialect::Dialect::Bzl,
-            &mut prelude.child(&path),
-            global.clone(),
-        ) {
-            Err(p) => {
-                if err.is_empty() {
-                    Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
-                    return false;
-                } else if !assert_diagnostic(p, err, path, offset, &map) {
-                    return false;
+
+    let errors: Vec<_> = content
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            if let Some(x) = line.find("###") {
+                Some((i + 1, line.get(x + 3..).unwrap().trim()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert!(errors.len() <= 1, "test may contain at most one error");
+
+    let err = if errors.is_empty() {
+        None
+    } else {
+        Some(errors[0])
+    };
+
+    match eval(
+        &map,
+        path,
+        &content,
+        starlark::syntax::dialect::Dialect::Bzl,
+        &mut prelude.child(path),
+        global.clone(),
+    ) {
+        Err(p) => match err {
+            Some((offset, err)) => {
+                if !assert_diagnostic(p, err, "test", offset, &map) {
+                    panic!();
                 }
             }
-            _ => {
-                if !err.is_empty() {
-                    io::stderr()
-                        .write_all(
-                            &format!(
-                                "Expected error '{}' at {}:{}, got success",
-                                err, path, offset,
-                            )
-                            .into_bytes(),
+            None => {
+                Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
+                panic!();
+            }
+        },
+        _ => {
+            if let Some((offset, err)) = err {
+                io::stderr()
+                    .write_all(
+                        &format!(
+                            "Expected error '{}' at {}:{}, got success",
+                            err, path, offset
                         )
-                        .unwrap();
-                    return false;
-                }
+                        .into_bytes(),
+                    )
+                    .unwrap();
+                panic!();
             }
         }
     }
-    true
-}
-
-pub fn do_conformance_test(path: &str) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
-    let path = path.to_str().unwrap();
-    assert!(run_conformance_test(path));
 }
 
 #[cfg(rustc_nightly)]
