@@ -62,19 +62,48 @@ enum TestOrBench {
     Bench,
 }
 
-fn format_test_content(path: &Path, test_or_bench: &TestOrBench) -> String {
+/// Load a file and convert it to a vector of string (separated by ---) to be evaluated separately.
+fn read_input(path: &Path) -> Vec<(usize, String)> {
+    let mut content = String::new();
+    let mut file = File::open(path).unwrap();
+    file.read_to_string(&mut content).unwrap();
+    let mut v: Vec<(usize, String)> = content
+        .split("\n---\n")
+        .map(|x| (0, x.to_owned()))
+        .collect();
+    let mut idx = 0;
+    for mut el in &mut v {
+        el.0 = idx;
+        idx += el.1.chars().filter(|x| *x == '\n').count() + 2 // 2 = separator new lines
+    }
+    v
+}
+
+fn format_test_content(path: &Path) -> String {
     let test_name = path.file_stem().unwrap().to_str().unwrap();
-    match test_or_bench {
-        TestOrBench::Test => format!(
+    let mut r = String::new();
+    for (offset, content) in read_input(path).into_iter() {
+        let content = std::iter::repeat("\n").take(offset).collect::<String>() + &content;
+        r.push_str(&format!(
             r#"
 #[test]
-fn test_{}() {{
-    do_conformance_test("{}")
+fn test_{}_{}() {{
+    do_conformance_test("{}", {:?})
 }}
 "#,
             test_name,
+            offset + 1,
             path.to_str().unwrap(),
-        ),
+            content,
+        ));
+    }
+    r
+}
+
+fn format_test_or_bench_content(path: &Path, test_or_bench: &TestOrBench) -> String {
+    let test_name = path.file_stem().unwrap().to_str().unwrap();
+    match test_or_bench {
+        TestOrBench::Test => format_test_content(path),
         TestOrBench::Bench => format!(
             r#"
 #[bench]
@@ -102,7 +131,7 @@ fn test_cases(path: &str, test_or_bench: &TestOrBench) {
         if path_entry.extension().unwrap().to_str().unwrap() != "md" {
             // Exclude markdown files
             let content =
-                format_test_content(path_entry.strip_prefix(base).unwrap(), test_or_bench);
+                format_test_or_bench_content(path_entry.strip_prefix(base).unwrap(), test_or_bench);
             outfile.write(content.as_bytes()).unwrap();
         }
     }
