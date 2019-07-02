@@ -40,7 +40,6 @@ pub enum FunctionParameter {
 #[doc(hidden)]
 pub enum FunctionType {
     Native(String),
-    NativeMethod(String, String),
     Def(String, String),
 }
 
@@ -233,22 +232,6 @@ impl Function {
         })
     }
 
-    pub fn new_method<F>(
-        objname: String,
-        name: String,
-        f: F,
-        signature: Vec<FunctionParameter>,
-    ) -> Value
-    where
-        F: Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult + 'static,
-    {
-        Value::new(Function {
-            function: Box::new(f),
-            signature,
-            function_type: FunctionType::NativeMethod(objname, name),
-        })
-    }
-
     pub fn new_def(
         name: String,
         module: String,
@@ -290,9 +273,6 @@ impl FunctionType {
     fn to_str(&self) -> String {
         match self {
             FunctionType::Native(ref name) => name.clone(),
-            FunctionType::NativeMethod(ref function_type, ref name) => {
-                format!("{}.{}", function_type, name)
-            }
             FunctionType::Def(ref name, ..) => name.clone(),
         }
     }
@@ -300,9 +280,6 @@ impl FunctionType {
     fn to_repr(&self) -> String {
         match self {
             FunctionType::Native(ref name) => format!("<native function {}>", name),
-            FunctionType::NativeMethod(ref function_type, ref name) => {
-                format!("<native method {}.{}>", function_type, name)
-            }
             FunctionType::Def(ref name, ref module, ..) => {
                 format!("<function {} from {}>", name, module)
             }
