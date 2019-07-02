@@ -55,7 +55,6 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-#[allow(clippy::too_many_arguments)]
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: Arc<Mutex<codemap::CodeMap>>,
     filename: &str,

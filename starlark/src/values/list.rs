@@ -39,7 +39,6 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
 }
 
 impl List {
-    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Value {
         Value::new(List {
             content: Vec::new(),

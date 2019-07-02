@@ -222,7 +222,6 @@ impl From<FunctionError> for ValueError {
 }
 
 impl Function {
-    #[allow(clippy::new_ret_no_self)]
     pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
     where
         F: Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult + 'static,
@@ -250,7 +249,6 @@ impl Function {
         })
     }
 
-    #[allow(clippy::boxed_local)]
     pub fn new_def(
         name: String,
         module: String,
