@@ -204,7 +204,7 @@ macro_rules! starlark_signatures {
             #[allow(unused_mut)]
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
-            $env.set(name, $crate::values::function::Function::new(name.to_owned(), &$name, signature)).unwrap();
+            $env.set(name, $crate::values::function::Function::new(name.to_owned(), $name, signature)).unwrap();
         }
         $(starlark_signatures!{ $env,
             $($rest)+
@@ -217,7 +217,7 @@ macro_rules! starlark_signatures {
             let mut signature = Vec::new();
             starlark_signature!(signature $($signature)*);
             $env.add_type_value(stringify!($ty), name,
-                $crate::values::function::Function::new(name.to_owned(), &$name, signature));
+                $crate::values::function::Function::new(name.to_owned(), $name, signature));
         }
         $(starlark_signatures!{ $env,
             $($rest)+

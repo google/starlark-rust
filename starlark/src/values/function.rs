@@ -135,7 +135,10 @@ pub type StarlarkFunctionPrototype =
     dyn Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult;
 
 pub struct Function {
-    function: Box<StarlarkFunctionPrototype>,
+    /// Pointer to a native function.
+    /// Note it is a function pointer, not `Box<Fn(...)>`
+    /// to avoid generic instantiation and allocation for each native function.
+    function: fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
@@ -144,6 +147,15 @@ pub struct Function {
 struct WrappedMethod {
     method: Value,
     self_obj: Value,
+}
+
+struct Def {
+    name: String,
+    signature: Vec<FunctionParameter>,
+    function_type: FunctionType,
+    stmts: AstStatement,
+    captured_env: Environment,
+    map: Arc<Mutex<CodeMap>>,
 }
 
 // TODO: move that code in some common error code list?
@@ -221,12 +233,13 @@ impl From<FunctionError> for ValueError {
 }
 
 impl Function {
-    pub fn new<F>(name: String, f: F, signature: Vec<FunctionParameter>) -> Value
-    where
-        F: Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult + 'static,
-    {
+    pub fn new(
+        name: String,
+        function: fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult,
+        signature: Vec<FunctionParameter>,
+    ) -> Value {
         Value::new(Function {
-            function: Box::new(f),
+            function,
             signature,
             function_type: FunctionType::Native(name),
         })
@@ -240,23 +253,16 @@ impl Function {
         map: Arc<Mutex<CodeMap>>,
         env: Environment,
     ) -> Value {
-        let signature_cp = signature.clone();
-        let name_for_closure = name.clone();
-        Value::new(Function {
-            function: Box::new(move |stack, type_values, v| {
-                eval_def(
-                    &name_for_closure,
-                    stack,
-                    &signature_cp,
-                    &stmts,
-                    env.clone(),
-                    type_values,
-                    v,
-                    map.clone(),
-                )
-            }),
+        // This can be implemented by delegating to `Function::new`,
+        // but having a separate type allows slight more efficient implementation
+        // and optimizations in the future.
+        Value::new(Def {
+            function_type: FunctionType::Def(name.clone(), module),
+            name,
             signature,
-            function_type: FunctionType::Def(name, module),
+            stmts,
+            captured_env: env,
+            map,
         })
     }
 
@@ -319,6 +325,101 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
+fn parse_signature(
+    signature: &[FunctionParameter],
+    function_type: &FunctionType,
+    positional: Vec<Value>,
+    named: LinkedHashMap<String, Value>,
+    args: Option<Value>,
+    kwargs: Option<Value>,
+) -> Result<Vec<FunctionArg>, ValueError> {
+    // First map arguments to a vector
+    let mut v = Vec::new();
+    // Collect args
+    let mut av = positional;
+    if let Some(x) = args {
+        match x.iter() {
+            Ok(y) => av.extend(y.iter()),
+            Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
+        }
+    };
+    let mut args_iter = av.into_iter();
+    // Collect kwargs
+    let mut kwargs_dict = named;
+    if let Some(x) = kwargs {
+        match x.iter() {
+            Ok(y) => {
+                for n in &y {
+                    if n.get_type() == "string" {
+                        let k = n.to_str();
+                        if let Ok(v) = x.at(n) {
+                            kwargs_dict.insert(k, v);
+                        } else {
+                            return Err(FunctionError::KWArgsDictIsNotMappable.into());
+                        }
+                    } else {
+                        return Err(FunctionError::ArgsValueIsNotString.into());
+                    }
+                }
+            }
+            Err(..) => return Err(FunctionError::KWArgsDictIsNotMappable.into()),
+        }
+    }
+    // Now verify signature and transform in a value vector
+    for parameter in signature {
+        match parameter {
+            FunctionParameter::Normal(ref name) => {
+                if let Some(x) = args_iter.next() {
+                    v.push(FunctionArg::Normal(x))
+                } else if let Some(ref r) = kwargs_dict.remove(name) {
+                    v.push(FunctionArg::Normal(r.clone()));
+                } else {
+                    return Err(FunctionError::NotEnoughParameter {
+                        missing: name.to_string(),
+                        function_type: function_type.clone(),
+                        signature: signature.to_owned(),
+                    }
+                    .into());
+                }
+            }
+            FunctionParameter::Optional(ref name) => {
+                if let Some(x) = args_iter.next() {
+                    v.push(FunctionArg::Optional(Some(x)))
+                } else if let Some(ref r) = kwargs_dict.remove(name) {
+                    v.push(FunctionArg::Optional(Some(r.clone())));
+                } else {
+                    v.push(FunctionArg::Optional(None));
+                }
+            }
+            FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                if let Some(x) = args_iter.next() {
+                    v.push(FunctionArg::Normal(x))
+                } else if let Some(ref r) = kwargs_dict.remove(name) {
+                    v.push(FunctionArg::Normal(r.clone()));
+                } else {
+                    v.push(FunctionArg::Normal(value.clone()));
+                }
+            }
+            FunctionParameter::ArgsArray(..) => {
+                let argv: Vec<Value> = args_iter.clone().collect();
+                v.push(FunctionArg::ArgsArray(argv));
+                // We do not use last so we keep ownership of the iterator
+                while args_iter.next().is_some() {}
+            }
+            FunctionParameter::KWArgsDict(..) => {
+                v.push(FunctionArg::KWArgsDict(mem::replace(
+                    &mut kwargs_dict,
+                    Default::default(),
+                )));
+            }
+        }
+    }
+    if args_iter.next().is_some() || !kwargs_dict.is_empty() {
+        return Err(FunctionError::ExtraParameter.into());
+    }
+    Ok(v)
+}
+
 /// Define the function type
 impl TypedValue for Function {
     type Holder = Immutable<Function>;
@@ -347,92 +448,16 @@ impl TypedValue for Function {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        // First map arguments to a vector
-        let mut v = Vec::new();
-        // Collect args
-        let mut av = positional;
-        if let Some(x) = args {
-            match x.iter() {
-                Ok(y) => av.extend(y.iter()),
-                Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
-            }
-        };
-        let mut args_iter = av.into_iter();
-        // Collect kwargs
-        let mut kwargs_dict = named;
-        if let Some(x) = kwargs {
-            match x.iter() {
-                Ok(y) => {
-                    for n in &y {
-                        if n.get_type() == "string" {
-                            let k = n.to_str();
-                            if let Ok(v) = x.at(n) {
-                                kwargs_dict.insert(k, v);
-                            } else {
-                                return Err(FunctionError::KWArgsDictIsNotMappable.into());
-                            }
-                        } else {
-                            return Err(FunctionError::ArgsValueIsNotString.into());
-                        }
-                    }
-                }
-                Err(..) => return Err(FunctionError::KWArgsDictIsNotMappable.into()),
-            }
-        }
-        // Now verify signature and transform in a value vector
-        for parameter in self.signature.iter() {
-            match parameter {
-                FunctionParameter::Normal(ref name) => {
-                    if let Some(x) = args_iter.next() {
-                        v.push(FunctionArg::Normal(x))
-                    } else if let Some(ref r) = kwargs_dict.remove(name) {
-                        v.push(FunctionArg::Normal(r.clone()));
-                    } else {
-                        return Err(FunctionError::NotEnoughParameter {
-                            missing: name.to_string(),
-                            function_type: self.function_type.clone(),
-                            signature: self.signature.clone(),
-                        }
-                        .into());
-                    }
-                }
-                FunctionParameter::Optional(ref name) => {
-                    if let Some(x) = args_iter.next() {
-                        v.push(FunctionArg::Optional(Some(x)))
-                    } else if let Some(ref r) = kwargs_dict.remove(name) {
-                        v.push(FunctionArg::Optional(Some(r.clone())));
-                    } else {
-                        v.push(FunctionArg::Optional(None));
-                    }
-                }
-                FunctionParameter::WithDefaultValue(ref name, ref value) => {
-                    if let Some(x) = args_iter.next() {
-                        v.push(FunctionArg::Normal(x))
-                    } else if let Some(ref r) = kwargs_dict.remove(name) {
-                        v.push(FunctionArg::Normal(r.clone()));
-                    } else {
-                        v.push(FunctionArg::Normal(value.clone()));
-                    }
-                }
-                FunctionParameter::ArgsArray(..) => {
-                    let argv: Vec<Value> = args_iter.clone().collect();
-                    v.push(FunctionArg::ArgsArray(argv));
-                    // We do not use last so we keep ownership of the iterator
-                    while args_iter.next().is_some() {}
-                }
-                FunctionParameter::KWArgsDict(..) => {
-                    v.push(FunctionArg::KWArgsDict(mem::replace(
-                        &mut kwargs_dict,
-                        Default::default(),
-                    )));
-                }
-            }
-        }
-        if args_iter.next().is_some() || !kwargs_dict.is_empty() {
-            return Err(FunctionError::ExtraParameter.into());
-        }
-        // Finally call the function with a new child environment
-        (*self.function)(call_stack, type_values, v)
+        let v = parse_signature(
+            &self.signature,
+            &self.function_type,
+            positional,
+            named,
+            args,
+            kwargs,
+        )?;
+
+        (self.function)(call_stack, type_values, v)
     }
 }
 
@@ -474,5 +499,54 @@ impl TypedValue for WrappedMethod {
             .collect();
         self.method
             .call(call_stack, type_values, positional, named, args, kwargs)
+    }
+}
+
+impl TypedValue for Def {
+    type Holder = Immutable<Def>;
+
+    fn values_for_descendant_check_and_freeze<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Value> + 'a> {
+        Box::new(iter::empty())
+    }
+
+    fn to_str(&self) -> String {
+        to_str(&self.function_type, &self.signature)
+    }
+    fn to_repr(&self) -> String {
+        repr(&self.function_type, &self.signature)
+    }
+
+    const TYPE: &'static str = "function";
+
+    fn call(
+        &self,
+        call_stack: &CallStack,
+        type_values: TypeValues,
+        positional: Vec<Value>,
+        named: LinkedHashMap<String, Value>,
+        args: Option<Value>,
+        kwargs: Option<Value>,
+    ) -> ValueResult {
+        let v = parse_signature(
+            &self.signature,
+            &self.function_type,
+            positional,
+            named,
+            args,
+            kwargs,
+        )?;
+
+        eval_def(
+            &self.name,
+            call_stack,
+            &self.signature,
+            &self.stmts,
+            self.captured_env.clone(),
+            type_values,
+            v,
+            self.map.clone(),
+        )
     }
 }
