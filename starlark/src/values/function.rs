@@ -282,10 +282,6 @@ impl Function {
     pub fn new_self_call(self_obj: Value, method: Value) -> Value {
         Value::new(WrappedMethod { method, self_obj })
     }
-
-    pub fn name(&self) -> String {
-        self.function_type.to_str()
-    }
 }
 
 impl FunctionType {
