@@ -27,13 +27,11 @@ pub mod dialect;
 #[doc(hidden)]
 pub mod lexer;
 
-#[allow(clippy::all)]
 mod grammar {
     include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
 }
 
 // TODO(damienmg): there doesn't seem to have a way to reactivate default
-// clippy warning / errors only for the tests...
 #[cfg(test)]
 mod grammar_tests {
     include!(concat!(

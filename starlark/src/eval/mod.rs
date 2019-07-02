@@ -975,7 +975,6 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
 
 /// A method for consumption by def funcitons
 #[doc(hidden)]
-#[allow(clippy::too_many_arguments)]
 pub fn eval_def(
     name: &str,
     call_stack: &CallStack,
@@ -1034,7 +1033,6 @@ pub fn eval_def(
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
-#[allow(clippy::too_many_arguments)]
 pub fn eval_lexer<
     T1: Iterator<Item = LexerItem>,
     T2: LexerIntoIter<T1>,

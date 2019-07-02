@@ -36,7 +36,6 @@ impl Dictionary {
         }
     }
 
-    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Value {
         Value::new(Dictionary::new_typed())
     }
