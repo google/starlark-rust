@@ -14,33 +14,38 @@
 //! Starlark call stack.
 
 use crate::values::error::ValueError;
-use crate::values::FunctionId;
+use crate::values::{FunctionId, Value};
+use codemap::{CodeMap, Pos};
 use std::cell::Cell;
 use std::fmt;
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+struct Frame(Value, Arc<Mutex<CodeMap>>, Pos);
+
+impl fmt::Debug for Frame {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Frame").field(&self.0).finish()
+    }
+}
 
 /// Starlark call stack.
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CallStack {
-    stack: Vec<(FunctionId, String)>,
+    stack: Vec<Frame>,
 }
 
 impl CallStack {
     /// Push an element to the stack
-    pub fn push(&mut self, function_id: FunctionId, call_descr: &str, file_name: &str, line: u32) {
-        self.stack.push((
-            function_id,
-            format!(
-                "call to {} at {}:{}",
-                call_descr,
-                file_name,
-                line + 1, // line 1 is 0, so add 1 for human readable.
-            ),
-        ));
+    pub fn push(&mut self, function: Value, code_map: Arc<Mutex<CodeMap>>, pos: Pos) {
+        self.stack.push(Frame(function, code_map, pos));
     }
 
     /// Test if call stack contains a function with given id.
     pub fn contains(&self, function_id: FunctionId) -> bool {
-        self.stack.iter().any(|(n, _)| n == &function_id)
+        self.stack
+            .iter()
+            .any(|&Frame(ref f, _, _)| f.function_id() == function_id)
     }
 
     /// Print call stack as multiline string
@@ -56,8 +61,15 @@ struct DisplayWithNewlineBefore<'a> {
 
 impl<'a> fmt::Display for DisplayWithNewlineBefore<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for (_fname, descr) in self.call_stack.stack.iter().rev() {
-            write!(f, "\n    {}", descr)?;
+        for Frame(function, code_map, pos) in self.call_stack.stack.iter().rev() {
+            let loc = { code_map.lock().unwrap().look_up_pos(*pos) };
+            write!(
+                f,
+                "\n    call to {} at {}:{}",
+                function.to_str(),
+                loc.file.name(),
+                loc.position.line + 1, // line 1 is 0, so add 1 for human readable.
+            )?;
         }
         Ok(())
     }
