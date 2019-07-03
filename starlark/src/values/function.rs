@@ -14,17 +14,12 @@
 
 //! Function as a TypedValue
 use super::*;
-use crate::environment::Environment;
-use crate::eval::eval_def;
 use crate::stdlib::macros::param::TryParamConvertFromValue;
-use crate::syntax::ast::AstStatement;
 use crate::values::error::RuntimeError;
 use crate::values::none::NoneType;
-use codemap::CodeMap;
 use std::convert::TryInto;
 use std::iter;
 use std::mem;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -134,7 +129,11 @@ impl From<FunctionArg> for Value {
 pub type StarlarkFunctionPrototype =
     dyn Fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult;
 
-pub struct Function {
+/// Function implementation for native (written in Rust) functions.
+///
+/// Public to be referenced in macros.
+#[doc(hidden)]
+pub struct NativeFunction {
     /// Pointer to a native function.
     /// Note it is a function pointer, not `Box<Fn(...)>`
     /// to avoid generic instantiation and allocation for each native function.
@@ -144,18 +143,9 @@ pub struct Function {
 }
 
 // Wrapper for method that have been affected the self object
-struct WrappedMethod {
+pub(crate) struct WrappedMethod {
     method: Value,
     self_obj: Value,
-}
-
-struct Def {
-    _name: String,
-    signature: Vec<FunctionParameter>,
-    function_type: FunctionType,
-    stmts: AstStatement,
-    captured_env: Environment,
-    map: Arc<Mutex<CodeMap>>,
 }
 
 // TODO: move that code in some common error code list?
@@ -232,41 +222,22 @@ impl From<FunctionError> for ValueError {
     }
 }
 
-impl Function {
+impl NativeFunction {
     pub fn new(
         name: String,
         function: fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult,
         signature: Vec<FunctionParameter>,
     ) -> Value {
-        Value::new(Function {
+        Value::new(NativeFunction {
             function,
             signature,
             function_type: FunctionType::Native(name),
         })
     }
+}
 
-    pub fn new_def(
-        name: String,
-        module: String,
-        signature: Vec<FunctionParameter>,
-        stmts: AstStatement,
-        map: Arc<Mutex<CodeMap>>,
-        env: Environment,
-    ) -> Value {
-        // This can be implemented by delegating to `Function::new`,
-        // but having a separate type allows slight more efficient implementation
-        // and optimizations in the future.
-        Value::new(Def {
-            function_type: FunctionType::Def(name.clone(), module),
-            _name: name,
-            signature,
-            stmts,
-            captured_env: env,
-            map,
-        })
-    }
-
-    pub fn new_self_call(self_obj: Value, method: Value) -> Value {
+impl WrappedMethod {
+    pub fn new(self_obj: Value, method: Value) -> Value {
         Value::new(WrappedMethod { method, self_obj })
     }
 }
@@ -289,7 +260,7 @@ impl FunctionType {
     }
 }
 
-fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
+pub(crate) fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
@@ -307,7 +278,7 @@ fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String
     format!("{}({})", function_type.to_repr(), v.join(", "))
 }
 
-fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
+pub(crate) fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
@@ -325,7 +296,7 @@ fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> Stri
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
-fn parse_signature(
+pub(crate) fn parse_signature(
     signature: &[FunctionParameter],
     function_type: &FunctionType,
     positional: Vec<Value>,
@@ -421,8 +392,8 @@ fn parse_signature(
 }
 
 /// Define the function type
-impl TypedValue for Function {
-    type Holder = Immutable<Function>;
+impl TypedValue for NativeFunction {
+    type Holder = Immutable<NativeFunction>;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,
@@ -499,53 +470,5 @@ impl TypedValue for WrappedMethod {
             .collect();
         self.method
             .call(call_stack, type_values, positional, named, args, kwargs)
-    }
-}
-
-impl TypedValue for Def {
-    type Holder = Immutable<Def>;
-
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
-    }
-
-    fn to_str(&self) -> String {
-        to_str(&self.function_type, &self.signature)
-    }
-    fn to_repr(&self) -> String {
-        repr(&self.function_type, &self.signature)
-    }
-
-    const TYPE: &'static str = "function";
-
-    fn call(
-        &self,
-        call_stack: &CallStack,
-        type_values: TypeValues,
-        positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
-        args: Option<Value>,
-        kwargs: Option<Value>,
-    ) -> ValueResult {
-        let v = parse_signature(
-            &self.signature,
-            &self.function_type,
-            positional,
-            named,
-            args,
-            kwargs,
-        )?;
-
-        eval_def(
-            call_stack,
-            &self.signature,
-            &self.stmts,
-            self.captured_env.clone(),
-            type_values,
-            v,
-            self.map.clone(),
-        )
     }
 }

@@ -25,6 +25,7 @@ use crate::environment::{Environment, TypeValues};
 use crate::eval::noload::eval;
 use crate::syntax::dialect::Dialect;
 use crate::values::dict::Dictionary;
+use crate::values::function::WrappedMethod;
 use crate::values::none::NoneType;
 use crate::values::*;
 
@@ -356,7 +357,7 @@ starlark_module! {global_functions =>
             x => match env.get_type_value(&a, &attr) {
                 Some(v) => if v.get_type() == "function" {
                     // Insert self so the method see the object it is acting on
-                    Ok(function::Function::new_self_call(a.clone(), v))
+                    Ok(WrappedMethod::new(a.clone(), v))
                 } else {
                     Ok(v)
                 }
