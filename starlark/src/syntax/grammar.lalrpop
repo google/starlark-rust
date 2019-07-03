@@ -101,8 +101,8 @@ ElseStmt: AstStatement = {
 };
 
 ForStmt: AstStatement = ASTS<ForStmt_>;
-ForStmt_: Statement = <c:ForInClause> ":" <s:Suite>
-    => Statement::For(c, s);
+ForStmt_: Statement = "for" <e:ExprList> "in" <c:OrTest> ":" <s:Suite>
+    => Statement::For(e, c, s);
 
 SimpleStmt<S>: AstStatement =
     <l:@L> <e:S> <v:(";" <S>)*> ";"? <r:@R> "\n" => {

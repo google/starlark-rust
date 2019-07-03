@@ -243,7 +243,7 @@ pub enum Statement {
     Statements(Vec<AstStatement>),
     If(AstExpr, AstStatement),
     IfElse(AstExpr, AstStatement, AstStatement),
-    For(AstClause, AstStatement),
+    For(AstExpr, AstExpr, AstStatement),
     Def(AstString, Vec<AstParameter>, AstStatement),
     Load(AstString, Vec<(AstString, AstString)>),
 }
@@ -570,8 +570,8 @@ impl Statement {
                 writeln!(f, "{}else:", tab)?;
                 suite2.node.fmt_with_tab(f, tab + "  ")
             }
-            Statement::For(ref clause, ref suite) => {
-                writeln!(f, "{}for {}:", tab, clause.node)?;
+            Statement::For(ref bind, ref coll, ref suite) => {
+                writeln!(f, "{}for {} in {}:", tab, bind.node, coll.node)?;
                 suite.node.fmt_with_tab(f, tab + "  ")
             }
             Statement::Def(ref name, ref params, ref suite) => {
