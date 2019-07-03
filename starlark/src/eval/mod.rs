@@ -974,8 +974,7 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
 }
 
 /// A method for consumption by def funcitons
-#[doc(hidden)]
-pub fn eval_def(
+pub(crate) fn eval_def(
     name: &str,
     call_stack: &CallStack,
     signature: &[FunctionParameter],

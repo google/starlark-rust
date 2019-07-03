@@ -491,7 +491,6 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
 
 /// `ValueHolder` as virtual functions to put into `Value`.
 /// Should not be used or implemented directly.
-#[doc(hidden)]
 trait ValueHolderDyn {
     /// This function panics is value is borrowed,
     /// `None` is returned for immutable types,
