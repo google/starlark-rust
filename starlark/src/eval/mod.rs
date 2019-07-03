@@ -21,6 +21,7 @@
 //! The BUILD dialect does not allow `def` statements.
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
+use crate::eval::def::Def;
 use crate::syntax::ast::*;
 use crate::syntax::ast::{AstExpr, AstStatement};
 use crate::syntax::dialect::Dialect;
@@ -29,7 +30,7 @@ use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
-use crate::values::function::{FunctionArg, FunctionParameter};
+use crate::values::function::{FunctionParameter, WrappedMethod};
 use crate::values::none::NoneType;
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
@@ -466,7 +467,7 @@ fn eval_dot(
     if let Some(v) = context.type_values.get_type_value(&left, &s.node) {
         if v.get_type() == "function" {
             // Insert self so the method see the object it is acting on
-            Ok(function::Function::new_self_call(left.clone(), v))
+            Ok(WrappedMethod::new(left, v))
         } else {
             Ok(v)
         }
@@ -584,7 +585,7 @@ fn eval_transformed(transformed: &TransformedExpr, context: &mut EvaluationConte
             if let Some(v) = context.type_values.get_type_value(left, &s) {
                 if v.get_type() == "function" {
                     // Insert self so the method see the object it is acting on
-                    Ok(function::Function::new_self_call(left.clone(), v))
+                    Ok(WrappedMethod::new(left.clone(), v))
                 } else {
                     Ok(v)
                 }
@@ -909,7 +910,7 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
                     Parameter::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
                 })
             }
-            let f = function::Function::new_def(
+            let f = Def::new(
                 name.node.clone(),
                 context.env.assert_module_env().name(),
                 p,
@@ -941,50 +942,6 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             }
             Ok(r)
         }
-    }
-}
-
-/// A method for consumption by def funcitons
-pub(crate) fn eval_def(
-    call_stack: &CallStack,
-    signature: &[FunctionParameter],
-    stmts: &AstStatement,
-    captured_env: Environment,
-    type_values: TypeValues,
-    args: Vec<FunctionArg>,
-    map: Arc<Mutex<CodeMap>>,
-) -> ValueResult {
-    // argument binding
-    let mut ctx = EvaluationContext {
-        call_stack: call_stack.to_owned(),
-        env: Rc::new(EvaluationContextEnvironment::Function(
-            captured_env,
-            Default::default(),
-        )),
-        type_values,
-        map: map.clone(),
-    };
-
-    let mut it2 = args.iter();
-    for s in signature.iter() {
-        match s {
-            FunctionParameter::Normal(ref v)
-            | FunctionParameter::WithDefaultValue(ref v, ..)
-            | FunctionParameter::ArgsArray(ref v)
-            | FunctionParameter::KWArgsDict(ref v) => {
-                if let Err(x) = ctx.env.set(v, it2.next().unwrap().clone().into()) {
-                    return Err(x.into());
-                }
-            }
-            FunctionParameter::Optional(..) => {
-                unreachable!("optional parameters only exist in native functions")
-            }
-        }
-    }
-    match eval_stmt(stmts, &mut ctx) {
-        Err(EvalException::Return(_s, ret)) => Ok(ret),
-        Err(x) => Err(ValueError::DiagnosedError(x.into())),
-        Ok(..) => Ok(Value::new(NoneType::None)),
     }
 }
 
@@ -1090,3 +1047,5 @@ pub mod testutil;
 
 #[cfg(test)]
 mod tests;
+
+mod def;
