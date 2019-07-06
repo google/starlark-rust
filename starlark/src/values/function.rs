@@ -150,7 +150,7 @@ struct WrappedMethod {
 }
 
 struct Def {
-    name: String,
+    _name: String,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
     stmts: AstStatement,
@@ -258,7 +258,7 @@ impl Function {
         // and optimizations in the future.
         Value::new(Def {
             function_type: FunctionType::Def(name.clone(), module),
-            name,
+            _name: name,
             signature,
             stmts,
             captured_env: env,
@@ -539,7 +539,6 @@ impl TypedValue for Def {
         )?;
 
         eval_def(
-            &self.name,
             call_stack,
             &self.signature,
             &self.stmts,
