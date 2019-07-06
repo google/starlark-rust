@@ -207,10 +207,9 @@ pub(crate) enum EvaluationContextEnvironment {
     /// Module-level
     Module(Environment, Rc<dyn FileLoader>),
     /// Function-level
-    Function(String, Environment, RefCell<HashMap<String, Value>>),
+    Function(Environment, RefCell<HashMap<String, Value>>),
     /// Scope inside function, e. g. list comprenension
     Nested(
-        String,
         Rc<EvaluationContextEnvironment>,
         RefCell<HashMap<String, Value>>,
     ),
@@ -220,8 +219,8 @@ impl EvaluationContextEnvironment {
     fn env(&self) -> &Environment {
         match self {
             EvaluationContextEnvironment::Module(ref env, ..)
-            | EvaluationContextEnvironment::Function(_, ref env, ..) => env,
-            EvaluationContextEnvironment::Nested(_, ref parent, _) => parent.env(),
+            | EvaluationContextEnvironment::Function(ref env, ..) => env,
+            EvaluationContextEnvironment::Nested(ref parent, _) => parent.env(),
         }
     }
 
@@ -242,13 +241,13 @@ impl EvaluationContextEnvironment {
     fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.get(name),
-            EvaluationContextEnvironment::Function(_, env, locals) => {
+            EvaluationContextEnvironment::Function(env, locals) => {
                 match locals.borrow().get(name).cloned() {
                     Some(v) => Ok(v),
                     None => env.get(name),
                 }
             }
-            EvaluationContextEnvironment::Nested(_, parent, locals) => {
+            EvaluationContextEnvironment::Nested(parent, locals) => {
                 match locals.borrow().get(name).cloned() {
                     Some(v) => Ok(v),
                     None => parent.get(name),
@@ -260,20 +259,12 @@ impl EvaluationContextEnvironment {
     fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.set(name, value),
-            EvaluationContextEnvironment::Function(_, _, locals)
-            | EvaluationContextEnvironment::Nested(_, _, locals) => {
+            EvaluationContextEnvironment::Function(_, locals)
+            | EvaluationContextEnvironment::Nested(_, locals) => {
                 // TODO: check that local slot was previously allocated
                 locals.borrow_mut().insert(name.to_owned(), value);
                 Ok(())
             }
-        }
-    }
-
-    fn name(&self) -> String {
-        match self {
-            EvaluationContextEnvironment::Module(env, ..) => env.name(),
-            EvaluationContextEnvironment::Function(name, ..)
-            | EvaluationContextEnvironment::Nested(name, ..) => name.clone(),
         }
     }
 
@@ -314,10 +305,9 @@ impl EvaluationContext {
         }
     }
 
-    fn child(&self, name: &str) -> EvaluationContext {
+    fn child(&self) -> EvaluationContext {
         EvaluationContext {
             env: Rc::new(EvaluationContextEnvironment::Nested(
-                name.to_owned(),
                 self.env.clone(),
                 Default::default(),
             )),
@@ -496,7 +486,7 @@ fn eval_dict_comprehension(
         span: k.span.merge(v.span),
         node: Expr::Tuple(vec![k.clone(), v.clone()]),
     });
-    let mut context = context.child("dict_comprehension");
+    let mut context = context.child();
     for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
         let k = t(e.at(Value::from(0)), &tuple)?;
         let v = t(e.at(Value::from(1)), &tuple)?;
@@ -511,7 +501,7 @@ fn eval_one_dimensional_comprehension(
     context: &EvaluationContext,
 ) -> Result<Vec<Value>, EvalException> {
     let mut r = Vec::new();
-    let mut context = context.child("one_dimensional_comprehension");
+    let mut context = context.child();
     for v in eval_comprehension_clause(&mut context, e, clauses)? {
         r.push(v.clone());
     }
@@ -921,7 +911,7 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             }
             let f = function::Function::new_def(
                 name.node.clone(),
-                context.env.name(),
+                context.env.assert_module_env().name(),
                 p,
                 stmts.clone(),
                 context.map.clone(),
@@ -956,7 +946,6 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
 
 /// A method for consumption by def funcitons
 pub(crate) fn eval_def(
-    name: &str,
     call_stack: &CallStack,
     signature: &[FunctionParameter],
     stmts: &AstStatement,
@@ -969,7 +958,6 @@ pub(crate) fn eval_def(
     let mut ctx = EvaluationContext {
         call_stack: call_stack.to_owned(),
         env: Rc::new(EvaluationContextEnvironment::Function(
-            format!("{}#{}", captured_env.name(), name),
             captured_env,
             Default::default(),
         )),
