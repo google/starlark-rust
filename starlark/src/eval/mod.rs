@@ -205,7 +205,7 @@ pub trait FileLoader: 'static {
 /// Stacked environment for [`EvaluationContext`].
 pub(crate) enum EvaluationContextEnvironment {
     /// Module-level
-    Module(Environment),
+    Module(Environment, Rc<dyn FileLoader>),
     /// Function-level
     Function(String, Environment, RefCell<HashMap<String, Value>>),
     /// Scope inside function, e. g. list comprenension
@@ -219,7 +219,7 @@ pub(crate) enum EvaluationContextEnvironment {
 impl EvaluationContextEnvironment {
     fn env(&self) -> &Environment {
         match self {
-            EvaluationContextEnvironment::Module(ref env)
+            EvaluationContextEnvironment::Module(ref env, ..)
             | EvaluationContextEnvironment::Function(_, ref env, ..) => env,
             EvaluationContextEnvironment::Nested(_, ref parent, _) => parent.env(),
         }
@@ -229,9 +229,19 @@ impl EvaluationContextEnvironment {
         self.env().make_set(values)
     }
 
+    fn loader(&self) -> Rc<dyn FileLoader> {
+        match self {
+            EvaluationContextEnvironment::Module(_, loader) => loader.clone(),
+            _ => {
+                // If we reach here, this is a bug.
+                unreachable!()
+            }
+        }
+    }
+
     fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         match self {
-            EvaluationContextEnvironment::Module(env) => env.get(name),
+            EvaluationContextEnvironment::Module(env, ..) => env.get(name),
             EvaluationContextEnvironment::Function(_, env, locals) => {
                 match locals.borrow().get(name).cloned() {
                     Some(v) => Ok(v),
@@ -249,7 +259,7 @@ impl EvaluationContextEnvironment {
 
     fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
         match self {
-            EvaluationContextEnvironment::Module(env) => env.set(name, value),
+            EvaluationContextEnvironment::Module(env, ..) => env.set(name, value),
             EvaluationContextEnvironment::Function(_, _, locals)
             | EvaluationContextEnvironment::Nested(_, _, locals) => {
                 // TODO: check that local slot was previously allocated
@@ -261,7 +271,7 @@ impl EvaluationContextEnvironment {
 
     fn name(&self) -> String {
         match self {
-            EvaluationContextEnvironment::Module(env) => env.name(),
+            EvaluationContextEnvironment::Module(env, ..) => env.name(),
             EvaluationContextEnvironment::Function(name, ..)
             | EvaluationContextEnvironment::Nested(name, ..) => name.clone(),
         }
@@ -269,7 +279,7 @@ impl EvaluationContextEnvironment {
 
     fn assert_module_env(&self) -> &Environment {
         match self {
-            EvaluationContextEnvironment::Module(env) => env,
+            EvaluationContextEnvironment::Module(env, ..) => env,
             EvaluationContextEnvironment::Function(..)
             | EvaluationContextEnvironment::Nested(..) => {
                 unreachable!("this function is meant to be called only on module level")
@@ -285,7 +295,6 @@ pub struct EvaluationContext {
     env: Rc<EvaluationContextEnvironment>,
     // Globals used to resolve type values, provided by the caller.
     type_values: TypeValues,
-    loader: Rc<dyn FileLoader>,
     call_stack: CallStack,
     map: Arc<Mutex<CodeMap>>,
 }
@@ -299,9 +308,8 @@ impl EvaluationContext {
     ) -> Self {
         EvaluationContext {
             call_stack: CallStack::default(),
-            env: Rc::new(EvaluationContextEnvironment::Module(env)),
+            env: Rc::new(EvaluationContextEnvironment::Module(env, Rc::new(loader))),
             type_values,
-            loader: Rc::new(loader),
             map,
         }
     }
@@ -315,22 +323,8 @@ impl EvaluationContext {
             )),
             type_values: self.type_values.clone(),
             call_stack: self.call_stack.clone(),
-            loader: Rc::new(UnreachableFileLoader),
             map: self.map.clone(),
         }
-    }
-}
-
-/// File loader used in child environments (function eval or list or dict comprehension).
-///
-/// `load` statement is top level only, so child environments should not use
-/// this file loader.
-struct UnreachableFileLoader;
-
-impl FileLoader for UnreachableFileLoader {
-    fn load(&self, _path: &str) -> Result<Environment, EvalException> {
-        // If we reach here, this is a bug.
-        unreachable!();
     }
 }
 
@@ -950,7 +944,7 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             Ok(f)
         }
         Statement::Load(ref name, ref v) => {
-            let loadenv = context.loader.load(name)?;
+            let loadenv = context.env.loader().load(name)?;
             for &(ref new_name, ref orig_name) in v.iter() {
                 t(
                     context.env.assert_module_env().import_symbol(
@@ -994,7 +988,6 @@ pub fn eval_def(
             Default::default(),
         )),
         type_values,
-        loader: Rc::new(UnreachableFileLoader),
         map: map.clone(),
     };
 
