@@ -894,17 +894,11 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
                 eval_stmt(st2, context)
             }
         }
-        Statement::For(
-            AstClause {
-                ref span,
-                node: Clause::For(ref e1, ref e2),
-            },
-            ref st,
-        ) => {
+        Statement::For(ref e1, ref e2, ref st) => {
             let mut iterable = eval_expr(e2, context)?;
             let mut result = Ok(Value::new(NoneType::None));
             iterable.freeze_for_iteration();
-            for v in &t(iterable.iter(), span)? {
+            for v in &t(iterable.iter(), &e2.span)? {
                 set_expr(e1, context, v)?;
                 match eval_stmt(st, context) {
                     Err(EvalException::Break(..)) => break,
@@ -919,13 +913,6 @@ fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult
             iterable.unfreeze_for_iteration();
             result
         }
-        Statement::For(
-            AstClause {
-                span: ref _s,
-                ref node,
-            },
-            ..
-        ) => panic!("The parser returned an invalid for clause: {:?}", node),
         Statement::Def(ref name, ref params, ref stmts) => {
             let mut p = Vec::new();
             for x in params.iter() {
