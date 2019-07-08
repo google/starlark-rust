@@ -26,8 +26,7 @@ pub struct Tuple {
     content: Vec<Value>,
 }
 
-#[doc(hidden)]
-pub fn slice_vector<'a, I: Iterator<Item = &'a Value>>(
+pub(crate) fn slice_vector<'a, I: Iterator<Item = &'a Value>>(
     start: i64,
     stop: i64,
     stride: i64,
