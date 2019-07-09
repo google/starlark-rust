@@ -1,0 +1,5 @@
+# `break` or `continue` cannot be used outside of loop
+# even if code is not executed (static error)
+def zzz():
+    return
+    break   ###  break cannot be used outside of loop

@@ -15,7 +15,9 @@
 //! AST for parsed starlark files.
 
 use super::lexer;
+use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
+use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use lalrpop_util;
 use std::collections::HashSet;
 use std::fmt;
@@ -37,6 +39,18 @@ pub type AstClause = Spanned<Clause>;
 pub type AstInt = Spanned<i64>;
 #[doc(hidden)]
 pub type AstStatement = Box<Spanned<Statement>>;
+
+// Critical Semantic
+const POSITIONAL_ARGUMENT_AFTER_NON_POSITIONAL_ERROR_CODE: &str = "CS00";
+const NAMED_ARGUMENT_AFTER_KWARGS_DICT_ERROR_CODE: &str = "CS01";
+const ARGS_ARRAY_AFTER_ANOTHER_ARGS_OR_KWARGS_ERROR_CODE: &str = "CS02";
+const MULTIPLE_KWARGS_DICT_IN_ARGS_ERROR_CODE: &str = "CS03";
+const POSITIONAL_PARAMETER_AFTER_NON_POSITIONAL_ERROR_CODE: &str = "CS04";
+const DEFAULT_PARAM_AFTER_ARGS_OR_KWARGS_ERROR_CODE: &str = "CS05";
+const ARGS_AFTER_ARGS_OR_KWARGS_ERROR_CODE: &str = "CS06";
+const MULTIPLE_KWARGS_DICTS_IN_PARAMS_ERROR_CODE: &str = "CS07";
+const DUPLICATED_PARAM_NAME_ERROR_CODE: &str = "CS08";
+const BREAK_OR_CONTINUE_OUTSIDE_OF_LOOP_ERROR_CODE: &str = "CS09";
 
 #[doc(hidden)]
 pub trait ToAst<T> {
@@ -131,7 +145,7 @@ impl Expr {
                         return Err(lalrpop_util::ParseError::User {
                             error: lexer::LexerError::WrappedError {
                                 span: arg.span,
-                                code: "CS00", // Critical Semantic 00
+                                code: POSITIONAL_ARGUMENT_AFTER_NON_POSITIONAL_ERROR_CODE,
                                 label: "positional argument after non positional",
                             },
                         });
@@ -144,7 +158,7 @@ impl Expr {
                         return Err(lalrpop_util::ParseError::User {
                             error: lexer::LexerError::WrappedError {
                                 span: arg.span,
-                                code: "CS01", // Critical Semantic 01
+                                code: NAMED_ARGUMENT_AFTER_KWARGS_DICT_ERROR_CODE,
                                 label: "named argument after kwargs dictionary",
                             },
                         });
@@ -160,7 +174,7 @@ impl Expr {
                         return Err(lalrpop_util::ParseError::User {
                             error: lexer::LexerError::WrappedError {
                                 span: arg.span,
-                                code: "CS02", // Critical Semantic 02
+                                code: ARGS_ARRAY_AFTER_ANOTHER_ARGS_OR_KWARGS_ERROR_CODE,
                                 label: "Args array after another args or kwargs",
                             },
                         });
@@ -174,7 +188,7 @@ impl Expr {
                         return Err(lalrpop_util::ParseError::User {
                             error: lexer::LexerError::WrappedError {
                                 span: arg.span,
-                                code: "CS03", // Critical Semantic 03
+                                code: MULTIPLE_KWARGS_DICT_IN_ARGS_ERROR_CODE,
                                 label: "Multiple kwargs dictionary in arguments",
                             },
                         });
@@ -255,7 +269,7 @@ macro_rules! test_param_name {
             return Err(lalrpop_util::ParseError::User {
                 error: lexer::LexerError::WrappedError {
                     span: $arg.span,
-                    code: "CS08", // Critical Semantic 08
+                    code: DUPLICATED_PARAM_NAME_ERROR_CODE,
                     label: "duplicated parameter name",
                 },
             });
@@ -280,7 +294,7 @@ impl Statement {
                             return Err(lalrpop_util::ParseError::User {
                                 error: lexer::LexerError::WrappedError {
                                     span: arg.span,
-                                    code: "CS04", // Critical Semantic 04
+                                    code: POSITIONAL_PARAMETER_AFTER_NON_POSITIONAL_ERROR_CODE,
                                     label: "positional parameter after non positional",
                                 },
                             });
@@ -292,7 +306,7 @@ impl Statement {
                             return Err(lalrpop_util::ParseError::User {
                                 error: lexer::LexerError::WrappedError {
                                     span: arg.span,
-                                    code: "CS05", // Critical Semantic 05
+                                    code: DEFAULT_PARAM_AFTER_ARGS_OR_KWARGS_ERROR_CODE,
                                     label:
                                         "Default parameter after args array or kwargs dictionary",
                                 },
@@ -307,7 +321,7 @@ impl Statement {
                             return Err(lalrpop_util::ParseError::User {
                                 error: lexer::LexerError::WrappedError {
                                     span: arg.span,
-                                    code: "CS06", // Critical Semantic 06
+                                    code: ARGS_AFTER_ARGS_OR_KWARGS_ERROR_CODE,
                                     label: "Args parameter after another args or kwargs parameter",
                                 },
                             });
@@ -321,7 +335,7 @@ impl Statement {
                             return Err(lalrpop_util::ParseError::User {
                                 error: lexer::LexerError::WrappedError {
                                     span: arg.span,
-                                    code: "CS07", // Critical Semantic 07
+                                    code: MULTIPLE_KWARGS_DICTS_IN_PARAMS_ERROR_CODE,
                                     label: "Multiple kwargs dictionary in parameters",
                                 },
                             });
@@ -334,6 +348,60 @@ impl Statement {
             }
         }
         Ok(Statement::Def(name, parameters, stmts))
+    }
+
+    /// Validate `break` and `continue` is only used inside loops
+    fn validate_break_continue(stmt: &AstStatement) -> Result<(), Diagnostic> {
+        match stmt.node {
+            Statement::Break | Statement::Continue => {
+                let kw = if let Statement::Break = stmt.node {
+                    "break"
+                } else {
+                    "continue"
+                };
+                Err(Diagnostic {
+                    level: Level::Error,
+                    message: format!("{} cannot be used outside of loop", kw),
+                    code: Some(BREAK_OR_CONTINUE_OUTSIDE_OF_LOOP_ERROR_CODE.to_owned()),
+                    spans: vec![SpanLabel {
+                        span: stmt.span,
+                        label: None,
+                        style: SpanStyle::Primary,
+                    }],
+                })
+            }
+            Statement::Def(.., ref stmt) => Statement::validate_break_continue(stmt),
+            Statement::If(.., ref then_block) => Statement::validate_break_continue(then_block),
+            Statement::IfElse(.., ref then_block, ref else_block) => {
+                Statement::validate_break_continue(then_block)?;
+                Statement::validate_break_continue(else_block)?;
+                Ok(())
+            }
+            Statement::Statements(ref stmts) => {
+                for stmt in stmts {
+                    Statement::validate_break_continue(stmt)?;
+                }
+                Ok(())
+            }
+            Statement::For(..) => {
+                // No need to check loop body, because `break` and `continue`
+                // are valid anywhere in loop body.
+                Ok(())
+            }
+            Statement::Return(..)
+            | Statement::Expression(..)
+            | Statement::Pass
+            | Statement::Assign(..)
+            | Statement::Load(..) => {
+                // These statements do not contain nested statements
+                Ok(())
+            }
+        }
+    }
+
+    pub(crate) fn validate_mod(stmt: &AstStatement, _dialect: Dialect) -> Result<(), Diagnostic> {
+        Statement::validate_break_continue(stmt)?;
+        Ok(())
     }
 }
 
