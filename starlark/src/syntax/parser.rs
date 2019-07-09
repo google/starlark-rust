@@ -24,6 +24,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
 
+use crate::syntax::ast::Statement;
 use lalrpop_util as lu;
 
 // TODO: move that code in some common error code list?
@@ -184,7 +185,10 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             Dialect::Bzl => StarlarkParser::new().parse(content, filespan, lexer),
         }
     } {
-        Result::Ok(v) => Result::Ok(v),
+        Result::Ok(v) => {
+            Statement::validate_mod(&v, dialect)?;
+            Result::Ok(v)
+        }
         Result::Err(p) => Result::Err(p.to_diagnostic(filespan)),
     }
 }
