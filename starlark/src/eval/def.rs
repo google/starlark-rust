@@ -19,12 +19,13 @@ use crate::eval::call_stack::CallStack;
 use crate::eval::{eval_stmt, EvalException, EvaluationContext, EvaluationContextEnvironment};
 use crate::syntax::ast::{AstExpr, AstStatement, Expr, Statement};
 use crate::values::error::ValueError;
-use crate::values::function::{FunctionArg, FunctionParameter, FunctionType};
+use crate::values::function::{FunctionParameter, FunctionType};
 use crate::values::none::NoneType;
 use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
 use codemap::CodeMap;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashSet;
+use std::convert::TryInto;
 use std::iter;
 use std::sync::{Arc, Mutex};
 
@@ -118,47 +119,6 @@ impl Def {
             _ => {}
         }
     }
-
-    fn eval(
-        &self,
-        call_stack: &CallStack,
-        type_values: TypeValues,
-        args: Vec<FunctionArg>,
-    ) -> ValueResult {
-        // argument binding
-        let mut ctx = EvaluationContext {
-            call_stack: call_stack.to_owned(),
-            env: EvaluationContextEnvironment::Function(
-                self.captured_env.clone(),
-                self.local_names.clone(),
-                Default::default(),
-            ),
-            type_values,
-            map: self.map.clone(),
-        };
-
-        let mut it2 = args.iter();
-        for s in &self.signature {
-            match s {
-                FunctionParameter::Normal(ref v)
-                | FunctionParameter::WithDefaultValue(ref v, ..)
-                | FunctionParameter::ArgsArray(ref v)
-                | FunctionParameter::KWArgsDict(ref v) => {
-                    if let Err(x) = ctx.env.set(v, it2.next().unwrap().clone().into()) {
-                        return Err(x.into());
-                    }
-                }
-                FunctionParameter::Optional(..) => {
-                    unreachable!("optional parameters only exist in native functions")
-                }
-            }
-        }
-        match eval_stmt(&self.stmts, &mut ctx) {
-            Err(EvalException::Return(_s, ret)) => Ok(ret),
-            Err(x) => Err(ValueError::DiagnosedError(x.into())),
-            Ok(..) => Ok(Value::new(NoneType::None)),
-        }
-    }
 }
 
 impl TypedValue for Def {
@@ -189,7 +149,19 @@ impl TypedValue for Def {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        let v = function::parse_signature(
+        // argument binding
+        let mut ctx = EvaluationContext {
+            call_stack: call_stack.to_owned(),
+            env: EvaluationContextEnvironment::Function(
+                self.captured_env.clone(),
+                self.local_names.clone(),
+                Default::default(),
+            ),
+            type_values,
+            map: self.map.clone(),
+        };
+
+        let mut parser = function::ParameterParser::new(
             &self.signature,
             &self.function_type,
             positional,
@@ -198,6 +170,31 @@ impl TypedValue for Def {
             kwargs,
         )?;
 
-        self.eval(call_stack, type_values, v)
+        for s in &self.signature {
+            let (name, v) = match s {
+                FunctionParameter::Normal(ref name) => (name, parser.next_normal(name)?),
+                FunctionParameter::WithDefaultValue(ref name, ref default_value) => {
+                    (name, parser.next_with_default_value(name, default_value))
+                }
+                FunctionParameter::ArgsArray(ref name) => (name, parser.next_args_array().into()),
+                FunctionParameter::KWArgsDict(ref name) => {
+                    (name, parser.next_kwargs_dict().try_into().unwrap())
+                }
+                FunctionParameter::Optional(..) => {
+                    unreachable!("optional parameters only exist in native functions")
+                }
+            };
+            if let Err(x) = ctx.env.set(name, v) {
+                return Err(x.into());
+            }
+        }
+
+        parser.check_no_more_args()?;
+
+        match eval_stmt(&self.stmts, &mut ctx) {
+            Err(EvalException::Return(_s, ret)) => Ok(ret),
+            Err(x) => Err(ValueError::DiagnosedError(x.into())),
+            Ok(..) => Ok(Value::new(NoneType::None)),
+        }
     }
 }

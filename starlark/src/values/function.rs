@@ -20,6 +20,7 @@ use crate::values::none::NoneType;
 use std::convert::TryInto;
 use std::iter;
 use std::mem;
+use std::vec;
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -296,99 +297,105 @@ pub(crate) fn to_str(function_type: &FunctionType, signature: &[FunctionParamete
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
-pub(crate) fn parse_signature(
-    signature: &[FunctionParameter],
-    function_type: &FunctionType,
-    positional: Vec<Value>,
-    named: LinkedHashMap<String, Value>,
-    args: Option<Value>,
-    kwargs: Option<Value>,
-) -> Result<Vec<FunctionArg>, ValueError> {
-    // First map arguments to a vector
-    let mut v = Vec::new();
-    // Collect args
-    let mut av = positional;
-    if let Some(x) = args {
-        match x.iter() {
-            Ok(y) => av.extend(y.iter()),
-            Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
-        }
-    };
-    let mut args_iter = av.into_iter();
-    // Collect kwargs
-    let mut kwargs_dict = named;
-    if let Some(x) = kwargs {
-        match x.iter() {
-            Ok(y) => {
-                for n in &y {
-                    if n.get_type() == "string" {
-                        let k = n.to_str();
-                        if let Ok(v) = x.at(n) {
-                            kwargs_dict.insert(k, v);
+pub(crate) struct ParameterParser<'a> {
+    signature: &'a [FunctionParameter],
+    function_type: &'a FunctionType,
+    positional: vec::IntoIter<Value>,
+    kwargs: LinkedHashMap<String, Value>,
+}
+
+impl<'a> ParameterParser<'a> {
+    pub fn new(
+        signature: &'a [FunctionParameter],
+        function_type: &'a FunctionType,
+        positional: Vec<Value>,
+        named: LinkedHashMap<String, Value>,
+        args: Option<Value>,
+        kwargs_arg: Option<Value>,
+    ) -> Result<ParameterParser<'a>, ValueError> {
+        // Collect args
+        let mut av = positional;
+        if let Some(x) = args {
+            match x.iter() {
+                Ok(y) => av.extend(y.iter()),
+                Err(..) => return Err(FunctionError::ArgsArrayIsNotIterable.into()),
+            }
+        };
+        let positional = av.into_iter();
+        // Collect kwargs
+        let mut kwargs = named;
+        if let Some(x) = kwargs_arg {
+            match x.iter() {
+                Ok(y) => {
+                    for n in &y {
+                        if n.get_type() == "string" {
+                            let k = n.to_str();
+                            if let Ok(v) = x.at(n) {
+                                kwargs.insert(k, v);
+                            } else {
+                                return Err(FunctionError::KWArgsDictIsNotMappable.into());
+                            }
                         } else {
-                            return Err(FunctionError::KWArgsDictIsNotMappable.into());
+                            return Err(FunctionError::ArgsValueIsNotString.into());
                         }
-                    } else {
-                        return Err(FunctionError::ArgsValueIsNotString.into());
                     }
                 }
-            }
-            Err(..) => return Err(FunctionError::KWArgsDictIsNotMappable.into()),
-        }
-    }
-    // Now verify signature and transform in a value vector
-    for parameter in signature {
-        match parameter {
-            FunctionParameter::Normal(ref name) => {
-                if let Some(x) = args_iter.next() {
-                    v.push(FunctionArg::Normal(x))
-                } else if let Some(ref r) = kwargs_dict.remove(name) {
-                    v.push(FunctionArg::Normal(r.clone()));
-                } else {
-                    return Err(FunctionError::NotEnoughParameter {
-                        missing: name.to_string(),
-                        function_type: function_type.clone(),
-                        signature: signature.to_owned(),
-                    }
-                    .into());
-                }
-            }
-            FunctionParameter::Optional(ref name) => {
-                if let Some(x) = args_iter.next() {
-                    v.push(FunctionArg::Optional(Some(x)))
-                } else if let Some(ref r) = kwargs_dict.remove(name) {
-                    v.push(FunctionArg::Optional(Some(r.clone())));
-                } else {
-                    v.push(FunctionArg::Optional(None));
-                }
-            }
-            FunctionParameter::WithDefaultValue(ref name, ref value) => {
-                if let Some(x) = args_iter.next() {
-                    v.push(FunctionArg::Normal(x))
-                } else if let Some(ref r) = kwargs_dict.remove(name) {
-                    v.push(FunctionArg::Normal(r.clone()));
-                } else {
-                    v.push(FunctionArg::Normal(value.clone()));
-                }
-            }
-            FunctionParameter::ArgsArray(..) => {
-                let argv: Vec<Value> = args_iter.clone().collect();
-                v.push(FunctionArg::ArgsArray(argv));
-                // We do not use last so we keep ownership of the iterator
-                while args_iter.next().is_some() {}
-            }
-            FunctionParameter::KWArgsDict(..) => {
-                v.push(FunctionArg::KWArgsDict(mem::replace(
-                    &mut kwargs_dict,
-                    Default::default(),
-                )));
+                Err(..) => return Err(FunctionError::KWArgsDictIsNotMappable.into()),
             }
         }
+
+        Ok(ParameterParser {
+            signature,
+            function_type,
+            positional,
+            kwargs,
+        })
     }
-    if args_iter.next().is_some() || !kwargs_dict.is_empty() {
-        return Err(FunctionError::ExtraParameter.into());
+
+    pub fn next_normal(&mut self, name: &str) -> Result<Value, ValueError> {
+        if let Some(x) = self.positional.next() {
+            Ok(x)
+        } else if let Some(ref r) = self.kwargs.remove(name) {
+            Ok(r.clone())
+        } else {
+            Err(FunctionError::NotEnoughParameter {
+                missing: name.to_string(),
+                function_type: self.function_type.clone(),
+                signature: self.signature.to_owned(),
+            }
+            .into())
+        }
     }
-    Ok(v)
+
+    pub fn next_optional(&mut self, name: &str) -> Option<Value> {
+        if let Some(x) = self.positional.next() {
+            Some(x)
+        } else if let Some(ref r) = self.kwargs.remove(name) {
+            Some(r.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn next_with_default_value(&mut self, name: &str, default_value: &Value) -> Value {
+        self.next_optional(name)
+            .unwrap_or_else(|| default_value.clone())
+    }
+
+    pub fn next_args_array(&mut self) -> Vec<Value> {
+        mem::replace(&mut self.positional, Vec::new().into_iter()).collect()
+    }
+
+    pub fn next_kwargs_dict(&mut self) -> LinkedHashMap<String, Value> {
+        mem::replace(&mut self.kwargs, Default::default())
+    }
+
+    pub fn check_no_more_args(&mut self) -> Result<(), ValueError> {
+        if self.positional.next().is_some() || !self.kwargs.is_empty() {
+            return Err(FunctionError::ExtraParameter.into());
+        }
+        Ok(())
+    }
 }
 
 /// Define the function type
@@ -419,7 +426,7 @@ impl TypedValue for NativeFunction {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        let v = parse_signature(
+        let mut parser = ParameterParser::new(
             &self.signature,
             &self.function_type,
             positional,
@@ -427,6 +434,33 @@ impl TypedValue for NativeFunction {
             args,
             kwargs,
         )?;
+
+        // First map arguments to a vector
+        let mut v = Vec::new();
+
+        // Now verify signature and transform in a value vector
+        for parameter in &self.signature {
+            match parameter {
+                FunctionParameter::Normal(ref name) => {
+                    v.push(FunctionArg::Normal(parser.next_normal(name)?));
+                }
+                FunctionParameter::Optional(ref name) => {
+                    v.push(FunctionArg::Optional(parser.next_optional(name)));
+                }
+                FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                    v.push(FunctionArg::Normal(
+                        parser.next_with_default_value(name, value),
+                    ));
+                }
+                FunctionParameter::ArgsArray(..) => {
+                    v.push(FunctionArg::ArgsArray(parser.next_args_array()));
+                }
+                FunctionParameter::KWArgsDict(..) => {
+                    v.push(FunctionArg::KWArgsDict(parser.next_kwargs_dict()));
+                }
+            }
+        }
+        parser.check_no_more_args()?;
 
         (self.function)(call_stack, type_values, v)
     }
