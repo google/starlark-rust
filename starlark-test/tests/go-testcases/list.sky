@@ -123,12 +123,11 @@ def list_extend():
 list_extend()
 
 ---
-# TODO: This is a weird behavior += will bind locally but read globally, is it unwanted?
 # Unlike list.extend(iterable), list += iterable makes its LHS name local.
 a_list = []
 def f4():
-  a_list += [1] # binding use => a_list is a local var
-f4()  # # # Variable not found
+  a_list += [1]   ###   Local variable referenced before assignment
+f4()
 ---
 # list += <not iterable>
 def f5():

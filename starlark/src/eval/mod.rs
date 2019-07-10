@@ -38,7 +38,7 @@ use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -208,7 +208,11 @@ pub(crate) enum EvaluationContextEnvironment<'a> {
     /// Module-level
     Module(Environment, Rc<dyn FileLoader>),
     /// Function-level
-    Function(Environment, RefCell<HashMap<String, Value>>),
+    Function(
+        Environment,
+        HashSet<String>,
+        RefCell<HashMap<String, Value>>,
+    ),
     /// Scope inside function, e. g. list comprenension
     Nested(
         &'a EvaluationContextEnvironment<'a>,
@@ -242,10 +246,21 @@ impl<'a> EvaluationContextEnvironment<'a> {
     fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.get(name),
-            EvaluationContextEnvironment::Function(env, locals) => {
+            EvaluationContextEnvironment::Function(env, local_names, locals) => {
                 match locals.borrow().get(name).cloned() {
-                    Some(v) => Ok(v),
-                    None => env.get(name),
+                    Some(v) => {
+                        debug_assert!(local_names.contains(name));
+                        Ok(v)
+                    }
+                    None => {
+                        if local_names.contains(name) {
+                            Err(EnvironmentError::LocalVariableReferencedBeforeAssignment(
+                                name.to_owned(),
+                            ))
+                        } else {
+                            env.get(name)
+                        }
+                    }
                 }
             }
             EvaluationContextEnvironment::Nested(parent, locals) => {
@@ -260,9 +275,12 @@ impl<'a> EvaluationContextEnvironment<'a> {
     fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.set(name, value),
-            EvaluationContextEnvironment::Function(_, locals)
-            | EvaluationContextEnvironment::Nested(_, locals) => {
-                // TODO: check that local slot was previously allocated
+            EvaluationContextEnvironment::Nested(_, locals) => {
+                locals.borrow_mut().insert(name.to_owned(), value);
+                Ok(())
+            }
+            EvaluationContextEnvironment::Function(_, local_names, locals) => {
+                debug_assert!(local_names.contains(name));
                 locals.borrow_mut().insert(name.to_owned(), value);
                 Ok(())
             }

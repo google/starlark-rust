@@ -138,13 +138,11 @@ def use_before_def():
 use_before_def() ### Variable was not found
 
 ---
-# What is that test? Why should it fails?
-
 x = [1]
 x.extend([2]) # ok
 
 def f():
-   x += [4] # # # Variable was not found?
+   x += [4]    ### Local variable referenced before assignment
 
 f()
 
