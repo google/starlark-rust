@@ -27,6 +27,7 @@ use std::rc::Rc;
 // CM prefix = Critical Module
 const FROZEN_ENV_ERROR_CODE: &str = "CM00";
 const NOT_FOUND_ERROR_CODE: &str = "CM01";
+const LOCAL_VARIABLE_REFERENCED_BEFORE_ASSIGNMENT: &str = "CM03";
 pub(crate) const LOAD_NOT_SUPPORTED_ERROR_CODE: &str = "CM02";
 const CANNOT_IMPORT_ERROR_CODE: &str = "CE02";
 
@@ -37,6 +38,7 @@ pub enum EnvironmentError {
     TryingToMutateFrozenEnvironment,
     /// Variables was no found.
     VariableNotFound(String),
+    LocalVariableReferencedBeforeAssignment(String),
     /// Cannot import private symbol, i.e. underscore prefixed
     CannotImportPrivateSymbol(String),
 }
@@ -48,12 +50,18 @@ impl Into<RuntimeError> for EnvironmentError {
                 EnvironmentError::TryingToMutateFrozenEnvironment => FROZEN_ENV_ERROR_CODE,
                 EnvironmentError::VariableNotFound(..) => NOT_FOUND_ERROR_CODE,
                 EnvironmentError::CannotImportPrivateSymbol(..) => CANNOT_IMPORT_ERROR_CODE,
+                EnvironmentError::LocalVariableReferencedBeforeAssignment(..) => {
+                    LOCAL_VARIABLE_REFERENCED_BEFORE_ASSIGNMENT
+                }
             },
             label: match self {
                 EnvironmentError::TryingToMutateFrozenEnvironment => {
                     "This value belong to a frozen environment".to_owned()
                 }
                 EnvironmentError::VariableNotFound(..) => "Variable was not found".to_owned(),
+                EnvironmentError::LocalVariableReferencedBeforeAssignment(..) => {
+                    "Local variable referenced before assignment".to_owned()
+                }
                 EnvironmentError::CannotImportPrivateSymbol(ref s) => {
                     format!("Symbol '{}' is private", s)
                 }
@@ -63,6 +71,9 @@ impl Into<RuntimeError> for EnvironmentError {
                     "Cannot mutate a frozen environment".to_owned()
                 }
                 EnvironmentError::VariableNotFound(s) => format!("Variable '{}' not found", s),
+                EnvironmentError::LocalVariableReferencedBeforeAssignment(ref s) => {
+                    format!("Local variable '{}' referenced before assignment", s)
+                }
                 EnvironmentError::CannotImportPrivateSymbol(s) => {
                     format!("Cannot import private symbol '{}'", s)
                 }
