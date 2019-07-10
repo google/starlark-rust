@@ -204,19 +204,19 @@ pub trait FileLoader: 'static {
 }
 
 /// Stacked environment for [`EvaluationContext`].
-pub(crate) enum EvaluationContextEnvironment {
+pub(crate) enum EvaluationContextEnvironment<'a> {
     /// Module-level
     Module(Environment, Rc<dyn FileLoader>),
     /// Function-level
     Function(Environment, RefCell<HashMap<String, Value>>),
     /// Scope inside function, e. g. list comprenension
     Nested(
-        Rc<EvaluationContextEnvironment>,
+        &'a EvaluationContextEnvironment<'a>,
         RefCell<HashMap<String, Value>>,
     ),
 }
 
-impl EvaluationContextEnvironment {
+impl<'a> EvaluationContextEnvironment<'a> {
     fn env(&self) -> &Environment {
         match self {
             EvaluationContextEnvironment::Module(ref env, ..)
@@ -282,16 +282,16 @@ impl EvaluationContextEnvironment {
 
 /// A structure holding all the data about the evaluation context
 /// (scope, load statement resolver, ...)
-pub struct EvaluationContext {
+pub struct EvaluationContext<'a> {
     // Locals and captured context.
-    env: Rc<EvaluationContextEnvironment>,
+    env: EvaluationContextEnvironment<'a>,
     // Globals used to resolve type values, provided by the caller.
     type_values: TypeValues,
     call_stack: CallStack,
     map: Arc<Mutex<CodeMap>>,
 }
 
-impl EvaluationContext {
+impl<'a> EvaluationContext<'a> {
     fn new<T: FileLoader>(
         env: Environment,
         type_values: TypeValues,
@@ -300,18 +300,15 @@ impl EvaluationContext {
     ) -> Self {
         EvaluationContext {
             call_stack: CallStack::default(),
-            env: Rc::new(EvaluationContextEnvironment::Module(env, Rc::new(loader))),
+            env: EvaluationContextEnvironment::Module(env, Rc::new(loader)),
             type_values,
             map,
         }
     }
 
-    fn child(&self) -> EvaluationContext {
+    fn child(&'a self) -> EvaluationContext<'a> {
         EvaluationContext {
-            env: Rc::new(EvaluationContextEnvironment::Nested(
-                self.env.clone(),
-                Default::default(),
-            )),
+            env: EvaluationContextEnvironment::Nested(&self.env, Default::default()),
             type_values: self.type_values.clone(),
             call_stack: self.call_stack.clone(),
             map: self.map.clone(),
@@ -320,7 +317,7 @@ impl EvaluationContext {
 }
 
 fn eval_comprehension_clause(
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
     e: &AstExpr,
     clauses: &[AstClause],
 ) -> Result<Vec<Value>, EvalException> {
@@ -361,7 +358,7 @@ fn eval_compare<F>(
     left: &AstExpr,
     right: &AstExpr,
     cmp: F,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
 ) -> EvalResult
 where
     F: Fn(Ordering) -> bool,
@@ -376,7 +373,7 @@ fn eval_equals<F>(
     left: &AstExpr,
     right: &AstExpr,
     cmp: F,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
 ) -> EvalResult
 where
     F: Fn(bool) -> bool,
@@ -389,13 +386,13 @@ where
     )?)))
 }
 
-fn eval_slice(
+fn eval_slice<'a>(
     this: &AstExpr,
     a: &AstExpr,
     start: &Option<AstExpr>,
     stop: &Option<AstExpr>,
     stride: &Option<AstExpr>,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
 ) -> EvalResult {
     let a = eval_expr(a, context)?;
     let start = match start {
@@ -413,14 +410,14 @@ fn eval_slice(
     t(a.slice(start, stop, stride), this)
 }
 
-fn eval_call(
+fn eval_call<'a>(
     this: &AstExpr,
     e: &AstExpr,
     pos: &[AstExpr],
     named: &[(AstString, AstExpr)],
     args: &Option<AstExpr>,
     kwargs: &Option<AstExpr>,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
 ) -> EvalResult {
     let npos = eval_vector!(pos, context);
     let mut nnamed = LinkedHashMap::new();
@@ -457,11 +454,11 @@ fn eval_call(
     }
 }
 
-fn eval_dot(
+fn eval_dot<'a>(
     this: &AstExpr,
     e: &AstExpr,
     s: &AstString,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
 ) -> EvalResult {
     let left = eval_expr(e, context)?;
     if let Some(v) = context.type_values.get_type_value(&left, &s.node) {
@@ -476,7 +473,7 @@ fn eval_dot(
     }
 }
 
-fn eval_dict_comprehension(
+fn eval_dict_comprehension<'a>(
     k: &AstExpr,
     v: &AstExpr,
     clauses: &[AstClause],
@@ -487,8 +484,8 @@ fn eval_dict_comprehension(
         span: k.span.merge(v.span),
         node: Expr::Tuple(vec![k.clone(), v.clone()]),
     });
-    let mut context = context.child();
-    for e in eval_comprehension_clause(&mut context, &tuple, clauses)? {
+    let context = context.child();
+    for e in eval_comprehension_clause(&context, &tuple, clauses)? {
         let k = t(e.at(Value::from(0)), &tuple)?;
         let v = t(e.at(Value::from(1)), &tuple)?;
         t(r.set_at(k, v), &tuple)?;
@@ -496,25 +493,25 @@ fn eval_dict_comprehension(
     Ok(Value::new(r))
 }
 
-fn eval_one_dimensional_comprehension(
+fn eval_one_dimensional_comprehension<'a>(
     e: &AstExpr,
     clauses: &[AstClause],
     context: &EvaluationContext,
 ) -> Result<Vec<Value>, EvalException> {
     let mut r = Vec::new();
-    let mut context = context.child();
-    for v in eval_comprehension_clause(&mut context, e, clauses)? {
+    let context = context.child();
+    for v in eval_comprehension_clause(&context, e, clauses)? {
         r.push(v.clone());
     }
     Ok(r)
 }
 
-fn eval_list_comprehension(
+fn eval_list_comprehension<'a>(
     e: &AstExpr,
     clauses: &[AstClause],
     context: &EvaluationContext,
 ) -> EvalResult {
-    eval_one_dimensional_comprehension(e, clauses, &context).map(Value::from)
+    eval_one_dimensional_comprehension(e, clauses, context).map(Value::from)
 }
 
 enum TransformedExpr {
@@ -525,9 +522,9 @@ enum TransformedExpr {
     OtherExpr(AstExpr),
 }
 
-fn set_transformed(
+fn set_transformed<'a>(
     transformed: &TransformedExpr,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
     new_value: Value,
 ) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
@@ -565,20 +562,20 @@ fn set_transformed(
     }
 }
 
-fn eval_transformed(transformed: &TransformedExpr, context: &mut EvaluationContext) -> EvalResult {
+fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationContext) -> EvalResult {
     match transformed {
         TransformedExpr::Tuple(ref v, ..) => {
-            let r = v
-                .iter()
-                .map(|i| eval_transformed(i, context))
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut r = Vec::with_capacity(v.len());
+            for i in v {
+                r.push(eval_transformed(i, context)?);
+            }
             Ok(Value::new(tuple::Tuple::new(r.as_slice())))
         }
         TransformedExpr::List(ref v, ..) => {
-            let r = v
-                .iter()
-                .map(|i| eval_transformed(i, context))
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut r = Vec::with_capacity(v.len());
+            for i in v {
+                r.push(eval_transformed(i, context)?);
+            }
             Ok(Value::from(r))
         }
         TransformedExpr::Dot(ref left, ref s, ref span) => {
@@ -610,7 +607,7 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
 // This transformation by default should be a deep copy (clone).
 fn transform(
     expr: &AstExpr,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
 ) -> Result<TransformedExpr, EvalException> {
     match expr.node {
         Expr::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
@@ -642,7 +639,7 @@ fn transform(
 }
 
 // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
-fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
+fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
     match expr.node {
         Expr::Tuple(ref v) => {
             let r = eval_vector!(v, context);
@@ -759,8 +756,11 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
             Ok(r)
         }
         Expr::Set(ref v) => {
-            let values: Result<Vec<_>, _> = v.iter().map(|s| eval_expr(s, context)).collect();
-            make_set(values?, context, expr.span)
+            let mut values = Vec::with_capacity(v.len());
+            for s in v {
+                values.push(eval_expr(s, context)?);
+            }
+            make_set(values, context, expr.span)
         }
         Expr::ListComprehension(ref e, ref clauses) => eval_list_comprehension(e, clauses, context),
         Expr::DictComprehension((ref k, ref v), ref clauses) => {
@@ -774,7 +774,7 @@ fn eval_expr(expr: &AstExpr, context: &mut EvaluationContext) -> EvalResult {
 }
 
 // Perform an assignment on the LHS represented by this AST element
-fn set_expr(expr: &AstExpr, context: &mut EvaluationContext, new_value: Value) -> EvalResult {
+fn set_expr(expr: &AstExpr, context: &EvaluationContext, new_value: Value) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
     match expr.node {
         Expr::Tuple(ref v) | Expr::List(ref v) => {
@@ -819,7 +819,7 @@ fn eval_assign_modify<F>(
     stmt: &AstStatement,
     lhs: &AstExpr,
     rhs: &AstExpr,
-    context: &mut EvaluationContext,
+    context: &EvaluationContext,
     op: F,
 ) -> EvalResult
 where
@@ -831,7 +831,7 @@ where
     set_transformed(&lhs, context, t(op(&l, r), stmt)?)
 }
 
-fn eval_stmt(stmt: &AstStatement, context: &mut EvaluationContext) -> EvalResult {
+fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
     match stmt.node {
         Statement::Break => Err(EvalException::Break(stmt.span)),
         Statement::Continue => Err(EvalException::Continue(stmt.span)),
@@ -971,10 +971,10 @@ pub fn eval_lexer<
     type_values: TypeValues,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
+    let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
     match eval_stmt(
         &parse_lexer(map, filename, content, dialect, lexer)?,
-        &mut context,
+        &context,
     ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -1002,8 +1002,8 @@ pub fn eval<T: FileLoader + 'static>(
     type_values: TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_stmt(&parse(map, path, content, build)?, &mut context) {
+    let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
+    match eval_stmt(&parse(map, path, content, build)?, &context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -1028,8 +1028,8 @@ pub fn eval_file<T: FileLoader + 'static>(
     type_values: TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_stmt(&parse_file(map, path, build)?, &mut context) {
+    let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
+    match eval_stmt(&parse_file(map, path, build)?, &context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }

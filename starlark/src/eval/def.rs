@@ -25,7 +25,6 @@ use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
 use codemap::CodeMap;
 use linked_hash_map::LinkedHashMap;
 use std::iter;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 /// Starlark function internal representation and implementation of [`TypedValue`].
@@ -67,10 +66,10 @@ impl Def {
         // argument binding
         let mut ctx = EvaluationContext {
             call_stack: call_stack.to_owned(),
-            env: Rc::new(EvaluationContextEnvironment::Function(
+            env: EvaluationContextEnvironment::Function(
                 self.captured_env.clone(),
                 Default::default(),
-            )),
+            ),
             type_values,
             map: self.map.clone(),
         };
