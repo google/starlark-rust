@@ -16,15 +16,17 @@
 
 use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
-use crate::eval::{eval_stmt, EvalException, EvaluationContext, EvaluationContextEnvironment};
+use crate::eval::{
+    eval_stmt, DefLocals, EvalException, EvaluationContext, EvaluationContextEnvironment,
+};
 use crate::syntax::ast::{AstExpr, AstStatement, Expr, Statement};
 use crate::values::error::ValueError;
 use crate::values::function::{FunctionParameter, FunctionType};
 use crate::values::none::NoneType;
 use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
-use codemap::CodeMap;
+use codemap::{CodeMap, Spanned};
 use linked_hash_map::LinkedHashMap;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::iter;
 use std::sync::{Arc, Mutex};
@@ -36,7 +38,7 @@ pub(crate) struct Def {
     stmts: AstStatement,
     captured_env: Environment,
     map: Arc<Mutex<CodeMap>>,
-    local_names: HashSet<String>,
+    local_names_to_indices: HashMap<String, usize>,
 }
 
 impl Def {
@@ -48,19 +50,24 @@ impl Def {
         map: Arc<Mutex<CodeMap>>,
         env: Environment,
     ) -> Value {
-        let mut local_names = HashSet::new();
+        let mut local_names_to_indices = HashMap::new();
 
         for p in &signature {
-            local_names.insert(match p {
-                FunctionParameter::Normal(ref n)
-                | FunctionParameter::ArgsArray(ref n)
-                | FunctionParameter::KWArgsDict(ref n)
-                | FunctionParameter::WithDefaultValue(ref n, ..) => n.to_owned(),
-                FunctionParameter::Optional(..) => unreachable!(),
-            });
+            let len = local_names_to_indices.len();
+            local_names_to_indices
+                .entry(match p {
+                    FunctionParameter::Normal(ref n)
+                    | FunctionParameter::ArgsArray(ref n)
+                    | FunctionParameter::KWArgsDict(ref n)
+                    | FunctionParameter::WithDefaultValue(ref n, ..) => n.to_owned(),
+                    FunctionParameter::Optional(..) => unreachable!(),
+                })
+                .or_insert(len);
         }
 
-        Def::collect_locals(&stmts, &mut local_names);
+        Def::collect_locals(&stmts, &mut local_names_to_indices);
+
+        let stmts = Def::transform_locals(stmts, &local_names_to_indices);
 
         // This can be implemented by delegating to `Function::new`,
         // but having a separate type allows slight more efficient implementation
@@ -71,53 +78,188 @@ impl Def {
             stmts,
             captured_env: env,
             map,
-            local_names,
+            local_names_to_indices: local_names_to_indices,
         })
     }
 
-    fn collect_locals(stmt: &AstStatement, local_names: &mut HashSet<String>) {
+    fn collect_locals(stmt: &AstStatement, local_names_to_indices: &mut HashMap<String, usize>) {
         match stmt.node {
             Statement::Assign(ref dest, ..) => {
-                Def::collect_locals_from_assign_expr(dest, local_names);
+                Def::collect_locals_from_assign_expr(dest, local_names_to_indices);
             }
             Statement::For(ref dest, _, ref body) => {
-                Def::collect_locals_from_assign_expr(dest, local_names);
-                Def::collect_locals(body, local_names);
+                Def::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                Def::collect_locals(body, local_names_to_indices);
             }
             Statement::Statements(ref stmts) => {
                 for stmt in stmts {
-                    Def::collect_locals(stmt, local_names);
+                    Def::collect_locals(stmt, local_names_to_indices);
                 }
             }
             Statement::If(_, ref then_block) => {
-                Def::collect_locals(then_block, local_names);
+                Def::collect_locals(then_block, local_names_to_indices);
             }
             Statement::IfElse(_, ref then_block, ref else_block) => {
-                Def::collect_locals(then_block, local_names);
-                Def::collect_locals(else_block, local_names);
+                Def::collect_locals(then_block, local_names_to_indices);
+                Def::collect_locals(else_block, local_names_to_indices);
             }
             Statement::Break
             | Statement::Continue
             | Statement::Pass
             | Statement::Return(..)
-            | Statement::Expression(..)
-            | Statement::Load(..)
-            | Statement::Def(..) => {}
+            | Statement::Expression(..) => {}
+            Statement::Load(..) | Statement::Def(..) => unreachable!(),
         }
     }
 
-    fn collect_locals_from_assign_expr(expr: &AstExpr, local_names: &mut HashSet<String>) {
+    /// Transform statement replacing local variables access by name with access by index
+    fn transform_locals(stmts: AstStatement, locals: &HashMap<String, usize>) -> AstStatement {
+        Box::new(Spanned {
+            span: stmts.span,
+            node: match stmts.node {
+                Statement::Assign(left, op, right) => Statement::Assign(
+                    Def::transform_locals_in_expr(left, locals),
+                    op,
+                    Def::transform_locals_in_expr(right, locals),
+                ),
+                Statement::For(var, collection, body) => Statement::For(
+                    Def::transform_locals_in_expr(var, locals),
+                    Def::transform_locals_in_expr(collection, locals),
+                    Def::transform_locals(body, locals),
+                ),
+                Statement::Statements(stmts) => Statement::Statements(
+                    stmts
+                        .into_iter()
+                        .map(|stmt| Def::transform_locals(stmt, locals))
+                        .collect(),
+                ),
+                Statement::If(cond, then_block) => Statement::If(
+                    Def::transform_locals_in_expr(cond, locals),
+                    Def::transform_locals(then_block, locals),
+                ),
+                Statement::IfElse(cond, then_block, else_block) => Statement::IfElse(
+                    Def::transform_locals_in_expr(cond, locals),
+                    Def::transform_locals(then_block, locals),
+                    Def::transform_locals(else_block, locals),
+                ),
+                s @ Statement::Break | s @ Statement::Continue | s @ Statement::Pass => s,
+                Statement::Def(..) | Statement::Load(..) => unreachable!(),
+                Statement::Expression(expr) => {
+                    Statement::Expression(Def::transform_locals_in_expr(expr, locals))
+                }
+                Statement::Return(expr) => {
+                    Statement::Return(expr.map(|expr| Def::transform_locals_in_expr(expr, locals)))
+                }
+            },
+        })
+    }
+
+    fn collect_locals_from_assign_expr(
+        expr: &AstExpr,
+        local_names_to_indices: &mut HashMap<String, usize>,
+    ) {
         match expr.node {
             Expr::Tuple(ref exprs) | Expr::List(ref exprs) => {
                 for expr in exprs {
-                    Def::collect_locals_from_assign_expr(expr, local_names);
+                    Def::collect_locals_from_assign_expr(expr, local_names_to_indices);
                 }
             }
             Expr::Identifier(ref ident) => {
-                local_names.insert(ident.node.clone());
+                let len = local_names_to_indices.len();
+                local_names_to_indices
+                    .entry(ident.node.clone())
+                    .or_insert(len);
             }
             _ => {}
         }
+    }
+
+    fn transform_locals_in_expr(expr: AstExpr, locals: &HashMap<String, usize>) -> AstExpr {
+        Box::new(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                Expr::Tuple(exprs) => Expr::Tuple(
+                    exprs
+                        .into_iter()
+                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .collect(),
+                ),
+                Expr::List(exprs) => Expr::List(
+                    exprs
+                        .into_iter()
+                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .collect(),
+                ),
+                Expr::Set(exprs) => Expr::Set(
+                    exprs
+                        .into_iter()
+                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .collect(),
+                ),
+                Expr::Dict(pairs) => Expr::Dict(
+                    pairs
+                        .into_iter()
+                        .map(|(key, value)| {
+                            (
+                                Def::transform_locals_in_expr(key, locals),
+                                Def::transform_locals_in_expr(value, locals),
+                            )
+                        })
+                        .collect(),
+                ),
+                Expr::Identifier(ident) => match locals.get(&ident.node) {
+                    Some(&slot) => Expr::Slot(slot, ident),
+                    None => Expr::Identifier(ident),
+                },
+                Expr::Slot(..) => unreachable!(),
+                Expr::Dot(left, right) => {
+                    Expr::Dot(Def::transform_locals_in_expr(left, locals), right)
+                }
+                Expr::Call(function, args, kwargs, star_args, star_star_kwargs) => Expr::Call(
+                    Def::transform_locals_in_expr(function, locals),
+                    args.into_iter()
+                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .collect(),
+                    kwargs
+                        .into_iter()
+                        .map(|(name, value)| (name, Def::transform_locals_in_expr(value, locals)))
+                        .collect(),
+                    star_args.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                    star_star_kwargs.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                ),
+                Expr::ArrayIndirection(array, index) => Expr::ArrayIndirection(
+                    Def::transform_locals_in_expr(array, locals),
+                    Def::transform_locals_in_expr(index, locals),
+                ),
+                Expr::Slice(array, p1, p2, p3) => Expr::Slice(
+                    array,
+                    p1.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                    p2.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                    p3.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                ),
+                Expr::Not(expr) => Expr::Not(Def::transform_locals_in_expr(expr, locals)),
+                Expr::Minus(expr) => Expr::Minus(Def::transform_locals_in_expr(expr, locals)),
+                Expr::Plus(expr) => Expr::Plus(Def::transform_locals_in_expr(expr, locals)),
+                Expr::Op(op, left, right) => Expr::Op(
+                    op,
+                    Def::transform_locals_in_expr(left, locals),
+                    Def::transform_locals_in_expr(right, locals),
+                ),
+                Expr::If(cond, then_expr, else_expr) => Expr::If(
+                    Def::transform_locals_in_expr(cond, locals),
+                    Def::transform_locals_in_expr(then_expr, locals),
+                    Def::transform_locals_in_expr(else_expr, locals),
+                ),
+                n @ Expr::IntLiteral(..) | n @ Expr::StringLiteral(..) => n,
+                n @ Expr::DictComprehension(..)
+                | n @ Expr::ListComprehension(..)
+                | n @ Expr::SetComprehension(..) => {
+                    // TODO: do the same access-by-index optimization for compr locals.
+                    // TODO: access parent scope (function) variables by index, not by name.
+                    n
+                }
+            },
+        })
     }
 }
 
@@ -154,8 +296,7 @@ impl TypedValue for Def {
             call_stack: call_stack.to_owned(),
             env: EvaluationContextEnvironment::Function(
                 self.captured_env.clone(),
-                self.local_names.clone(),
-                Default::default(),
+                DefLocals::new(&self.local_names_to_indices),
             ),
             type_values,
             map: self.map.clone(),
