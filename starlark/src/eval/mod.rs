@@ -38,7 +38,7 @@ use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -203,16 +203,65 @@ pub trait FileLoader: 'static {
     fn load(&self, path: &str) -> Result<Environment, EvalException>;
 }
 
+/// Starlark `def` function local variables
+pub(crate) struct DefLocals<'a> {
+    // name to index is needed for nested contexts only
+    // (collection comprehensions).
+    // TODO: access nested context objects by slot index too and drop this field
+    name_to_index: &'a HashMap<String, usize>,
+    /// locals store the local variable in an array. Each local variable loose its
+    /// names and the `name_to_index` can be used to find a variable from name.
+    /// Once the parsing of the `def` is finished, only the nested contexts should
+    /// need it (the other one have been replaced during the parsing).
+    /// `locals` is used to optimize access speed to local variable
+    /// (versus looking into a hashmap).
+    locals: RefCell<Vec<Option<Value>>>,
+}
+
+impl<'a> DefLocals<'a> {
+    fn new(name_to_index: &'a HashMap<String, usize>) -> DefLocals<'a> {
+        DefLocals {
+            name_to_index,
+            locals: RefCell::new(vec![None; name_to_index.len()]),
+        }
+    }
+
+    fn get(&self, name: &str) -> Result<Option<Value>, EnvironmentError> {
+        let slot = match self.name_to_index.get(name) {
+            Some(slot) => *slot,
+            None => return Ok(None),
+        };
+        Ok(Some(self.get_slot(slot, name)?))
+    }
+
+    fn get_slot(&self, slot: usize, name: &str) -> Result<Value, EnvironmentError> {
+        match self.locals.borrow()[slot].clone() {
+            Some(value) => Ok(value),
+            None => Err(EnvironmentError::LocalVariableReferencedBeforeAssignment(
+                name.to_owned(),
+            )),
+        }
+    }
+
+    fn set(&self, name: &str, value: Value) {
+        let slot = match self.name_to_index.get(name) {
+            Some(slot) => *slot,
+            None => panic!("unknown local: {}", name),
+        };
+        self.set_slot(slot, name, value);
+    }
+
+    fn set_slot(&self, slot: usize, _name: &str, value: Value) {
+        self.locals.borrow_mut()[slot] = Some(value);
+    }
+}
+
 /// Stacked environment for [`EvaluationContext`].
 pub(crate) enum EvaluationContextEnvironment<'a> {
     /// Module-level
     Module(Environment, Rc<dyn FileLoader>),
     /// Function-level
-    Function(
-        Environment,
-        HashSet<String>,
-        RefCell<HashMap<String, Value>>,
-    ),
+    Function(Environment, DefLocals<'a>),
     /// Scope inside function, e. g. list comprenension
     Nested(
         &'a EvaluationContextEnvironment<'a>,
@@ -246,29 +295,23 @@ impl<'a> EvaluationContextEnvironment<'a> {
     fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.get(name),
-            EvaluationContextEnvironment::Function(env, local_names, locals) => {
-                match locals.borrow().get(name).cloned() {
-                    Some(v) => {
-                        debug_assert!(local_names.contains(name));
-                        Ok(v)
-                    }
-                    None => {
-                        if local_names.contains(name) {
-                            Err(EnvironmentError::LocalVariableReferencedBeforeAssignment(
-                                name.to_owned(),
-                            ))
-                        } else {
-                            env.get(name)
-                        }
-                    }
-                }
-            }
+            EvaluationContextEnvironment::Function(env, locals) => match locals.get(name)? {
+                Some(v) => Ok(v),
+                None => env.get(name),
+            },
             EvaluationContextEnvironment::Nested(parent, locals) => {
                 match locals.borrow().get(name).cloned() {
                     Some(v) => Ok(v),
                     None => parent.get(name),
                 }
             }
+        }
+    }
+
+    fn get_slot(&self, _slot: usize, name: &str) -> Result<Value, EnvironmentError> {
+        match self {
+            EvaluationContextEnvironment::Function(_env, locals) => locals.get_slot(_slot, name),
+            _ => unreachable!("slot in non-function environment"),
         }
     }
 
@@ -279,11 +322,20 @@ impl<'a> EvaluationContextEnvironment<'a> {
                 locals.borrow_mut().insert(name.to_owned(), value);
                 Ok(())
             }
-            EvaluationContextEnvironment::Function(_, local_names, locals) => {
-                debug_assert!(local_names.contains(name));
-                locals.borrow_mut().insert(name.to_owned(), value);
+            EvaluationContextEnvironment::Function(_, locals) => {
+                locals.set(name, value);
                 Ok(())
             }
+        }
+    }
+
+    fn set_slot(&self, slot: usize, name: &str, value: Value) -> Result<(), EnvironmentError> {
+        match self {
+            EvaluationContextEnvironment::Function(_env, locals) => {
+                locals.set_slot(slot, name, value);
+                Ok(())
+            }
+            _ => unreachable!("slot in non-function environment"),
         }
     }
 
@@ -675,6 +727,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             eval_slice(expr, a, start, stop, stride, context)
         }
         Expr::Identifier(ref i) => t(context.env.get(&i.node), i),
+        Expr::Slot(slot, ref i) => t(context.env.get_slot(slot, &i.node), i),
         Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
         Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
         Expr::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
@@ -820,6 +873,10 @@ fn set_expr(expr: &AstExpr, context: &EvaluationContext, new_value: Value) -> Ev
         }
         Expr::Identifier(ref i) => {
             t(context.env.set(&i.node, new_value), expr)?;
+            ok
+        }
+        Expr::Slot(slot, ref i) => {
+            t(context.env.set_slot(slot, &i.node, new_value), expr)?;
             ok
         }
         Expr::ArrayIndirection(ref e, ref idx) => {

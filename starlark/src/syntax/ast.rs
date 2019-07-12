@@ -112,6 +112,8 @@ pub enum Expr {
     ArrayIndirection(AstExpr, AstExpr),
     Slice(AstExpr, Option<AstExpr>, Option<AstExpr>, Option<AstExpr>),
     Identifier(AstString),
+    // local variable index
+    Slot(usize, AstString),
     IntLiteral(AstInt),
     StringLiteral(AstString),
     Not(AstExpr),
@@ -535,7 +537,7 @@ impl Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Identifier(ref s) => s.node.fmt(f),
+            Expr::Identifier(ref s) | Expr::Slot(_, ref s) => s.node.fmt(f),
             Expr::IntLiteral(ref i) => i.node.fmt(f),
             Expr::Not(ref e) => write!(f, "(not {})", e.node),
             Expr::Minus(ref e) => write!(f, "-{}", e.node),
