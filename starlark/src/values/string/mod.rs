@@ -163,15 +163,15 @@ impl TypedValue for String {
     /// # );
     /// ```
     fn mul(&self, other: Value) -> ValueResult {
-        if other.get_type() == "int" {
-            let l = other.to_int()?;
-            let mut result = String::new();
-            for _i in 0..l {
-                result += self
+        match other.downcast_ref::<i64>() {
+            Some(l) => {
+                let mut result = String::new();
+                for _i in 0..*l {
+                    result += self
+                }
+                Ok(Value::new(result))
             }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+            None => Err(ValueError::IncorrectParameterType),
         }
     }
 

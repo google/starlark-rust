@@ -1,3 +1,7 @@
 # Boolean tests
 
 True + 9223372036854775807   ###  Type of parameters mismatch
+---
+[] * True                    ###  Type of parameters mismatch
+---
+() * False                   ###  Type of parameters mismatch
