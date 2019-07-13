@@ -587,7 +587,7 @@ fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationConte
             for i in v {
                 r.push(eval_transformed(i, context)?);
             }
-            Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+            Ok(Value::new(tuple::Tuple::new(r)))
         }
         TransformedExpr::List(ref v, ..) => {
             let mut r = Vec::with_capacity(v.len());
@@ -661,7 +661,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
     match expr.node {
         Expr::Tuple(ref v) => {
             let r = eval_vector!(v, context);
-            Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+            Ok(Value::new(tuple::Tuple::new(r)))
         }
         Expr::Dot(ref e, ref s) => eval_dot(expr, e, s, context),
         Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {

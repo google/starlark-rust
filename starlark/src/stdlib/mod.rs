@@ -740,7 +740,7 @@ starlark_module! {global_functions =>
                 idx += step;
             }
         }
-        Ok(Value::new(tuple::Tuple::new(r.as_slice())))
+        Ok(Value::new(tuple::Tuple::new(r)))
     }
 
     /// [repr](
@@ -891,7 +891,7 @@ starlark_module! {global_functions =>
                 l.push(x.clone())
             }
         }
-        Ok(Value::new(tuple::Tuple::new(l.as_slice())))
+        Ok(Value::new(tuple::Tuple::new(l)))
     }
 
     /// [type](
