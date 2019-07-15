@@ -138,7 +138,7 @@ pub struct NativeFunction {
     /// Pointer to a native function.
     /// Note it is a function pointer, not `Box<Fn(...)>`
     /// to avoid generic instantiation and allocation for each native function.
-    function: fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult,
+    function: fn(&CallStack, TypeValues, ParameterParser) -> ValueResult,
     signature: Vec<FunctionParameter>,
     function_type: FunctionType,
 }
@@ -226,7 +226,7 @@ impl From<FunctionError> for ValueError {
 impl NativeFunction {
     pub fn new(
         name: String,
-        function: fn(&CallStack, TypeValues, Vec<FunctionArg>) -> ValueResult,
+        function: fn(&CallStack, TypeValues, ParameterParser) -> ValueResult,
         signature: Vec<FunctionParameter>,
     ) -> Value {
         Value::new(NativeFunction {
@@ -297,8 +297,11 @@ pub(crate) fn to_str(function_type: &FunctionType, signature: &[FunctionParamete
     format!("{}({})", function_type.to_str(), v.join(", "))
 }
 
-pub(crate) struct ParameterParser<'a> {
+#[doc(hidden)]
+pub struct ParameterParser<'a> {
     signature: &'a [FunctionParameter],
+    // current parameter index in function signature
+    index: usize,
     function_type: &'a FunctionType,
     positional: vec::IntoIter<Value>,
     kwargs: LinkedHashMap<String, Value>,
@@ -346,6 +349,7 @@ impl<'a> ParameterParser<'a> {
 
         Ok(ParameterParser {
             signature,
+            index: 0,
             function_type,
             positional,
             kwargs,
@@ -354,8 +358,10 @@ impl<'a> ParameterParser<'a> {
 
     pub fn next_normal(&mut self, name: &str) -> Result<Value, ValueError> {
         if let Some(x) = self.positional.next() {
+            self.index += 1;
             Ok(x)
         } else if let Some(ref r) = self.kwargs.remove(name) {
+            self.index += 1;
             Ok(r.clone())
         } else {
             Err(FunctionError::NotEnoughParameter {
@@ -368,6 +374,7 @@ impl<'a> ParameterParser<'a> {
     }
 
     pub fn next_optional(&mut self, name: &str) -> Option<Value> {
+        self.index += 1;
         if let Some(x) = self.positional.next() {
             Some(x)
         } else if let Some(ref r) = self.kwargs.remove(name) {
@@ -383,10 +390,12 @@ impl<'a> ParameterParser<'a> {
     }
 
     pub fn next_args_array(&mut self) -> Vec<Value> {
+        self.index += 1;
         mem::replace(&mut self.positional, Vec::new().into_iter()).collect()
     }
 
     pub fn next_kwargs_dict(&mut self) -> LinkedHashMap<String, Value> {
+        self.index += 1;
         mem::replace(&mut self.kwargs, Default::default())
     }
 
@@ -394,7 +403,26 @@ impl<'a> ParameterParser<'a> {
         if self.positional.next().is_some() || !self.kwargs.is_empty() {
             return Err(FunctionError::ExtraParameter.into());
         }
+        debug_assert_eq!(self.index, self.signature.len());
         Ok(())
+    }
+
+    /// This function is only called from macros
+    pub fn next_arg(&mut self) -> Result<FunctionArg, ValueError> {
+        // Macros call this function exactly once for each signature item.
+        // So it's safe to panic here.
+        assert!(self.index != self.signature.len());
+        Ok(match &self.signature[self.index] {
+            FunctionParameter::Normal(ref name) => FunctionArg::Normal(self.next_normal(name)?),
+            FunctionParameter::Optional(ref name) => {
+                FunctionArg::Optional(self.next_optional(name))
+            }
+            FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                FunctionArg::Normal(self.next_with_default_value(name, value))
+            }
+            FunctionParameter::ArgsArray(..) => FunctionArg::ArgsArray(self.next_args_array()),
+            FunctionParameter::KWArgsDict(..) => FunctionArg::KWArgsDict(self.next_kwargs_dict()),
+        })
     }
 }
 
@@ -426,7 +454,7 @@ impl TypedValue for NativeFunction {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        let mut parser = ParameterParser::new(
+        let parser = ParameterParser::new(
             &self.signature,
             &self.function_type,
             positional,
@@ -435,34 +463,7 @@ impl TypedValue for NativeFunction {
             kwargs,
         )?;
 
-        // First map arguments to a vector
-        let mut v = Vec::new();
-
-        // Now verify signature and transform in a value vector
-        for parameter in &self.signature {
-            match parameter {
-                FunctionParameter::Normal(ref name) => {
-                    v.push(FunctionArg::Normal(parser.next_normal(name)?));
-                }
-                FunctionParameter::Optional(ref name) => {
-                    v.push(FunctionArg::Optional(parser.next_optional(name)));
-                }
-                FunctionParameter::WithDefaultValue(ref name, ref value) => {
-                    v.push(FunctionArg::Normal(
-                        parser.next_with_default_value(name, value),
-                    ));
-                }
-                FunctionParameter::ArgsArray(..) => {
-                    v.push(FunctionArg::ArgsArray(parser.next_args_array()));
-                }
-                FunctionParameter::KWArgsDict(..) => {
-                    v.push(FunctionArg::KWArgsDict(parser.next_kwargs_dict()));
-                }
-            }
-        }
-        parser.check_no_more_args()?;
-
-        (self.function)(call_stack, type_values, v)
+        (self.function)(call_stack, type_values, parser)
     }
 }
 

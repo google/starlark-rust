@@ -126,13 +126,13 @@ macro_rules! starlark_signature_extraction {
     ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(* $(: $pt)?) =
-            $args.next().unwrap().into_args_array(stringify!($t))?;
+            $args.next_arg()?.into_args_array(stringify!($t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
     ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(** $(: $pt)?) =
-            $args.next().unwrap().into_kw_args_dict(stringify!($t))?;
+            $args.next_arg()?.into_kw_args_dict(stringify!($t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
 
@@ -147,13 +147,13 @@ macro_rules! starlark_signature_extraction {
     ($args:ident $call_stack:ident $env:ident ? $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
-            $args.next().unwrap().into_optional(starlark_param_name!(# $t))?;
+            $args.next_arg()?.into_optional(starlark_param_name!(# $t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
     ($args:ident $call_stack:ident $env:ident $is_named:tt $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
-            $args.next().unwrap().into_normal(starlark_param_name!($is_named $t))?;
+            $args.next_arg()?.into_normal(starlark_param_name!($is_named $t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
     };
 }
@@ -166,10 +166,10 @@ macro_rules! starlark_fun {
         fn $fn(
             __call_stack: &$crate::eval::call_stack::CallStack,
             __env: $crate::environment::TypeValues,
-            args: Vec<$crate::values::function::FunctionArg>
+            mut args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
-            let mut __args = args.into_iter();
-            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
+            starlark_signature_extraction!(args __call_stack __env $($signature)*);
+            args.check_no_more_args()?;
             $($content)*
         }
         $(starlark_fun! {
@@ -182,10 +182,10 @@ macro_rules! starlark_fun {
         fn $fn(
             __call_stack: &$crate::eval::call_stack::CallStack,
             __env: $crate::environment::TypeValues,
-            args: Vec<$crate::values::function::FunctionArg>
+            mut args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
-            let mut __args = args.into_iter();
-            starlark_signature_extraction!(__args __call_stack __env $($signature)*);
+            starlark_signature_extraction!(args __call_stack __env $($signature)*);
+            args.check_no_more_args()?;
             $($content)*
         }
         $(starlark_fun! {
