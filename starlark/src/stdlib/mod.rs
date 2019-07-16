@@ -511,13 +511,11 @@ starlark_module! {global_functions =>
     ///
     /// With no argument, `list()` returns a new empty list.
     list(?#a) {
-        let mut l = Vec::new();
         if let Some(a) = a {
-            for x in &a.iter()? {
-                l.push(x.clone())
-            }
+            Ok(Value::from(a.to_vec()?))
+        } else {
+            Ok(Value::from(Vec::<Value>::new()))
         }
-        Ok(Value::from(l))
     }
 
     /// [max](
@@ -773,8 +771,8 @@ starlark_module! {global_functions =>
     /// # )"#).unwrap());
     /// ```
     reversed(#a) {
-        let v : Vec<Value> = a.iter()?.iter().collect();
-        let v : Vec<Value> = v.into_iter().rev().collect();
+        let v: Vec<Value> = a.to_vec()?;
+        let v: Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
     }
 
@@ -877,13 +875,11 @@ starlark_module! {global_functions =>
     ///
     /// With no arguments, `tuple()` returns the empty tuple.
     tuple(?#a) {
-        let mut l = Vec::new();
         if let Some(a) = a {
-            for x in &a.iter()? {
-                l.push(x.clone())
-            }
+            Ok(Value::new(tuple::Tuple::new(a.to_vec()?)))
+        } else {
+            Ok(Value::new(tuple::Tuple::new(Vec::new())))
         }
-        Ok(Value::new(tuple::Tuple::new(l)))
     }
 
     /// [type](

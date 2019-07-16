@@ -1164,6 +1164,9 @@ impl Value {
     pub fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
         self.value_holder().iter()
     }
+    pub fn to_vec(&self) -> Result<Vec<Value>, ValueError> {
+        Ok(self.iter()?.to_vec())
+    }
     pub fn length(&self) -> Result<i64, ValueError> {
         self.value_holder().length()
     }

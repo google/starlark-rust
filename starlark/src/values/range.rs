@@ -215,6 +215,10 @@ impl TypedIterable for Range {
     fn to_iter(&self) -> Box<dyn Iterator<Item = Value>> {
         Box::new(RangeIterator(self.clone()))
     }
+
+    fn to_vec(&self) -> Vec<Value> {
+        RangeIterator(self.clone()).collect()
+    }
 }
 
 #[cfg(test)]

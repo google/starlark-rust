@@ -297,6 +297,10 @@ impl TypedIterable for List {
     fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().cloned())
     }
+
+    fn to_vec(&self) -> Vec<Value> {
+        self.content.clone()
+    }
 }
 
 #[cfg(test)]
