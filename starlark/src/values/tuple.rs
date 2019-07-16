@@ -411,19 +411,17 @@ impl TypedValue for Tuple {
     /// # );
     /// ```
     fn mul(&self, other: Value) -> ValueResult {
-        if other.get_type() == "int" || other.get_type() == "boolean" {
-            let l = other.to_int()?;
-            let mut result = Tuple {
-                content: Vec::new(),
-            };
-            for _i in 0..l {
-                for x in self.content.iter() {
-                    result.content.push(x.clone());
+        match other.downcast_ref::<i64>() {
+            Some(l) => {
+                let mut result = Tuple {
+                    content: Vec::new(),
+                };
+                for _i in 0..*l {
+                    result.content.extend(self.content.iter().cloned());
                 }
+                Ok(Value::new(result))
             }
-            Ok(Value::new(result))
-        } else {
-            Err(ValueError::IncorrectParameterType)
+            None => Err(ValueError::IncorrectParameterType),
         }
     }
 }
