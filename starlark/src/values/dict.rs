@@ -86,6 +86,10 @@ impl Dictionary {
     pub fn remove_hashed(&mut self, key: &HashedValue) -> Option<Value> {
         self.content.remove(key)
     }
+
+    pub fn keys(&self) -> Vec<Value> {
+        self.content.keys().map(|k| k.get_value().clone()).collect()
+    }
 }
 
 impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone> TryFrom<HashMap<T1, T2>>
@@ -226,7 +230,11 @@ impl TypedValue for Dictionary {
 
 impl TypedIterable for Dictionary {
     fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(self.content.iter().map(|x| x.0.get_value().clone()))
+        Box::new(self.content.keys().map(|x| x.get_value().clone()))
+    }
+
+    fn to_vec(&self) -> Vec<Value> {
+        self.content.keys().map(|x| x.get_value().clone()).collect()
     }
 }
 

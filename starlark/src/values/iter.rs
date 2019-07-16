@@ -21,6 +21,11 @@ use crate::values::Value;
 pub trait TypedIterable: 'static {
     /// Make an iterator.
     fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a>;
+
+    /// Specialized faster version of iteration when results as vec is needed
+    fn to_vec(&self) -> Vec<Value> {
+        self.to_iter().into_iter().collect()
+    }
 }
 
 /// Iterable which contains borrowed reference to a sequence.
@@ -35,6 +40,10 @@ impl<'a> RefIterable<'a> {
 
     pub fn iter(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         self.r.to_iter()
+    }
+
+    pub fn to_vec(&self) -> Vec<Value> {
+        self.r.to_vec()
     }
 }
 

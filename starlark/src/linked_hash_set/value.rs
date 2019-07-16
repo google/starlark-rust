@@ -253,6 +253,10 @@ impl TypedIterable for Set {
     fn to_iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         Box::new(self.content.iter().map(|v| v.get_value().clone()))
     }
+
+    fn to_vec(&self) -> Vec<Value> {
+        self.content.iter().map(|v| v.get_value().clone()).collect()
+    }
 }
 
 #[cfg(test)]

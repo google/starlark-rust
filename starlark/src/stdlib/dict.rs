@@ -125,8 +125,8 @@ starlark_module! {global =>
     /// # )"#).unwrap());
     /// ```
     dict.keys(this) {
-        let v : Vec<Value> = this.iter()?.iter().collect();
-        ok!(v)
+        let this = this.downcast_ref::<Dictionary>().unwrap();
+        Ok(Value::from(this.keys()))
     }
 
     /// [dict.pop](
