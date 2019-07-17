@@ -19,7 +19,7 @@ use crate::eval::call_stack::CallStack;
 use crate::eval::{
     eval_stmt, DefLocals, EvalException, EvaluationContext, EvaluationContextEnvironment,
 };
-use crate::syntax::ast::{AstExpr, AstStatement, Expr, Statement};
+use crate::syntax::ast::{AstExpr, AstParameter, AstStatement, AstString, Expr, Statement};
 use crate::values::error::ValueError;
 use crate::values::function::{FunctionParameter, FunctionType};
 use crate::values::none::NoneType;
@@ -31,84 +31,66 @@ use std::convert::TryInto;
 use std::iter;
 use std::sync::{Arc, Mutex};
 
-/// Starlark function internal representation and implementation of [`TypedValue`].
-pub(crate) struct Def {
-    signature: Vec<FunctionParameter>,
-    function_type: FunctionType,
-    stmts: AstStatement,
-    captured_env: Environment,
-    map: Arc<Mutex<CodeMap>>,
+/// `def` AST with post-processing suitable for faster excecution
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct DefCompiled {
+    pub(crate) name: AstString,
+    pub(crate) params: Vec<AstParameter>,
+    pub(crate) suite: AstStatement,
     local_names_to_indices: HashMap<String, usize>,
 }
 
-impl Def {
-    pub fn new(
-        name: String,
-        module: String,
-        signature: Vec<FunctionParameter>,
-        stmts: AstStatement,
-        map: Arc<Mutex<CodeMap>>,
-        env: Environment,
-    ) -> Value {
+impl DefCompiled {
+    pub fn new(name: AstString, params: Vec<AstParameter>, suite: AstStatement) -> DefCompiled {
         let mut local_names_to_indices = HashMap::new();
 
-        for p in &signature {
+        for p in &params {
             let len = local_names_to_indices.len();
             local_names_to_indices
-                .entry(match p {
-                    FunctionParameter::Normal(ref n)
-                    | FunctionParameter::ArgsArray(ref n)
-                    | FunctionParameter::KWArgsDict(ref n)
-                    | FunctionParameter::WithDefaultValue(ref n, ..) => n.to_owned(),
-                    FunctionParameter::Optional(..) => unreachable!(),
-                })
+                .entry(p.name().to_owned())
                 .or_insert(len);
         }
 
-        Def::collect_locals(&stmts, &mut local_names_to_indices);
+        DefCompiled::collect_locals(&suite, &mut local_names_to_indices);
 
-        let stmts = Def::transform_locals(stmts, &local_names_to_indices);
+        let suite = DefCompiled::transform_locals(suite, &local_names_to_indices);
 
-        // This can be implemented by delegating to `Function::new`,
-        // but having a separate type allows slight more efficient implementation
-        // and optimizations in the future.
-        Value::new(Def {
-            function_type: FunctionType::Def(name, module),
-            signature,
-            stmts,
-            captured_env: env,
-            map,
-            local_names_to_indices: local_names_to_indices,
-        })
+        DefCompiled {
+            name,
+            params,
+            suite,
+            local_names_to_indices,
+        }
     }
 
     fn collect_locals(stmt: &AstStatement, local_names_to_indices: &mut HashMap<String, usize>) {
         match stmt.node {
             Statement::Assign(ref dest, ..) => {
-                Def::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                DefCompiled::collect_locals_from_assign_expr(dest, local_names_to_indices);
             }
             Statement::For(ref dest, _, ref body) => {
-                Def::collect_locals_from_assign_expr(dest, local_names_to_indices);
-                Def::collect_locals(body, local_names_to_indices);
+                DefCompiled::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                DefCompiled::collect_locals(body, local_names_to_indices);
             }
             Statement::Statements(ref stmts) => {
                 for stmt in stmts {
-                    Def::collect_locals(stmt, local_names_to_indices);
+                    DefCompiled::collect_locals(stmt, local_names_to_indices);
                 }
             }
             Statement::If(_, ref then_block) => {
-                Def::collect_locals(then_block, local_names_to_indices);
+                DefCompiled::collect_locals(then_block, local_names_to_indices);
             }
             Statement::IfElse(_, ref then_block, ref else_block) => {
-                Def::collect_locals(then_block, local_names_to_indices);
-                Def::collect_locals(else_block, local_names_to_indices);
+                DefCompiled::collect_locals(then_block, local_names_to_indices);
+                DefCompiled::collect_locals(else_block, local_names_to_indices);
             }
             Statement::Break
             | Statement::Continue
             | Statement::Pass
             | Statement::Return(..)
             | Statement::Expression(..) => {}
-            Statement::Load(..) | Statement::Def(..) => unreachable!(),
+            Statement::Load(..) | Statement::Def(..) | Statement::DefCompiled(..) => unreachable!(),
         }
     }
 
@@ -118,38 +100,40 @@ impl Def {
             span: stmts.span,
             node: match stmts.node {
                 Statement::Assign(left, op, right) => Statement::Assign(
-                    Def::transform_locals_in_expr(left, locals),
+                    DefCompiled::transform_locals_in_expr(left, locals),
                     op,
-                    Def::transform_locals_in_expr(right, locals),
+                    DefCompiled::transform_locals_in_expr(right, locals),
                 ),
                 Statement::For(var, collection, body) => Statement::For(
-                    Def::transform_locals_in_expr(var, locals),
-                    Def::transform_locals_in_expr(collection, locals),
-                    Def::transform_locals(body, locals),
+                    DefCompiled::transform_locals_in_expr(var, locals),
+                    DefCompiled::transform_locals_in_expr(collection, locals),
+                    DefCompiled::transform_locals(body, locals),
                 ),
                 Statement::Statements(stmts) => Statement::Statements(
                     stmts
                         .into_iter()
-                        .map(|stmt| Def::transform_locals(stmt, locals))
+                        .map(|stmt| DefCompiled::transform_locals(stmt, locals))
                         .collect(),
                 ),
                 Statement::If(cond, then_block) => Statement::If(
-                    Def::transform_locals_in_expr(cond, locals),
-                    Def::transform_locals(then_block, locals),
+                    DefCompiled::transform_locals_in_expr(cond, locals),
+                    DefCompiled::transform_locals(then_block, locals),
                 ),
                 Statement::IfElse(cond, then_block, else_block) => Statement::IfElse(
-                    Def::transform_locals_in_expr(cond, locals),
-                    Def::transform_locals(then_block, locals),
-                    Def::transform_locals(else_block, locals),
+                    DefCompiled::transform_locals_in_expr(cond, locals),
+                    DefCompiled::transform_locals(then_block, locals),
+                    DefCompiled::transform_locals(else_block, locals),
                 ),
                 s @ Statement::Break | s @ Statement::Continue | s @ Statement::Pass => s,
-                Statement::Def(..) | Statement::Load(..) => unreachable!(),
+                Statement::Def(..) | Statement::Load(..) | Statement::DefCompiled(..) => {
+                    unreachable!()
+                }
                 Statement::Expression(expr) => {
-                    Statement::Expression(Def::transform_locals_in_expr(expr, locals))
+                    Statement::Expression(DefCompiled::transform_locals_in_expr(expr, locals))
                 }
-                Statement::Return(expr) => {
-                    Statement::Return(expr.map(|expr| Def::transform_locals_in_expr(expr, locals)))
-                }
+                Statement::Return(expr) => Statement::Return(
+                    expr.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
+                ),
             },
         })
     }
@@ -161,7 +145,7 @@ impl Def {
         match expr.node {
             Expr::Tuple(ref exprs) | Expr::List(ref exprs) => {
                 for expr in exprs {
-                    Def::collect_locals_from_assign_expr(expr, local_names_to_indices);
+                    DefCompiled::collect_locals_from_assign_expr(expr, local_names_to_indices);
                 }
             }
             Expr::Identifier(ref ident) => {
@@ -181,19 +165,19 @@ impl Def {
                 Expr::Tuple(exprs) => Expr::Tuple(
                     exprs
                         .into_iter()
-                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
                         .collect(),
                 ),
                 Expr::List(exprs) => Expr::List(
                     exprs
                         .into_iter()
-                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
                         .collect(),
                 ),
                 Expr::Set(exprs) => Expr::Set(
                     exprs
                         .into_iter()
-                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
                         .collect(),
                 ),
                 Expr::Dict(pairs) => Expr::Dict(
@@ -201,8 +185,8 @@ impl Def {
                         .into_iter()
                         .map(|(key, value)| {
                             (
-                                Def::transform_locals_in_expr(key, locals),
-                                Def::transform_locals_in_expr(value, locals),
+                                DefCompiled::transform_locals_in_expr(key, locals),
+                                DefCompiled::transform_locals_in_expr(value, locals),
                             )
                         })
                         .collect(),
@@ -213,42 +197,47 @@ impl Def {
                 },
                 Expr::Slot(..) => unreachable!(),
                 Expr::Dot(left, right) => {
-                    Expr::Dot(Def::transform_locals_in_expr(left, locals), right)
+                    Expr::Dot(DefCompiled::transform_locals_in_expr(left, locals), right)
                 }
                 Expr::Call(function, args, kwargs, star_args, star_star_kwargs) => Expr::Call(
-                    Def::transform_locals_in_expr(function, locals),
+                    DefCompiled::transform_locals_in_expr(function, locals),
                     args.into_iter()
-                        .map(|expr| Def::transform_locals_in_expr(expr, locals))
+                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
                         .collect(),
                     kwargs
                         .into_iter()
-                        .map(|(name, value)| (name, Def::transform_locals_in_expr(value, locals)))
+                        .map(|(name, value)| {
+                            (name, DefCompiled::transform_locals_in_expr(value, locals))
+                        })
                         .collect(),
-                    star_args.map(|expr| Def::transform_locals_in_expr(expr, locals)),
-                    star_star_kwargs.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                    star_args.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
+                    star_star_kwargs
+                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
                 ),
                 Expr::ArrayIndirection(array, index) => Expr::ArrayIndirection(
-                    Def::transform_locals_in_expr(array, locals),
-                    Def::transform_locals_in_expr(index, locals),
+                    DefCompiled::transform_locals_in_expr(array, locals),
+                    DefCompiled::transform_locals_in_expr(index, locals),
                 ),
                 Expr::Slice(array, p1, p2, p3) => Expr::Slice(
                     array,
-                    p1.map(|expr| Def::transform_locals_in_expr(expr, locals)),
-                    p2.map(|expr| Def::transform_locals_in_expr(expr, locals)),
-                    p3.map(|expr| Def::transform_locals_in_expr(expr, locals)),
+                    p1.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
+                    p2.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
+                    p3.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
                 ),
-                Expr::Not(expr) => Expr::Not(Def::transform_locals_in_expr(expr, locals)),
-                Expr::Minus(expr) => Expr::Minus(Def::transform_locals_in_expr(expr, locals)),
-                Expr::Plus(expr) => Expr::Plus(Def::transform_locals_in_expr(expr, locals)),
+                Expr::Not(expr) => Expr::Not(DefCompiled::transform_locals_in_expr(expr, locals)),
+                Expr::Minus(expr) => {
+                    Expr::Minus(DefCompiled::transform_locals_in_expr(expr, locals))
+                }
+                Expr::Plus(expr) => Expr::Plus(DefCompiled::transform_locals_in_expr(expr, locals)),
                 Expr::Op(op, left, right) => Expr::Op(
                     op,
-                    Def::transform_locals_in_expr(left, locals),
-                    Def::transform_locals_in_expr(right, locals),
+                    DefCompiled::transform_locals_in_expr(left, locals),
+                    DefCompiled::transform_locals_in_expr(right, locals),
                 ),
                 Expr::If(cond, then_expr, else_expr) => Expr::If(
-                    Def::transform_locals_in_expr(cond, locals),
-                    Def::transform_locals_in_expr(then_expr, locals),
-                    Def::transform_locals_in_expr(else_expr, locals),
+                    DefCompiled::transform_locals_in_expr(cond, locals),
+                    DefCompiled::transform_locals_in_expr(then_expr, locals),
+                    DefCompiled::transform_locals_in_expr(else_expr, locals),
                 ),
                 n @ Expr::IntLiteral(..) | n @ Expr::StringLiteral(..) => n,
                 n @ Expr::DictComprehension(..)
@@ -259,6 +248,36 @@ impl Def {
                     n
                 }
             },
+        })
+    }
+}
+
+/// Starlark function internal representation and implementation of [`TypedValue`].
+pub(crate) struct Def {
+    signature: Vec<FunctionParameter>,
+    function_type: FunctionType,
+    captured_env: Environment,
+    map: Arc<Mutex<CodeMap>>,
+    stmt: DefCompiled,
+}
+
+impl Def {
+    pub fn new(
+        module: String,
+        signature: Vec<FunctionParameter>,
+        stmt: DefCompiled,
+        map: Arc<Mutex<CodeMap>>,
+        env: Environment,
+    ) -> Value {
+        // This can be implemented by delegating to `Function::new`,
+        // but having a separate type allows slight more efficient implementation
+        // and optimizations in the future.
+        Value::new(Def {
+            function_type: FunctionType::Def(stmt.name.node.clone(), module),
+            signature,
+            stmt,
+            captured_env: env,
+            map,
         })
     }
 }
@@ -296,7 +315,7 @@ impl TypedValue for Def {
             call_stack: call_stack.to_owned(),
             env: EvaluationContextEnvironment::Function(
                 self.captured_env.clone(),
-                DefLocals::new(&self.local_names_to_indices),
+                DefLocals::new(&self.stmt.local_names_to_indices),
             ),
             type_values,
             map: self.map.clone(),
@@ -332,7 +351,7 @@ impl TypedValue for Def {
 
         parser.check_no_more_args()?;
 
-        match eval_stmt(&self.stmts, &mut ctx) {
+        match eval_stmt(&self.stmt.suite, &mut ctx) {
             Err(EvalException::Return(_s, ret)) => Ok(ret),
             Err(x) => Err(ValueError::DiagnosedError(x.into())),
             Ok(..) => Ok(Value::new(NoneType::None)),

@@ -973,9 +973,9 @@ fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
             iterable.unfreeze_for_iteration();
             result
         }
-        Statement::Def(ref name, ref params, ref stmts) => {
+        Statement::DefCompiled(ref stmt) => {
             let mut p = Vec::new();
-            for x in params.iter() {
+            for x in &stmt.params {
                 p.push(match x.node {
                     Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
                     Parameter::WithDefaultValue(ref n, ref v) => {
@@ -986,16 +986,16 @@ fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
                 })
             }
             let f = Def::new(
-                name.node.clone(),
                 context.env.assert_module_env().name(),
                 p,
-                stmts.clone(),
+                stmt.clone(),
                 context.map.clone(),
                 context.env.assert_module_env().clone(),
             );
-            t(context.env.set(&name.node, f.clone()), name)?;
+            t(context.env.set(&stmt.name.node, f.clone()), &stmt.name)?;
             Ok(f)
         }
+        Statement::Def(..) => unreachable!(),
         Statement::Load(ref name, ref v) => {
             let loadenv = context.env.loader().load(name)?;
             for &(ref new_name, ref orig_name) in v.iter() {
@@ -1123,4 +1123,4 @@ pub mod testutil;
 #[cfg(test)]
 mod tests;
 
-mod def;
+pub(crate) mod def;

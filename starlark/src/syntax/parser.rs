@@ -185,10 +185,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             Dialect::Bzl => StarlarkParser::new().parse(content, filespan, lexer),
         }
     } {
-        Result::Ok(v) => {
-            Statement::validate_mod(&v, dialect)?;
-            Result::Ok(v)
-        }
+        Result::Ok(v) => Ok(Statement::compile_mod(v, dialect)?),
         Result::Err(p) => Result::Err(p.to_diagnostic(filespan)),
     }
 }

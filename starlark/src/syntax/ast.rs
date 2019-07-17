@@ -15,6 +15,7 @@
 //! AST for parsed starlark files.
 
 use super::lexer;
+use crate::eval::def::DefCompiled;
 use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -96,6 +97,17 @@ pub enum Parameter {
     KWArgs(AstString),
 }
 to_ast_trait!(Parameter, AstParameter);
+
+impl Parameter {
+    pub fn name(&self) -> &str {
+        match self {
+            Parameter::Normal(n) => &n.node,
+            Parameter::WithDefaultValue(n, ..) => &n.node,
+            Parameter::Args(n) => &n.node,
+            Parameter::KWArgs(n) => &n.node,
+        }
+    }
+}
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -261,6 +273,8 @@ pub enum Statement {
     IfElse(AstExpr, AstStatement, AstStatement),
     For(AstExpr, AstExpr, AstStatement),
     Def(AstString, Vec<AstParameter>, AstStatement),
+    /// Post-processed `def` statement
+    DefCompiled(DefCompiled),
     Load(AstString, Vec<(AstString, AstString)>),
 }
 to_ast_trait!(Statement, AstStatement, Box);
@@ -373,6 +387,7 @@ impl Statement {
                 })
             }
             Statement::Def(.., ref stmt) => Statement::validate_break_continue(stmt),
+            Statement::DefCompiled(..) => unreachable!(),
             Statement::If(.., ref then_block) => Statement::validate_break_continue(then_block),
             Statement::IfElse(.., ref then_block, ref else_block) => {
                 Statement::validate_break_continue(then_block)?;
@@ -401,9 +416,47 @@ impl Statement {
         }
     }
 
-    pub(crate) fn validate_mod(stmt: &AstStatement, _dialect: Dialect) -> Result<(), Diagnostic> {
-        Statement::validate_break_continue(stmt)?;
-        Ok(())
+    fn compile_defs(stmt: AstStatement) -> Result<AstStatement, Diagnostic> {
+        Ok(Box::new(Spanned {
+            span: stmt.span,
+            node: match stmt.node {
+                Statement::DefCompiled(..) => unreachable!(),
+                Statement::Def(name, params, suite) => {
+                    Statement::DefCompiled(DefCompiled::new(name, params, suite))
+                }
+                Statement::For(..)
+                | Statement::Break
+                | Statement::Continue
+                | Statement::Return(..) => unreachable!(),
+                Statement::If(cond, then_block) => {
+                    Statement::If(cond, Statement::compile_defs(then_block)?)
+                }
+                Statement::IfElse(conf, then_block, else_block) => Statement::IfElse(
+                    conf,
+                    Statement::compile_defs(then_block)?,
+                    Statement::compile_defs(else_block)?,
+                ),
+                Statement::Statements(stmts) => Statement::Statements(
+                    stmts
+                        .into_iter()
+                        .map(Statement::compile_defs)
+                        .collect::<Result<_, _>>()?,
+                ),
+                s @ Statement::Load(..)
+                | s @ Statement::Expression(..)
+                | s @ Statement::Pass
+                | s @ Statement::Assign(..) => s,
+            },
+        }))
+    }
+
+    pub(crate) fn compile_mod(
+        stmt: AstStatement,
+        _dialect: Dialect,
+    ) -> Result<AstStatement, Diagnostic> {
+        Statement::validate_break_continue(&stmt)?;
+        let stmt = Statement::compile_defs(stmt)?;
+        Ok(stmt)
     }
 }
 
@@ -644,7 +697,13 @@ impl Statement {
                 writeln!(f, "{}for {} in {}:", tab, bind.node, coll.node)?;
                 suite.node.fmt_with_tab(f, tab + "  ")
             }
-            Statement::Def(ref name, ref params, ref suite) => {
+            Statement::Def(ref name, ref params, ref suite)
+            | Statement::DefCompiled(DefCompiled {
+                ref name,
+                ref params,
+                ref suite,
+                ..
+            }) => {
                 write!(f, "{}def {}(", tab, name.node)?;
                 comma_separated_fmt(f, params, |x, f| x.node.fmt(f), false)?;
                 f.write_str("):\n")?;
