@@ -28,7 +28,6 @@ use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
-use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
 use crate::values::function::{FunctionParameter, WrappedMethod};
 use crate::values::none::NoneType;
@@ -203,8 +202,8 @@ pub trait FileLoader: 'static {
     fn load(&self, path: &str) -> Result<Environment, EvalException>;
 }
 
-/// Starlark `def` function local variables
-pub(crate) struct DefLocals<'a> {
+/// Starlark `def` or comprehension local variables
+pub(crate) struct IndexedLocals<'a> {
     // name to index is needed for nested contexts only
     // (collection comprehensions).
     // TODO: access nested context objects by slot index too and drop this field
@@ -218,9 +217,9 @@ pub(crate) struct DefLocals<'a> {
     locals: RefCell<Vec<Option<Value>>>,
 }
 
-impl<'a> DefLocals<'a> {
-    fn new(name_to_index: &'a HashMap<String, usize>) -> DefLocals<'a> {
-        DefLocals {
+impl<'a> IndexedLocals<'a> {
+    fn new(name_to_index: &'a HashMap<String, usize>) -> IndexedLocals<'a> {
+        IndexedLocals {
             name_to_index,
             locals: RefCell::new(vec![None; name_to_index.len()]),
         }
@@ -261,12 +260,9 @@ pub(crate) enum EvaluationContextEnvironment<'a> {
     /// Module-level
     Module(Environment, Rc<dyn FileLoader>),
     /// Function-level
-    Function(Environment, DefLocals<'a>),
+    Function(Environment, IndexedLocals<'a>),
     /// Scope inside function, e. g. list comprenension
-    Nested(
-        &'a EvaluationContextEnvironment<'a>,
-        RefCell<HashMap<String, Value>>,
-    ),
+    Nested(&'a EvaluationContextEnvironment<'a>, IndexedLocals<'a>),
 }
 
 impl<'a> EvaluationContextEnvironment<'a> {
@@ -299,30 +295,29 @@ impl<'a> EvaluationContextEnvironment<'a> {
                 Some(v) => Ok(v),
                 None => env.get(name),
             },
-            EvaluationContextEnvironment::Nested(parent, locals) => {
-                match locals.borrow().get(name).cloned() {
-                    Some(v) => Ok(v),
-                    None => parent.get(name),
-                }
-            }
+            EvaluationContextEnvironment::Nested(parent, locals) => match locals.get(name)? {
+                Some(v) => Ok(v),
+                None => parent.get(name),
+            },
         }
     }
 
     fn get_slot(&self, _slot: usize, name: &str) -> Result<Value, EnvironmentError> {
         match self {
-            EvaluationContextEnvironment::Function(_env, locals) => locals.get_slot(_slot, name),
-            _ => unreachable!("slot in non-function environment"),
+            EvaluationContextEnvironment::Function(_, locals)
+            | EvaluationContextEnvironment::Nested(_, locals) => locals.get_slot(_slot, name),
+            _ => unreachable!("slot in non-indexed environment"),
         }
     }
 
     fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.set(name, value),
-            EvaluationContextEnvironment::Nested(_, locals) => {
-                locals.borrow_mut().insert(name.to_owned(), value);
+            EvaluationContextEnvironment::Function(_, locals) => {
+                locals.set(name, value);
                 Ok(())
             }
-            EvaluationContextEnvironment::Function(_, locals) => {
+            EvaluationContextEnvironment::Nested(_, locals) => {
                 locals.set(name, value);
                 Ok(())
             }
@@ -331,11 +326,12 @@ impl<'a> EvaluationContextEnvironment<'a> {
 
     fn set_slot(&self, slot: usize, name: &str, value: Value) -> Result<(), EnvironmentError> {
         match self {
-            EvaluationContextEnvironment::Function(_env, locals) => {
+            EvaluationContextEnvironment::Function(_, locals)
+            | EvaluationContextEnvironment::Nested(_, locals) => {
                 locals.set_slot(slot, name, value);
                 Ok(())
             }
-            _ => unreachable!("slot in non-function environment"),
+            _ => unreachable!("slot in non-indexed environment"),
         }
     }
 
@@ -376,51 +372,14 @@ impl<'a> EvaluationContext<'a> {
         }
     }
 
-    fn child(&'a self) -> EvaluationContext<'a> {
+    fn child(&'a self, name_to_index: &'a HashMap<String, usize>) -> EvaluationContext<'a> {
         EvaluationContext {
-            env: EvaluationContextEnvironment::Nested(&self.env, Default::default()),
+            env: EvaluationContextEnvironment::Nested(&self.env, IndexedLocals::new(name_to_index)),
             type_values: self.type_values.clone(),
             call_stack: self.call_stack.clone(),
             map: self.map.clone(),
         }
     }
-}
-
-fn eval_comprehension_clause(
-    context: &EvaluationContext,
-    e: &AstExpr,
-    clauses: &[AstClause],
-) -> Result<Vec<Value>, EvalException> {
-    let mut result = Vec::new();
-    if let Some((c, tl)) = clauses.split_first() {
-        match c.node {
-            Clause::If(ref cond) => {
-                if eval_expr(cond, context)?.to_bool() {
-                    if tl.is_empty() {
-                        result.push(eval_expr(e, context)?);
-                    } else {
-                        let mut other = eval_comprehension_clause(context, e, tl)?;
-                        result.append(&mut other);
-                    }
-                };
-            }
-            Clause::For(ref k, ref v) => {
-                let mut iterable = eval_expr(v, context)?;
-                iterable.freeze_for_iteration();
-                for i in &t(iterable.iter(), c)? {
-                    set_expr(k, context, i)?;
-                    if tl.is_empty() {
-                        result.push(eval_expr(e, context)?);
-                    } else {
-                        let mut other = eval_comprehension_clause(context, e, tl)?;
-                        result.append(&mut other);
-                    }
-                }
-                iterable.unfreeze_for_iteration();
-            }
-        }
-    }
-    Ok(result)
 }
 
 fn eval_compare<F>(
@@ -541,47 +500,6 @@ fn eval_dot<'a>(
     } else {
         t(left.get_attr(&s.node), this)
     }
-}
-
-fn eval_dict_comprehension<'a>(
-    k: &AstExpr,
-    v: &AstExpr,
-    clauses: &[AstClause],
-    context: &EvaluationContext,
-) -> EvalResult {
-    let mut r = Dictionary::new_typed();
-    let tuple = Box::new(Spanned {
-        span: k.span.merge(v.span),
-        node: Expr::Tuple(vec![k.clone(), v.clone()]),
-    });
-    let context = context.child();
-    for e in eval_comprehension_clause(&context, &tuple, clauses)? {
-        let k = t(e.at(Value::from(0)), &tuple)?;
-        let v = t(e.at(Value::from(1)), &tuple)?;
-        t(r.set_at(k, v), &tuple)?;
-    }
-    Ok(Value::new(r))
-}
-
-fn eval_one_dimensional_comprehension<'a>(
-    e: &AstExpr,
-    clauses: &[AstClause],
-    context: &EvaluationContext,
-) -> Result<Vec<Value>, EvalException> {
-    let mut r = Vec::new();
-    let context = context.child();
-    for v in eval_comprehension_clause(&context, e, clauses)? {
-        r.push(v.clone());
-    }
-    Ok(r)
-}
-
-fn eval_list_comprehension<'a>(
-    e: &AstExpr,
-    clauses: &[AstClause],
-    context: &EvaluationContext,
-) -> EvalResult {
-    eval_one_dimensional_comprehension(e, clauses, context).map(Value::from)
 }
 
 enum TransformedExpr {
@@ -833,14 +751,8 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             }
             make_set(values, context, expr.span)
         }
-        Expr::ListComprehension(ref e, ref clauses) => eval_list_comprehension(e, clauses, context),
-        Expr::DictComprehension((ref k, ref v), ref clauses) => {
-            eval_dict_comprehension(k, v, clauses, context)
-        }
-        Expr::SetComprehension(ref e, ref clauses) => {
-            let values = eval_one_dimensional_comprehension(e, clauses, context)?;
-            make_set(values, context, expr.span)
-        }
+        Expr::ListComprehension(..) | Expr::DictComprehension(..) | Expr::SetComprehension(..) => unreachable!(),
+        Expr::ComprehensionCompiled(ref e) => e.eval(expr.span, context),
     }
 }
 
@@ -1123,4 +1035,5 @@ pub mod testutil;
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod compr;
 pub(crate) mod def;

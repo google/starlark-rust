@@ -17,14 +17,15 @@
 use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::eval::{
-    eval_stmt, DefLocals, EvalException, EvaluationContext, EvaluationContextEnvironment,
+    eval_stmt, EvalException, EvaluationContext, EvaluationContextEnvironment, IndexedLocals,
 };
-use crate::syntax::ast::{AstExpr, AstParameter, AstStatement, AstString, Expr, Statement};
+use crate::syntax::ast::{AstParameter, AstStatement, AstString, Expr, Statement};
 use crate::values::error::ValueError;
 use crate::values::function::{FunctionParameter, FunctionType};
 use crate::values::none::NoneType;
 use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
 use codemap::{CodeMap, Spanned};
+use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -42,7 +43,11 @@ pub struct DefCompiled {
 }
 
 impl DefCompiled {
-    pub fn new(name: AstString, params: Vec<AstParameter>, suite: AstStatement) -> DefCompiled {
+    pub fn new(
+        name: AstString,
+        params: Vec<AstParameter>,
+        suite: AstStatement,
+    ) -> Result<DefCompiled, Diagnostic> {
         let mut local_names_to_indices = HashMap::new();
 
         for p in &params {
@@ -56,21 +61,23 @@ impl DefCompiled {
 
         let suite = DefCompiled::transform_locals(suite, &local_names_to_indices);
 
-        DefCompiled {
+        let suite = Statement::compile(suite)?;
+
+        Ok(DefCompiled {
             name,
             params,
             suite,
             local_names_to_indices,
-        }
+        })
     }
 
     fn collect_locals(stmt: &AstStatement, local_names_to_indices: &mut HashMap<String, usize>) {
         match stmt.node {
             Statement::Assign(ref dest, ..) => {
-                DefCompiled::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                Expr::collect_locals_from_assign_expr(dest, local_names_to_indices);
             }
             Statement::For(ref dest, _, ref body) => {
-                DefCompiled::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                Expr::collect_locals_from_assign_expr(dest, local_names_to_indices);
                 DefCompiled::collect_locals(body, local_names_to_indices);
             }
             Statement::Statements(ref stmts) => {
@@ -100,13 +107,13 @@ impl DefCompiled {
             span: stmts.span,
             node: match stmts.node {
                 Statement::Assign(left, op, right) => Statement::Assign(
-                    DefCompiled::transform_locals_in_expr(left, locals),
+                    Expr::transform_locals_to_slots(left, locals),
                     op,
-                    DefCompiled::transform_locals_in_expr(right, locals),
+                    Expr::transform_locals_to_slots(right, locals),
                 ),
                 Statement::For(var, collection, body) => Statement::For(
-                    DefCompiled::transform_locals_in_expr(var, locals),
-                    DefCompiled::transform_locals_in_expr(collection, locals),
+                    Expr::transform_locals_to_slots(var, locals),
+                    Expr::transform_locals_to_slots(collection, locals),
                     DefCompiled::transform_locals(body, locals),
                 ),
                 Statement::Statements(stmts) => Statement::Statements(
@@ -116,137 +123,22 @@ impl DefCompiled {
                         .collect(),
                 ),
                 Statement::If(cond, then_block) => Statement::If(
-                    DefCompiled::transform_locals_in_expr(cond, locals),
+                    Expr::transform_locals_to_slots(cond, locals),
                     DefCompiled::transform_locals(then_block, locals),
                 ),
                 Statement::IfElse(cond, then_block, else_block) => Statement::IfElse(
-                    DefCompiled::transform_locals_in_expr(cond, locals),
+                    Expr::transform_locals_to_slots(cond, locals),
                     DefCompiled::transform_locals(then_block, locals),
                     DefCompiled::transform_locals(else_block, locals),
                 ),
                 s @ Statement::Break | s @ Statement::Continue | s @ Statement::Pass => s,
-                Statement::Def(..) | Statement::Load(..) | Statement::DefCompiled(..) => {
-                    unreachable!()
-                }
+                Statement::Def(..) | Statement::Load(..) | Statement::DefCompiled(..) => unreachable!(),
                 Statement::Expression(expr) => {
-                    Statement::Expression(DefCompiled::transform_locals_in_expr(expr, locals))
+                    Statement::Expression(Expr::transform_locals_to_slots(expr, locals))
                 }
                 Statement::Return(expr) => Statement::Return(
-                    expr.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
+                    expr.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
                 ),
-            },
-        })
-    }
-
-    fn collect_locals_from_assign_expr(
-        expr: &AstExpr,
-        local_names_to_indices: &mut HashMap<String, usize>,
-    ) {
-        match expr.node {
-            Expr::Tuple(ref exprs) | Expr::List(ref exprs) => {
-                for expr in exprs {
-                    DefCompiled::collect_locals_from_assign_expr(expr, local_names_to_indices);
-                }
-            }
-            Expr::Identifier(ref ident) => {
-                let len = local_names_to_indices.len();
-                local_names_to_indices
-                    .entry(ident.node.clone())
-                    .or_insert(len);
-            }
-            _ => {}
-        }
-    }
-
-    fn transform_locals_in_expr(expr: AstExpr, locals: &HashMap<String, usize>) -> AstExpr {
-        Box::new(Spanned {
-            span: expr.span,
-            node: match expr.node {
-                Expr::Tuple(exprs) => Expr::Tuple(
-                    exprs
-                        .into_iter()
-                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
-                        .collect(),
-                ),
-                Expr::List(exprs) => Expr::List(
-                    exprs
-                        .into_iter()
-                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
-                        .collect(),
-                ),
-                Expr::Set(exprs) => Expr::Set(
-                    exprs
-                        .into_iter()
-                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
-                        .collect(),
-                ),
-                Expr::Dict(pairs) => Expr::Dict(
-                    pairs
-                        .into_iter()
-                        .map(|(key, value)| {
-                            (
-                                DefCompiled::transform_locals_in_expr(key, locals),
-                                DefCompiled::transform_locals_in_expr(value, locals),
-                            )
-                        })
-                        .collect(),
-                ),
-                Expr::Identifier(ident) => match locals.get(&ident.node) {
-                    Some(&slot) => Expr::Slot(slot, ident),
-                    None => Expr::Identifier(ident),
-                },
-                Expr::Slot(..) => unreachable!(),
-                Expr::Dot(left, right) => {
-                    Expr::Dot(DefCompiled::transform_locals_in_expr(left, locals), right)
-                }
-                Expr::Call(function, args, kwargs, star_args, star_star_kwargs) => Expr::Call(
-                    DefCompiled::transform_locals_in_expr(function, locals),
-                    args.into_iter()
-                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals))
-                        .collect(),
-                    kwargs
-                        .into_iter()
-                        .map(|(name, value)| {
-                            (name, DefCompiled::transform_locals_in_expr(value, locals))
-                        })
-                        .collect(),
-                    star_args.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
-                    star_star_kwargs
-                        .map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
-                ),
-                Expr::ArrayIndirection(array, index) => Expr::ArrayIndirection(
-                    DefCompiled::transform_locals_in_expr(array, locals),
-                    DefCompiled::transform_locals_in_expr(index, locals),
-                ),
-                Expr::Slice(array, p1, p2, p3) => Expr::Slice(
-                    array,
-                    p1.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
-                    p2.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
-                    p3.map(|expr| DefCompiled::transform_locals_in_expr(expr, locals)),
-                ),
-                Expr::Not(expr) => Expr::Not(DefCompiled::transform_locals_in_expr(expr, locals)),
-                Expr::Minus(expr) => {
-                    Expr::Minus(DefCompiled::transform_locals_in_expr(expr, locals))
-                }
-                Expr::Plus(expr) => Expr::Plus(DefCompiled::transform_locals_in_expr(expr, locals)),
-                Expr::Op(op, left, right) => Expr::Op(
-                    op,
-                    DefCompiled::transform_locals_in_expr(left, locals),
-                    DefCompiled::transform_locals_in_expr(right, locals),
-                ),
-                Expr::If(cond, then_expr, else_expr) => Expr::If(
-                    DefCompiled::transform_locals_in_expr(cond, locals),
-                    DefCompiled::transform_locals_in_expr(then_expr, locals),
-                    DefCompiled::transform_locals_in_expr(else_expr, locals),
-                ),
-                n @ Expr::IntLiteral(..) | n @ Expr::StringLiteral(..) => n,
-                n @ Expr::DictComprehension(..)
-                | n @ Expr::ListComprehension(..)
-                | n @ Expr::SetComprehension(..) => {
-                    // TODO: do the same access-by-index optimization for compr locals.
-                    // TODO: access parent scope (function) variables by index, not by name.
-                    n
-                }
             },
         })
     }
@@ -315,7 +207,7 @@ impl TypedValue for Def {
             call_stack: call_stack.to_owned(),
             env: EvaluationContextEnvironment::Function(
                 self.captured_env.clone(),
-                DefLocals::new(&self.stmt.local_names_to_indices),
+                IndexedLocals::new(&self.stmt.local_names_to_indices),
             ),
             type_values,
             map: self.map.clone(),
