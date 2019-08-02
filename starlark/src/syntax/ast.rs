@@ -15,12 +15,13 @@
 //! AST for parsed starlark files.
 
 use super::lexer;
+use crate::eval::compr::ComprehensionCompiled;
 use crate::eval::def::DefCompiled;
 use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use lalrpop_util;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -139,6 +140,7 @@ pub enum Expr {
     ListComprehension(AstExpr, Vec<AstClause>),
     SetComprehension(AstExpr, Vec<AstClause>),
     DictComprehension((AstExpr, AstExpr), Vec<AstClause>),
+    ComprehensionCompiled(ComprehensionCompiled),
 }
 to_ast_trait!(Expr, AstExpr, Box);
 
@@ -214,6 +216,197 @@ impl Expr {
             }
         }
         Ok(Expr::Call(f, pos_args, named_args, args_array, kwargs_dict))
+    }
+
+    pub(crate) fn collect_locals_from_assign_expr(
+        expr: &AstExpr,
+        local_names_to_indices: &mut HashMap<String, usize>,
+    ) {
+        match expr.node {
+            Expr::Tuple(ref exprs) | Expr::List(ref exprs) => {
+                for expr in exprs {
+                    Expr::collect_locals_from_assign_expr(expr, local_names_to_indices);
+                }
+            }
+            Expr::Identifier(ref ident) => {
+                let len = local_names_to_indices.len();
+                local_names_to_indices
+                    .entry(ident.node.clone())
+                    .or_insert(len);
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn transform_locals_to_slots(
+        expr: AstExpr,
+        locals: &HashMap<String, usize>,
+    ) -> AstExpr {
+        Box::new(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                Expr::Tuple(exprs) => Expr::Tuple(
+                    exprs
+                        .into_iter()
+                        .map(|expr| Expr::transform_locals_to_slots(expr, locals))
+                        .collect(),
+                ),
+                Expr::List(exprs) => Expr::List(
+                    exprs
+                        .into_iter()
+                        .map(|expr| Expr::transform_locals_to_slots(expr, locals))
+                        .collect(),
+                ),
+                Expr::Set(exprs) => Expr::Set(
+                    exprs
+                        .into_iter()
+                        .map(|expr| Expr::transform_locals_to_slots(expr, locals))
+                        .collect(),
+                ),
+                Expr::Dict(pairs) => Expr::Dict(
+                    pairs
+                        .into_iter()
+                        .map(|(key, value)| {
+                            (
+                                Expr::transform_locals_to_slots(key, locals),
+                                Expr::transform_locals_to_slots(value, locals),
+                            )
+                        })
+                        .collect(),
+                ),
+                Expr::Identifier(ident) => match locals.get(&ident.node) {
+                    Some(&slot) => Expr::Slot(slot, ident),
+                    None => Expr::Identifier(ident),
+                },
+                Expr::Slot(..) => unreachable!(),
+                Expr::Dot(left, right) => {
+                    Expr::Dot(Expr::transform_locals_to_slots(left, locals), right)
+                }
+                Expr::Call(function, args, kwargs, star_args, star_star_kwargs) => Expr::Call(
+                    Expr::transform_locals_to_slots(function, locals),
+                    args.into_iter()
+                        .map(|expr| Expr::transform_locals_to_slots(expr, locals))
+                        .collect(),
+                    kwargs
+                        .into_iter()
+                        .map(|(name, value)| (name, Expr::transform_locals_to_slots(value, locals)))
+                        .collect(),
+                    star_args.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
+                    star_star_kwargs.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
+                ),
+                Expr::ArrayIndirection(array, index) => Expr::ArrayIndirection(
+                    Expr::transform_locals_to_slots(array, locals),
+                    Expr::transform_locals_to_slots(index, locals),
+                ),
+                Expr::Slice(array, p1, p2, p3) => Expr::Slice(
+                    array,
+                    p1.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
+                    p2.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
+                    p3.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
+                ),
+                Expr::Not(expr) => Expr::Not(Expr::transform_locals_to_slots(expr, locals)),
+                Expr::Minus(expr) => Expr::Minus(Expr::transform_locals_to_slots(expr, locals)),
+                Expr::Plus(expr) => Expr::Plus(Expr::transform_locals_to_slots(expr, locals)),
+                Expr::Op(op, left, right) => Expr::Op(
+                    op,
+                    Expr::transform_locals_to_slots(left, locals),
+                    Expr::transform_locals_to_slots(right, locals),
+                ),
+                Expr::If(cond, then_expr, else_expr) => Expr::If(
+                    Expr::transform_locals_to_slots(cond, locals),
+                    Expr::transform_locals_to_slots(then_expr, locals),
+                    Expr::transform_locals_to_slots(else_expr, locals),
+                ),
+                n @ Expr::IntLiteral(..) | n @ Expr::StringLiteral(..) => n,
+                n @ Expr::DictComprehension(..)
+                | n @ Expr::ListComprehension(..)
+                | n @ Expr::SetComprehension(..)
+                | n @ Expr::ComprehensionCompiled(..) => {
+                    // TODO: access parent scope variables by index, not by name.
+                    n
+                }
+            },
+        })
+    }
+
+    pub(crate) fn compile(expr: AstExpr) -> Result<AstExpr, Diagnostic> {
+        Ok(Box::new(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                Expr::Tuple(exprs) => Expr::Tuple(
+                    exprs
+                        .into_iter()
+                        .map(Expr::compile)
+                        .collect::<Result<_, _>>()?,
+                ),
+                Expr::List(exprs) => Expr::List(
+                    exprs
+                        .into_iter()
+                        .map(Expr::compile)
+                        .collect::<Result<_, _>>()?,
+                ),
+                Expr::Set(exprs) => Expr::Set(
+                    exprs
+                        .into_iter()
+                        .map(Expr::compile)
+                        .collect::<Result<_, _>>()?,
+                ),
+                Expr::Dict(exprs) => Expr::Dict(
+                    exprs
+                        .into_iter()
+                        .map(|(k, v)| Ok((Expr::compile(k)?, Expr::compile(v)?)))
+                        .collect::<Result<_, _>>()?,
+                ),
+                Expr::If(cond, then_expr, else_expr) => Expr::If(
+                    Expr::compile(cond)?,
+                    Expr::compile(then_expr)?,
+                    Expr::compile(else_expr)?,
+                ),
+                Expr::Dot(left, right) => Expr::Dot(Expr::compile(left)?, right),
+                Expr::Call(left, positional, named, args, kwargs) => Expr::Call(
+                    Expr::compile(left)?,
+                    positional
+                        .into_iter()
+                        .map(Expr::compile)
+                        .collect::<Result<_, _>>()?,
+                    named
+                        .into_iter()
+                        .map(|(name, value)| Ok((name, Expr::compile(value)?)))
+                        .collect::<Result<_, _>>()?,
+                    args.map(Expr::compile).transpose()?,
+                    kwargs.map(Expr::compile).transpose()?,
+                ),
+                Expr::ArrayIndirection(array, index) => {
+                    Expr::ArrayIndirection(Expr::compile(array)?, Expr::compile(index)?)
+                }
+                Expr::Slice(collection, a, b, c) => Expr::Slice(
+                    Expr::compile(collection)?,
+                    a.map(Expr::compile).transpose()?,
+                    b.map(Expr::compile).transpose()?,
+                    c.map(Expr::compile).transpose()?,
+                ),
+                Expr::Not(expr) => Expr::Not(Expr::compile(expr)?),
+                Expr::Minus(expr) => Expr::Minus(Expr::compile(expr)?),
+                Expr::Plus(expr) => Expr::Plus(Expr::compile(expr)?),
+                Expr::Op(op, left, right) => {
+                    Expr::Op(op, Expr::compile(left)?, Expr::compile(right)?)
+                }
+                Expr::ListComprehension(expr, clauses) => {
+                    Expr::ComprehensionCompiled(ComprehensionCompiled::new_list(expr, clauses)?)
+                }
+                Expr::SetComprehension(expr, clauses) => {
+                    Expr::ComprehensionCompiled(ComprehensionCompiled::new_set(expr, clauses)?)
+                }
+                Expr::DictComprehension((key, value), clauses) => Expr::ComprehensionCompiled(
+                    ComprehensionCompiled::new_dict(key, value, clauses)?,
+                ),
+                Expr::ComprehensionCompiled(..) => unreachable!(),
+                e @ Expr::Slot(..)
+                | e @ Expr::Identifier(..)
+                | e @ Expr::StringLiteral(..)
+                | e @ Expr::IntLiteral(..) => e,
+            },
+        }))
     }
 }
 
@@ -416,36 +609,42 @@ impl Statement {
         }
     }
 
-    fn compile_defs(stmt: AstStatement) -> Result<AstStatement, Diagnostic> {
+    pub(crate) fn compile(stmt: AstStatement) -> Result<AstStatement, Diagnostic> {
         Ok(Box::new(Spanned {
             span: stmt.span,
             node: match stmt.node {
                 Statement::DefCompiled(..) => unreachable!(),
                 Statement::Def(name, params, suite) => {
-                    Statement::DefCompiled(DefCompiled::new(name, params, suite))
+                    Statement::DefCompiled(DefCompiled::new(name, params, suite)?)
                 }
-                Statement::For(..)
-                | Statement::Break
-                | Statement::Continue
-                | Statement::Return(..) => unreachable!(),
+                Statement::For(var, over, body) => Statement::For(
+                    Expr::compile(var)?,
+                    Expr::compile(over)?,
+                    Statement::compile(body)?,
+                ),
+                Statement::Return(expr) => Statement::Return(expr.map(Expr::compile).transpose()?),
                 Statement::If(cond, then_block) => {
-                    Statement::If(cond, Statement::compile_defs(then_block)?)
+                    Statement::If(cond, Statement::compile(then_block)?)
                 }
                 Statement::IfElse(conf, then_block, else_block) => Statement::IfElse(
                     conf,
-                    Statement::compile_defs(then_block)?,
-                    Statement::compile_defs(else_block)?,
+                    Statement::compile(then_block)?,
+                    Statement::compile(else_block)?,
                 ),
                 Statement::Statements(stmts) => Statement::Statements(
                     stmts
                         .into_iter()
-                        .map(Statement::compile_defs)
+                        .map(Statement::compile)
                         .collect::<Result<_, _>>()?,
                 ),
+                Statement::Expression(e) => Statement::Expression(Expr::compile(e)?),
+                Statement::Assign(left, op, right) => {
+                    Statement::Assign(Expr::compile(left)?, op, Expr::compile(right)?)
+                }
                 s @ Statement::Load(..)
-                | s @ Statement::Expression(..)
                 | s @ Statement::Pass
-                | s @ Statement::Assign(..) => s,
+                | s @ Statement::Break
+                | s @ Statement::Continue => s,
             },
         }))
     }
@@ -455,7 +654,7 @@ impl Statement {
         _dialect: Dialect,
     ) -> Result<AstStatement, Diagnostic> {
         Statement::validate_break_continue(&stmt)?;
-        let stmt = Statement::compile_defs(stmt)?;
+        let stmt = Statement::compile(stmt)?;
         Ok(stmt)
     }
 }
@@ -629,6 +828,7 @@ impl Display for Expr {
                 comma_separated_fmt(f, c, |x, f| x.node.fmt(f), false)?;
                 f.write_str("}}")
             }
+            Expr::ComprehensionCompiled(ref c) => fmt::Display::fmt(&c.to_raw(), f),
             Expr::StringLiteral(ref s) => fmt_string_literal(f, &s.node),
         }
     }

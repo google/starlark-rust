@@ -1,0 +1,8 @@
+# Test for for comprehensions
+
+# Comprehension in comprehension
+a = [x for x in [y for y in range(3)]]
+assert_eq([0, 1, 2], a)
+
+b = [x for x in [0, 1, 2] if x]
+assert_eq([1, 2], b)
