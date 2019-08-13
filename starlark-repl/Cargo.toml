@@ -37,5 +37,6 @@ tempfile = ">=3, <3.0.5"
 bench = false
 
 [[bin]]
-name = "starlark-repl"
+name = "starlark-rust"
 bench = false
+path = "bin/starlark-rust.rs"
