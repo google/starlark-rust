@@ -18,4 +18,5 @@ matrix:
     - rust: nightly
       env: ACTION=build
   fast_finish: true
-cache: cargo
+# Kill cache because otherwise travis randomly times out too often
+#cache: cargo
