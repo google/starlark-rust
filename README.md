@@ -30,7 +30,17 @@ It uses signed 64-bit integers.
 
 ## Usage
 
+### Crate
+
 You can depend on the `starlark` crate, it is documented using [docs.rs](https://docs.rs/crate/starlark).
+Examples are listed under [starlark/examples](starlark/examples). You can run the examples
+using `cargo run --example`, such as
+
+```sh
+echo "str([x * 2 for x in range(10)])" | cargo run --example starlark-simple-cli
+```
+
+### Command line REPL
 
 A command line interpreter is also provided by this project under [starlark-repl](starlark-repl),
 it can interpret files passed at the command line and also start a REPL (Read-Eval-Print Loop).
