@@ -16,15 +16,23 @@ A command line interpreter is provided by this project, it can interpret files
 passed at the command line and also start a REPL (Read-Eval-Print Loop).
 The usage of this program is:
 
-```sh
-$ starlark-repl --help
-[Starlark in Rust interpretor]
+```
+Starlark in Rust interpreter
 
-Usage: starlark-repl [options] [file1..filen]
+USAGE:
+    starlark-rust [FLAGS] [OPTIONS] [file]...
 
-
-Options:
-    -b, --build_file    Parse the build file format instead of full Starlark.
-    -h, --help          Show the usage of this program.
+FLAGS:
+    -a, --ast           Parse and print AST instead of evaluating.
+    -b, --build-file    Parse the build file format instead of full Starlark. See https://docs.rs/starlark/0.3.0-
+                        pre/starlark/eval/index.html#build_file
+    -h, --help          Prints help information
     -r, --repl          Run a REPL after files have been parsed.
+    -V, --version       Prints version information
+
+OPTIONS:
+    -c <command>        Starlark command to run after files have been parsed.
+
+ARGS:
+    <file>...    Files to interpret
 ```

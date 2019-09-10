@@ -23,9 +23,9 @@ maintenance = { status = "passively-maintained" }
 [dependencies]
 codemap = "0.1.1"
 codemap-diagnostic = "0.1.1"
-getopts = "0.2"
 linefeed = "0.5.3"
 starlark = { path = "../starlark" }
+structopt = "0.3.0"
 
 [dev-dependencies]
 assert_cmd = "0.10.2"
