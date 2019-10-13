@@ -41,14 +41,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-macro_rules! eval_vector {
-    ($v:expr, $ctx:expr) => {{
-        let mut r = Vec::new();
-        for s in $v.iter() {
-            r.push(eval_expr(s, $ctx)?)
-        }
-        r
-    }};
+fn eval_vector(v: &[AstExpr], ctx: &EvaluationContext) -> Result<Vec<Value>, EvalException> {
+    v.into_iter().map(|s| eval_expr(s, ctx)).collect()
 }
 
 // TODO: move that code in some common error code list?
@@ -448,7 +442,7 @@ fn eval_call<'a>(
     kwargs: &Option<AstExpr>,
     context: &EvaluationContext,
 ) -> EvalResult {
-    let npos = eval_vector!(pos, context);
+    let npos = eval_vector(pos, context)?;
     let mut nnamed = LinkedHashMap::new();
     for &(ref k, ref v) in named.iter() {
         nnamed.insert(k.node.clone(), eval_expr(v, context)?);
@@ -630,7 +624,7 @@ fn transform(
 fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
     match expr.node {
         Expr::Tuple(ref v) => {
-            let r = eval_vector!(v, context);
+            let r = eval_vector(v, context)?;
             Ok(Value::new(tuple::Tuple::new(r)))
         }
         Expr::Dot(ref e, ref s) => eval_dot(expr, e, s, context),
@@ -731,7 +725,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             }
         }
         Expr::List(ref v) => {
-            let r = eval_vector!(v, context);
+            let r = eval_vector(v, context)?;
             Ok(Value::from(r))
         }
         Expr::Dict(ref v) => {
