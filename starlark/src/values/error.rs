@@ -158,7 +158,9 @@ impl SyntaxError for ValueError {
                             format!("Attempt to construct unsupported type ({})", t)
                         }
                         // handled above
-                        ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => unreachable!(),
+                        ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => {
+                            unreachable!()
+                        }
                     }),
                 };
                 Diagnostic {

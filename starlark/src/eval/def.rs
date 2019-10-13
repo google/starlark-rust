@@ -132,7 +132,9 @@ impl DefCompiled {
                     DefCompiled::transform_locals(else_block, locals),
                 ),
                 s @ Statement::Break | s @ Statement::Continue | s @ Statement::Pass => s,
-                Statement::Def(..) | Statement::Load(..) | Statement::DefCompiled(..) => unreachable!(),
+                Statement::Def(..) | Statement::Load(..) | Statement::DefCompiled(..) => {
+                    unreachable!()
+                }
                 Statement::Expression(expr) => {
                     Statement::Expression(Expr::transform_locals_to_slots(expr, locals))
                 }
