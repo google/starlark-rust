@@ -1635,7 +1635,9 @@ mod tests {
 
     #[test]
     fn test_split_codepoints() {
-        starlark_ok!(r#"(list('Hello, 世界'.split_codepoints()) == ['H', 'e', 'l', 'l', 'o', ',', ' ', '世', '界'])"#);
+        starlark_ok!(
+            r#"(list('Hello, 世界'.split_codepoints()) == ['H', 'e', 'l', 'l', 'o', ',', ' ', '世', '界'])"#
+        );
     }
 
     #[test]

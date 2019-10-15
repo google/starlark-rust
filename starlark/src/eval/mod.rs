@@ -751,7 +751,9 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             }
             make_set(values, context, expr.span)
         }
-        Expr::ListComprehension(..) | Expr::DictComprehension(..) | Expr::SetComprehension(..) => unreachable!(),
+        Expr::ListComprehension(..) | Expr::DictComprehension(..) | Expr::SetComprehension(..) => {
+            unreachable!()
+        }
         Expr::ComprehensionCompiled(ref e) => e.eval(expr.span, context),
     }
 }
