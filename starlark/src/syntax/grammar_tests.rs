@@ -12,37 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::syntax::grammar::StarlarkParser;
-use std::sync::{Arc, Mutex};
+#![cfg(test)]
+
 use crate::syntax::ast::Statement;
 use crate::syntax::dialect::Dialect;
-use crate::syntax::parser::parse_file;
 use crate::syntax::errors::SyntaxError;
+use crate::syntax::grammar::StarlarkParser;
+use crate::syntax::parser::parse_file;
 use codemap;
 use codemap_diagnostic;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 macro_rules! unwrap_parse {
-    ($e: expr) => (
-        {
-            let lexer = super::lexer::Lexer::new($e);
-            let mut codemap = codemap::CodeMap::new();
-            let filespan = codemap.add_file("<test>".to_owned(), $e.to_string()).span;
-            match StarlarkParser::new().parse($e, filespan, lexer) {
-                Ok(x) => match x.node {
-                    Statement::Statements(bv) => format!("{}", Statement::Statements(bv)),
-                    y => panic!("Expected statements, got {:?}", y),
-                }
-                Err(e) => {
-                    let codemap = Arc::new(Mutex::new(codemap));
-                    let d = [e.to_diagnostic(filespan)];
-                    assert_diagnostics!(d, codemap);
-                    panic!("Got errors!");
-                }
+    ($e: expr) => {{
+        let lexer = super::lexer::Lexer::new($e);
+        let mut codemap = codemap::CodeMap::new();
+        let filespan = codemap.add_file("<test>".to_owned(), $e.to_string()).span;
+        match StarlarkParser::new().parse($e, filespan, lexer) {
+            Ok(x) => match x.node {
+                Statement::Statements(bv) => format!("{}", Statement::Statements(bv)),
+                y => panic!("Expected statements, got {:?}", y),
+            },
+            Err(e) => {
+                let codemap = Arc::new(Mutex::new(codemap));
+                let d = [e.to_diagnostic(filespan)];
+                assert_diagnostics!(d, codemap);
+                panic!("Got errors!");
             }
         }
-    )
+    }};
 }
 
 #[test]
@@ -57,15 +57,11 @@ fn test_top_level_comment() {
 
 #[test]
 fn test_top_level_load() {
-    assert!(!unwrap_parse!(
-        "\nload(\"//top/level/load.bzl\", \"top-level\")\n"
-    ).is_empty());
-    assert!(!unwrap_parse!(
-        "\nload(\"//top/level/load.bzl\", \"top-level\")"
-    ).is_empty());
-    assert!(!unwrap_parse!(
-        "\nload(\n  \"//top/level/load.bzl\",\n  \"top-level\",\n)\n"
-    ).is_empty());
+    assert!(!unwrap_parse!("\nload(\"//top/level/load.bzl\", \"top-level\")\n").is_empty());
+    assert!(!unwrap_parse!("\nload(\"//top/level/load.bzl\", \"top-level\")").is_empty());
+    assert!(
+        !unwrap_parse!("\nload(\n  \"//top/level/load.bzl\",\n  \"top-level\",\n)\n").is_empty()
+    );
 }
 
 #[test]
@@ -75,8 +71,7 @@ fn test_top_level_assignation() {
 
 #[test]
 fn test_top_level_docstring() {
-    assert!(!unwrap_parse!("\n\"\"\"Top-level docstring\"\"\"\n")
-        .is_empty());
+    assert!(!unwrap_parse!("\n\"\"\"Top-level docstring\"\"\"\n").is_empty());
 }
 
 #[test]
@@ -162,23 +157,14 @@ fn test_return() {
 // Regression test for https://github.com/google/starlark-rust/issues/44.
 #[test]
 fn test_optional_whitespace() {
-    assert_eq!(
-        unwrap_parse!("6 or()"),
-        "(6 or ())\n"
-    );
-    assert_eq!(
-        unwrap_parse!("6or()"),
-        "(6 or ())\n"
-    );
+    assert_eq!(unwrap_parse!("6 or()"), "(6 or ())\n");
+    assert_eq!(unwrap_parse!("6or()"), "(6 or ())\n");
 }
 
 // Regression test for https://github.com/google/starlark-rust/issues/56.
 #[test]
 fn test_optional_whitespace_after_0() {
-    assert_eq!(
-        unwrap_parse!("0in[1,2,3]"),
-        "(0 in [1, 2, 3])\n"
-    );
+    assert_eq!(unwrap_parse!("0in[1,2,3]"), "(0 in [1, 2, 3])\n");
 }
 
 #[test]
@@ -196,17 +182,16 @@ fail(2)
         .add_file("<test>".to_owned(), content.to_string())
         .span;
     match StarlarkParser::new().parse(content, filespan, lexer) {
-        Ok(x) => {
-            match x.node {
-                Statement::Statements(bv) => {
-                    let lines: Vec<usize> = bv.iter()
-                        .map(|x| codemap.look_up_pos(x.span.low()).position.line)
-                        .collect();
-                    assert_eq!(lines, vec![0, 3, 5])
-                }
-                y => panic!("Expected statements, got {:?}", y),
+        Ok(x) => match x.node {
+            Statement::Statements(bv) => {
+                let lines: Vec<usize> = bv
+                    .iter()
+                    .map(|x| codemap.look_up_pos(x.span.low()).position.line)
+                    .collect();
+                assert_eq!(lines, vec![0, 3, 5])
             }
-        }
+            y => panic!("Expected statements, got {:?}", y),
+        },
         Err(e) => {
             let codemap = Arc::new(Mutex::new(codemap));
             let d = [e.to_diagnostic(filespan)];
