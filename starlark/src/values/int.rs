@@ -17,6 +17,7 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::fmt;
 use std::iter;
 
 // A convenient macro for testing and documentation.
@@ -90,11 +91,11 @@ impl TypedValue for i64 {
     fn equals(&self, other: &i64) -> Result<bool, ValueError> {
         Ok(self == other)
     }
-    fn to_str(&self) -> String {
-        format!("{}", self)
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "{}", self)
     }
-    fn to_repr(&self) -> String {
-        format!("{}", self)
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "{}", self)
     }
     fn to_int(&self) -> Result<i64, ValueError> {
         Ok(*self)

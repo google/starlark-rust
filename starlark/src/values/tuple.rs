@@ -18,6 +18,7 @@ use crate::values::iter::TypedIterable;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
+use std::fmt;
 use std::hash::Hasher;
 
 /// A starlark tuple
@@ -262,20 +263,19 @@ impl TypedValue for Tuple {
         Box::new(self.content.iter().cloned())
     }
 
-    fn to_repr(&self) -> String {
-        format!(
-            "({}{})",
-            self.content
-                .iter()
-                .map(Value::to_repr)
-                .enumerate()
-                .fold("".to_string(), |accum, s| if s.0 == 0 {
-                    accum + &s.1
-                } else {
-                    accum + ", " + &s.1
-                },),
-            if self.content.len() == 1 { "," } else { "" }
-        )
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "(")?;
+        for (i, v) in self.content.iter().enumerate() {
+            if i != 0 {
+                write!(buf, ", ")?;
+            }
+            v.to_repr_impl(buf)?;
+        }
+        if self.content.len() == 1 {
+            write!(buf, ",")?;
+        }
+        write!(buf, ")")?;
+        Ok(())
     }
     const TYPE: &'static str = "tuple";
     fn to_bool(&self) -> bool {

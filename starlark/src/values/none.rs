@@ -17,6 +17,7 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::fmt;
 use std::iter;
 
 /// Define the NoneType type
@@ -47,8 +48,8 @@ impl TypedValue for NoneType {
         Box::new(iter::empty())
     }
 
-    fn to_repr(&self) -> String {
-        "None".to_owned()
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "None")
     }
     fn to_bool(&self) -> bool {
         false

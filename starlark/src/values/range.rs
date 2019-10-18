@@ -16,8 +16,11 @@
 
 use crate::values::iter::TypedIterable;
 use crate::values::{Immutable, TypedValue, Value, ValueError};
+use std::fmt;
+use std::fmt::Write as _;
+use std::iter;
+use std::mem;
 use std::num::NonZeroI64;
-use std::{iter, mem};
 
 /// Representation of `range()` type.
 #[derive(Clone, Debug)]
@@ -52,17 +55,13 @@ impl Iterator for RangeIterator {
 impl TypedValue for Range {
     const TYPE: &'static str = "range";
 
-    fn to_str(&self) -> String {
-        self.to_repr()
-    }
-
-    fn to_repr(&self) -> String {
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
         if self.step.get() != 1 {
-            format!("range({}, {}, {})", self.start, self.stop, self.step)
+            write!(buf, "range({}, {}, {})", self.start, self.stop, self.step)
         } else if self.start != 0 {
-            format!("range({}, {})", self.start, self.stop)
+            write!(buf, "range({}, {})", self.start, self.stop)
         } else {
-            format!("range({})", self.stop)
+            write!(buf, "range({})", self.stop)
         }
     }
 

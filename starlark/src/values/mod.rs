@@ -38,6 +38,8 @@
 //! # use starlark::values::error::ValueError;
 //! # use std::cmp::Ordering;
 //! # use std::iter;
+//! # use std::fmt;
+//! # use std::fmt::Write as _;
 //!
 //! /// Define the NoneType type
 //! pub enum NoneType {
@@ -57,8 +59,8 @@
 //!     fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item=Value> + 'a> {
 //!         Box::new(iter::empty())
 //!     }
-//!     fn to_repr(&self) -> String {
-//!         "None".to_owned()
+//!     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+//!         write!(buf, "None")
 //!     }
 //!     fn to_bool(&self) -> bool {
 //!         false
@@ -92,6 +94,7 @@ use std::any::Any;
 use std::cell::{RefCell, RefMut};
 use std::cmp::Ordering;
 use std::fmt;
+use std::fmt::Write as _;
 use std::marker;
 use std::rc::Rc;
 
@@ -298,12 +301,12 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
         self.mutability.unfreeze_for_iteration();
     }
 
-    fn to_str(&self) -> String {
-        self.content.borrow().to_str()
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        self.content.borrow().to_str_impl(buf)
     }
 
-    fn to_repr(&self) -> String {
-        self.content.borrow().to_repr()
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        self.content.borrow().to_repr_impl(buf)
     }
 
     fn get_type(&self) -> &'static str {
@@ -512,9 +515,9 @@ trait ValueHolderDyn {
 
     fn unfreeze_for_iteration(&self);
 
-    fn to_str(&self) -> String;
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result;
 
-    fn to_repr(&self) -> String;
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result;
 
     fn get_type(&self) -> &'static str;
 
@@ -631,12 +634,26 @@ pub trait TypedValue: Sized + 'static {
 
     /// Return a string describing of self, as returned by the str() function.
     fn to_str(&self) -> String {
-        self.to_repr()
+        let mut buf = String::new();
+        self.to_str_impl(&mut buf).unwrap();
+        buf
+    }
+
+    /// The implementation of `to_str`, more efficient for nested objects
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        self.to_repr_impl(buf)
     }
 
     /// Return a string representation of self, as returned by the repr() function.
     fn to_repr(&self) -> String {
-        format!("<{}>", Self::TYPE)
+        let mut buf = String::new();
+        self.to_repr_impl(&mut buf).unwrap();
+        buf
+    }
+
+    /// The implementation of `to_repr`, more efficient for nested objects
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "<{}>", Self::TYPE)
     }
 
     /// Convert self to a Boolean truth value, as returned by the bool() function.
@@ -1077,11 +1094,21 @@ impl Value {
     pub fn unfreeze_for_iteration(&mut self) {
         self.value_holder().unfreeze_for_iteration()
     }
+    pub fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        self.value_holder().to_str_impl(buf)
+    }
     pub fn to_str(&self) -> String {
-        self.value_holder().to_str()
+        let mut buf = String::new();
+        self.to_str_impl(&mut buf).unwrap();
+        buf
+    }
+    pub fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        self.value_holder().to_repr_impl(buf)
     }
     pub fn to_repr(&self) -> String {
-        self.value_holder().to_repr()
+        let mut buf = String::new();
+        self.to_repr_impl(&mut buf).unwrap();
+        buf
     }
     pub fn get_type(&self) -> &'static str {
         self.value_holder().get_type()
@@ -1442,8 +1469,8 @@ mod tests {
 
         /// Define the NoneType type
         impl TypedValue for WrappedNumber {
-            fn to_repr(&self) -> String {
-                format!("{:?}", self)
+            fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+                write!(buf, "{:?}", self)
             }
             const TYPE: &'static str = "WrappedNumber";
             fn to_bool(&self) -> bool {
