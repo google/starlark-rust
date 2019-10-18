@@ -38,7 +38,7 @@ impl<K: Eq + Hash> LinkedHashSet<K> {
         }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn _with_capacity(capacity: usize) -> Self {
         LinkedHashSet {
             map: LinkedHashMap::with_capacity(capacity),
         }
