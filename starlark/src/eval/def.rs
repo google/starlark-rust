@@ -34,6 +34,7 @@ use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::fmt;
 use std::iter;
 use std::sync::{Arc, Mutex};
 
@@ -202,12 +203,12 @@ impl TypedValue for Def {
         Box::new(iter::empty())
     }
 
-    fn to_str(&self) -> String {
-        function::to_str(&self.function_type, &self.signature)
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        function::to_str(buf, &self.function_type, &self.signature)
     }
 
-    fn to_repr(&self) -> String {
-        function::repr(&self.function_type, &self.signature)
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        function::repr_impl(buf, &self.function_type, &self.signature)
     }
 
     fn call(

@@ -22,6 +22,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 pub mod interpolation;
+
+use std::fmt;
 use std::iter;
 
 impl TypedValue for String {
@@ -33,16 +35,17 @@ impl TypedValue for String {
         Box::new(iter::empty())
     }
 
-    fn to_str(&self) -> String {
-        self.clone()
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        buf.push_str(&self);
+        Ok(())
     }
-    fn to_repr(&self) -> String {
-        format!(
-            "\"{}\"",
-            self.chars()
-                .map(|x| -> String { x.escape_debug().collect() })
-                .fold("".to_string(), |accum, s| accum + &s)
-        )
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "\"")?;
+        for c in self.chars() {
+            write!(buf, "{}", c.escape_debug())?;
+        }
+        write!(buf, "\"")?;
+        Ok(())
     }
 
     const TYPE: &'static str = "string";
@@ -61,7 +64,7 @@ impl TypedValue for String {
     }
 
     fn compare(&self, other: &String) -> Result<Ordering, ValueError> {
-        Ok(self.cmp(&other.to_str()))
+        Ok(self.cmp(other))
     }
 
     fn at(&self, index: Value) -> ValueResult {
@@ -145,7 +148,7 @@ impl TypedValue for String {
     /// # );
     /// ```
     fn add(&self, other: &String) -> Result<String, ValueError> {
-        Ok(self.chars().chain(other.to_str().chars()).collect())
+        Ok(self.chars().chain(other.chars()).collect())
     }
 
     /// Repeat `other` times this string.

@@ -261,7 +261,11 @@ impl FunctionType {
     }
 }
 
-pub(crate) fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
+pub(crate) fn repr_impl(
+    buf: &mut String,
+    function_type: &FunctionType,
+    signature: &[FunctionParameter],
+) -> fmt::Result {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
@@ -276,10 +280,20 @@ pub(crate) fn repr(function_type: &FunctionType, signature: &[FunctionParameter]
             }
         })
         .collect();
-    format!("{}({})", function_type.to_repr(), v.join(", "))
+    write!(buf, "{}({})", function_type.to_repr(), v.join(", "))
 }
 
-pub(crate) fn to_str(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
+pub(crate) fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
+    let mut buf = String::new();
+    repr_impl(&mut buf, function_type, signature).unwrap();
+    buf
+}
+
+pub(crate) fn to_str(
+    buf: &mut String,
+    function_type: &FunctionType,
+    signature: &[FunctionParameter],
+) -> fmt::Result {
     let v: Vec<String> = signature
         .iter()
         .map(|x| -> String {
@@ -294,7 +308,7 @@ pub(crate) fn to_str(function_type: &FunctionType, signature: &[FunctionParamete
             }
         })
         .collect();
-    format!("{}({})", function_type.to_str(), v.join(", "))
+    write!(buf, "{}({})", function_type.to_str(), v.join(", "))
 }
 
 #[doc(hidden)]
@@ -436,11 +450,11 @@ impl TypedValue for NativeFunction {
         Box::new(iter::empty())
     }
 
-    fn to_str(&self) -> String {
-        to_str(&self.function_type, &self.signature)
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        to_str(buf, &self.function_type, &self.signature)
     }
-    fn to_repr(&self) -> String {
-        repr(&self.function_type, &self.signature)
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        repr_impl(buf, &self.function_type, &self.signature)
     }
 
     const TYPE: &'static str = "function";
@@ -480,11 +494,11 @@ impl TypedValue for WrappedMethod {
         Some(FunctionId(self.method.data_ptr()))
     }
 
-    fn to_str(&self) -> String {
-        self.method.to_str()
+    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
+        self.method.to_str_impl(buf)
     }
-    fn to_repr(&self) -> String {
-        self.method.to_repr()
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        self.method.to_repr_impl(buf)
     }
     const TYPE: &'static str = "function";
 

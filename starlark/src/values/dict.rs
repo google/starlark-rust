@@ -21,6 +21,7 @@ use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::fmt;
 use std::hash::Hash;
 
 /// The Dictionary type
@@ -139,19 +140,18 @@ impl TypedValue for Dictionary {
         )
     }
 
-    fn to_repr(&self) -> String {
-        format!(
-            "{{{}}}",
-            self.content
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k.get_value().to_repr(), v.to_repr()))
-                .enumerate()
-                .fold("".to_string(), |accum, s| if s.0 == 0 {
-                    accum + &s.1
-                } else {
-                    accum + ", " + &s.1
-                })
-        )
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "{{")?;
+        for (index, (k, v)) in self.content.iter().enumerate() {
+            if index != 0 {
+                write!(buf, ", ")?;
+            }
+            k.get_value().to_repr_impl(buf)?;
+            write!(buf, ": ")?;
+            v.to_repr_impl(buf)?;
+        }
+        write!(buf, "}}")?;
+        Ok(())
     }
 
     const TYPE: &'static str = "dict";

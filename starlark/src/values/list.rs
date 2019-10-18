@@ -18,6 +18,7 @@ use crate::values::error::{RuntimeError, ValueError};
 use crate::values::iter::TypedIterable;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::fmt;
 
 #[derive(Clone, Default)]
 pub struct List {
@@ -120,19 +121,16 @@ impl TypedValue for List {
     /// assert_eq!("[1]", Value::from(vec![1]).to_str());
     /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
     /// ```
-    fn to_repr(&self) -> String {
-        format!(
-            "[{}]",
-            self.content
-                .iter()
-                .map(Value::to_repr)
-                .enumerate()
-                .fold("".to_string(), |accum, s| if s.0 == 0 {
-                    accum + &s.1
-                } else {
-                    accum + ", " + &s.1
-                },)
-        )
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "[")?;
+        for (i, v) in self.content.iter().enumerate() {
+            if i != 0 {
+                write!(buf, ", ")?;
+            }
+            v.to_repr_impl(buf)?;
+        }
+        write!(buf, "]")?;
+        Ok(())
     }
 
     const TYPE: &'static str = "list";

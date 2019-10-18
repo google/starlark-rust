@@ -18,6 +18,8 @@ use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::iter::TypedIterable;
 use crate::values::*;
+use std::fmt;
+use std::fmt::Write as _;
 use std::num::Wrapping;
 
 #[derive(Default, Clone)]
@@ -136,19 +138,16 @@ impl TypedValue for Set {
     /// assert_eq!("[1]", Value::from(vec![1]).to_str());
     /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
     /// ```
-    fn to_repr(&self) -> String {
-        format!(
-            "{{{}}}",
-            self.content
-                .iter()
-                .map(|x| x.get_value().to_repr(),)
-                .enumerate()
-                .fold("".to_string(), |accum, s| if s.0 == 0 {
-                    accum + &s.1
-                } else {
-                    accum + ", " + &s.1
-                },)
-        )
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "{{")?;
+        for (i, v) in self.content.iter().enumerate() {
+            if i != 0 {
+                write!(buf, ", ")?;
+            }
+            v.get_value().to_repr_impl(buf)?;
+        }
+        write!(buf, "}}")?;
+        Ok(())
     }
 
     const TYPE: &'static str = "set";

@@ -17,6 +17,7 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
+use std::fmt;
 use std::iter;
 
 impl From<bool> for Value {
@@ -34,12 +35,8 @@ impl TypedValue for bool {
         Value(ValueInner::Bool(ValueHolder::new(self)))
     }
 
-    fn to_repr(&self) -> String {
-        if *self {
-            "True".to_owned()
-        } else {
-            "False".to_owned()
-        }
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "{}", if *self { "True" } else { "False" })
     }
     fn to_int(&self) -> Result<i64, ValueError> {
         Ok(if *self { 1 } else { 0 })

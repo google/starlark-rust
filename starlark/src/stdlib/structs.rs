@@ -17,6 +17,8 @@
 use crate::values::error::ValueError;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
+use std::fmt;
+use std::fmt::Write as _;
 
 /// `struct()` implementation.
 pub struct StarlarkStruct {
@@ -32,18 +34,17 @@ impl TypedValue for StarlarkStruct {
         Box::new(self.fields.values().cloned())
     }
 
-    fn to_repr(&self) -> String {
-        let mut r = "struct(".to_owned();
+    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
+        write!(buf, "struct(")?;
         for (i, (name, value)) in self.fields.iter().enumerate() {
             if i != 0 {
-                r.push_str(", ");
+                write!(buf, ", ")?;
             }
-            r.push_str(&name);
-            r.push_str("=");
-            r.push_str(&value.to_repr());
+            write!(buf, "{}=", name)?;
+            value.to_repr_impl(buf)?;
         }
-        r.push_str(")");
-        r
+        write!(buf, ")")?;
+        Ok(())
     }
 
     const TYPE: &'static str = "struct";
