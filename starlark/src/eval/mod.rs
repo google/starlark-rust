@@ -23,7 +23,6 @@ use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::eval::def::Def;
 use crate::syntax::ast::*;
-use crate::syntax::ast::{AstExpr, AstStatement};
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
@@ -499,9 +498,8 @@ fn eval_dot<'a>(
 enum TransformedExpr {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
-    List(Vec<TransformedExpr>, Span),
-    Tuple(Vec<TransformedExpr>, Span),
-    OtherExpr(AstExpr),
+    Identifier(AstString),
+    Slot(usize, AstString),
 }
 
 fn set_transformed<'a>(
@@ -511,27 +509,6 @@ fn set_transformed<'a>(
 ) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
     match transformed {
-        TransformedExpr::List(ref v, ref span) | &TransformedExpr::Tuple(ref v, ref span) => {
-            let l = v.len() as i64;
-            let nvl = t(new_value.length(), span)?;
-            if nvl != l {
-                Err(EvalException::IncorrectNumberOfValueToUnpack(*span, l, nvl))
-            } else {
-                let mut r = Vec::new();
-                let mut it1 = v.iter();
-                // TODO: the span here should probably include the rvalue
-                let it2 = t(new_value.iter(), span)?;
-                let mut it2 = it2.iter();
-                for _ in 0..l {
-                    r.push(set_transformed(
-                        it1.next().unwrap(),
-                        context,
-                        it2.next().unwrap(),
-                    )?)
-                }
-                ok
-            }
-        }
         TransformedExpr::Dot(ref e, ref s, ref span) => {
             t(e.clone().set_attr(&s, new_value), span)?;
             ok
@@ -540,26 +517,19 @@ fn set_transformed<'a>(
             t(e.clone().set_at(idx.clone(), new_value), span)?;
             ok
         }
-        TransformedExpr::OtherExpr(ref e) => set_expr(e, context, new_value),
+        TransformedExpr::Identifier(ident) => {
+            t(context.env.set(&ident.node, new_value), ident)?;
+            ok
+        }
+        TransformedExpr::Slot(slot, ident) => {
+            t(context.env.set_slot(*slot, &ident.node, new_value), ident)?;
+            ok
+        }
     }
 }
 
 fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationContext) -> EvalResult {
     match transformed {
-        TransformedExpr::Tuple(ref v, ..) => {
-            let mut r = Vec::with_capacity(v.len());
-            for i in v {
-                r.push(eval_transformed(i, context)?);
-            }
-            Ok(Value::new(tuple::Tuple::new(r)))
-        }
-        TransformedExpr::List(ref v, ..) => {
-            let mut r = Vec::with_capacity(v.len());
-            for i in v {
-                r.push(eval_transformed(i, context)?);
-            }
-            Ok(Value::from(r))
-        }
         TransformedExpr::Dot(ref left, ref s, ref span) => {
             if let Some(v) = context.type_values.get_type_value(left, &s) {
                 if v.get_type() == "function" {
@@ -573,7 +543,8 @@ fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationConte
             }
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
-        TransformedExpr::OtherExpr(ref e) => eval_expr(e, context),
+        TransformedExpr::Identifier(ident) => t(context.env.get(&ident.node), ident),
+        TransformedExpr::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident.node), ident),
     }
 }
 
@@ -588,35 +559,28 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
 // It is used to cache result of LHS in augmented assignment.
 // This transformation by default should be a deep copy (clone).
 fn transform(
-    expr: &AstExpr,
+    expr: &AstAugmentedAssignTargetExpr,
     context: &EvaluationContext,
 ) -> Result<TransformedExpr, EvalException> {
     match expr.node {
-        Expr::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
+        AugmentedAssignTargetExpr::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
             eval_expr(e, context)?,
             s.node.clone(),
             expr.span,
         )),
-        Expr::ArrayIndirection(ref e, ref idx) => Ok(TransformedExpr::ArrayIndirection(
-            eval_expr(e, context)?,
-            eval_expr(idx, context)?,
-            expr.span,
-        )),
-        Expr::List(ref v) => {
-            let mut r = Vec::new();
-            for val in v.iter() {
-                r.push(transform(val, context)?)
-            }
-            Ok(TransformedExpr::List(r, expr.span))
+        AugmentedAssignTargetExpr::ArrayIndirection(ref e, ref idx) => {
+            Ok(TransformedExpr::ArrayIndirection(
+                eval_expr(e, context)?,
+                eval_expr(idx, context)?,
+                expr.span,
+            ))
         }
-        Expr::Tuple(ref v) => {
-            let mut r = Vec::new();
-            for val in v.iter() {
-                r.push(transform(val, context)?)
-            }
-            Ok(TransformedExpr::Tuple(r, expr.span))
+        AugmentedAssignTargetExpr::Slot(index, ref ident) => {
+            Ok(TransformedExpr::Slot(index, ident.clone()))
         }
-        _ => Ok(TransformedExpr::OtherExpr(expr.clone())),
+        AugmentedAssignTargetExpr::Identifier(ref ident) => {
+            Ok(TransformedExpr::Identifier(ident.clone()))
+        }
     }
 }
 
@@ -798,16 +762,24 @@ fn set_expr(expr: &AstExpr, context: &EvaluationContext, new_value: Value) -> Ev
     }
 }
 
-fn eval_assign_modify<F>(
+fn eval_assign_modify(
     stmt: &AstStatement,
-    lhs: &AstExpr,
+    lhs: &AstAugmentedAssignTargetExpr,
     rhs: &AstExpr,
     context: &EvaluationContext,
-    op: F,
+    op: AugmentedAssignOp,
 ) -> EvalResult
 where
-    F: FnOnce(&Value, Value) -> Result<Value, ValueError>,
 {
+    let op = match op {
+        AugmentedAssignOp::Increment => Value::add,
+        AugmentedAssignOp::Decrement => Value::sub,
+        AugmentedAssignOp::Multiplier => Value::mul,
+        AugmentedAssignOp::Divider => Value::div,
+        AugmentedAssignOp::FloorDivider => Value::floor_div,
+        AugmentedAssignOp::Percent => Value::percent,
+    };
+
     let lhs = transform(lhs, context)?;
     let l = eval_transformed(&lhs, context)?;
     let r = eval_expr(rhs, context)?;
@@ -826,27 +798,12 @@ fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
             Err(EvalException::Return(stmt.span, Value::new(NoneType::None)))
         }
         Statement::Expression(ref e) => eval_expr(e, context),
-        Statement::Assign(ref lhs, AssignOp::Assign, ref rhs) => {
+        Statement::Assign(ref lhs, ref rhs) => {
             let rhs = eval_expr(rhs, context)?;
             set_expr(lhs, context, rhs)
         }
-        Statement::Assign(ref lhs, AssignOp::Increment, ref rhs) => {
-            eval_assign_modify(stmt, lhs, rhs, context, Value::add)
-        }
-        Statement::Assign(ref lhs, AssignOp::Decrement, ref rhs) => {
-            eval_assign_modify(stmt, lhs, rhs, context, Value::sub)
-        }
-        Statement::Assign(ref lhs, AssignOp::Multiplier, ref rhs) => {
-            eval_assign_modify(stmt, lhs, rhs, context, Value::mul)
-        }
-        Statement::Assign(ref lhs, AssignOp::Divider, ref rhs) => {
-            eval_assign_modify(stmt, lhs, rhs, context, Value::div)
-        }
-        Statement::Assign(ref lhs, AssignOp::FloorDivider, ref rhs) => {
-            eval_assign_modify(stmt, lhs, rhs, context, Value::floor_div)
-        }
-        Statement::Assign(ref lhs, AssignOp::Percent, ref rhs) => {
-            eval_assign_modify(stmt, lhs, rhs, context, Value::percent)
+        Statement::AugmentedAssign(ref lhs, op, ref rhs) => {
+            eval_assign_modify(stmt, lhs, rhs, context, op)
         }
         Statement::If(ref cond, ref st) => {
             if eval_expr(cond, context)?.to_bool() {

@@ -3,3 +3,11 @@
 def zzz():
     return
     break   ###  break cannot be used outside of loop
+---
+def qqq():
+    # note this is a parse time error
+    [] += []      ###  incorrect augmented assignment target
+---
+def qqq():
+    a = []
+    (a,) += [[]]  ###  incorrect augmented assignment target

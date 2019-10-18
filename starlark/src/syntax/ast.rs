@@ -30,6 +30,8 @@ use std::fmt::{Display, Formatter};
 #[doc(hidden)]
 pub type AstExpr = Box<Spanned<Expr>>;
 #[doc(hidden)]
+pub type AstAugmentedAssignTargetExpr = Box<Spanned<AugmentedAssignTargetExpr>>;
+#[doc(hidden)]
 pub type AstArgument = Spanned<Argument>;
 #[doc(hidden)]
 pub type AstString = Spanned<String>;
@@ -53,6 +55,7 @@ const ARGS_AFTER_ARGS_OR_KWARGS_ERROR_CODE: &str = "CS06";
 const MULTIPLE_KWARGS_DICTS_IN_PARAMS_ERROR_CODE: &str = "CS07";
 const DUPLICATED_PARAM_NAME_ERROR_CODE: &str = "CS08";
 const BREAK_OR_CONTINUE_OUTSIDE_OF_LOOP_ERROR_CODE: &str = "CS09";
+const INCORRECT_AUGMENTED_ASSIGNMENT_TARGET_ERROR_CODE: &str = "CS10";
 
 #[doc(hidden)]
 pub trait ToAst<T> {
@@ -143,6 +146,17 @@ pub enum Expr {
     ComprehensionCompiled(ComprehensionCompiled),
 }
 to_ast_trait!(Expr, AstExpr, Box);
+
+/// `x` in `x += a`
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub enum AugmentedAssignTargetExpr {
+    Identifier(AstString),
+    Slot(usize, AstString),
+    Dot(AstExpr, AstString),
+    ArrayIndirection(AstExpr, AstExpr),
+}
+to_ast_trait!(AugmentedAssignTargetExpr, AstAugmentedAssignTargetExpr, Box);
 
 impl Expr {
     pub fn check_call(
@@ -410,6 +424,99 @@ impl Expr {
     }
 }
 
+impl AugmentedAssignTargetExpr {
+    /// Performing this transformation in Rust code rather than in grammar
+    /// to deal with ambiguous grammar.
+    pub(crate) fn from_expr(
+        expr: AstExpr,
+    ) -> Result<
+        AstAugmentedAssignTargetExpr,
+        lalrpop_util::ParseError<u64, lexer::Token, lexer::LexerError>,
+    > {
+        Ok(Box::new(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                Expr::Identifier(ident) => AugmentedAssignTargetExpr::Identifier(ident),
+                Expr::ArrayIndirection(array, index) => {
+                    AugmentedAssignTargetExpr::ArrayIndirection(array, index)
+                }
+                Expr::Dot(object, field) => AugmentedAssignTargetExpr::Dot(object, field),
+                _ => {
+                    return Err(lalrpop_util::ParseError::User {
+                        error: lexer::LexerError::WrappedError {
+                            span: expr.span,
+                            code: INCORRECT_AUGMENTED_ASSIGNMENT_TARGET_ERROR_CODE,
+                            label: "incorrect augmented assignment target",
+                        },
+                    })
+                }
+            },
+        }))
+    }
+
+    pub(crate) fn compile(
+        expr: AstAugmentedAssignTargetExpr,
+    ) -> Result<AstAugmentedAssignTargetExpr, Diagnostic> {
+        Ok(Box::new(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
+                    AugmentedAssignTargetExpr::ArrayIndirection(
+                        Expr::compile(array)?,
+                        Expr::compile(index)?,
+                    )
+                }
+                AugmentedAssignTargetExpr::Dot(object, field) => {
+                    AugmentedAssignTargetExpr::Dot(Expr::compile(object)?, field)
+                }
+                e @ AugmentedAssignTargetExpr::Identifier(..)
+                | e @ AugmentedAssignTargetExpr::Slot(..) => e,
+            },
+        }))
+    }
+
+    pub(crate) fn collect_locals_from_assign_expr(
+        expr: &AstAugmentedAssignTargetExpr,
+        local_names_to_indices: &mut HashMap<String, usize>,
+    ) {
+        match expr.node {
+            AugmentedAssignTargetExpr::Identifier(ref ident) => {
+                let len = local_names_to_indices.len();
+                local_names_to_indices
+                    .entry(ident.node.clone())
+                    .or_insert(len);
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn transform_locals_to_slots(
+        expr: AstAugmentedAssignTargetExpr,
+        locals: &HashMap<String, usize>,
+    ) -> AstAugmentedAssignTargetExpr {
+        Box::new(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                AugmentedAssignTargetExpr::Dot(object, field) => AugmentedAssignTargetExpr::Dot(
+                    Expr::transform_locals_to_slots(object, locals),
+                    field,
+                ),
+                AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
+                    AugmentedAssignTargetExpr::ArrayIndirection(
+                        Expr::transform_locals_to_slots(array, locals),
+                        Expr::transform_locals_to_slots(index, locals),
+                    )
+                }
+                AugmentedAssignTargetExpr::Identifier(ident) => match locals.get(&ident.node) {
+                    Some(&slot) => AugmentedAssignTargetExpr::Slot(slot, ident),
+                    None => AugmentedAssignTargetExpr::Identifier(ident),
+                },
+                AugmentedAssignTargetExpr::Slot(..) => unreachable!(),
+            },
+        })
+    }
+}
+
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Clause {
@@ -442,8 +549,7 @@ pub enum BinOp {
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub enum AssignOp {
-    Assign,
+pub enum AugmentedAssignOp {
     Increment,
     Decrement,
     Multiplier,
@@ -460,7 +566,8 @@ pub enum Statement {
     Pass,
     Return(Option<AstExpr>),
     Expression(AstExpr),
-    Assign(AstExpr, AssignOp, AstExpr),
+    Assign(AstExpr, AstExpr),
+    AugmentedAssign(AstAugmentedAssignTargetExpr, AugmentedAssignOp, AstExpr),
     Statements(Vec<AstStatement>),
     If(AstExpr, AstStatement),
     IfElse(AstExpr, AstStatement, AstStatement),
@@ -602,6 +709,7 @@ impl Statement {
             | Statement::Expression(..)
             | Statement::Pass
             | Statement::Assign(..)
+            | Statement::AugmentedAssign(..)
             | Statement::Load(..) => {
                 // These statements do not contain nested statements
                 Ok(())
@@ -638,9 +746,14 @@ impl Statement {
                         .collect::<Result<_, _>>()?,
                 ),
                 Statement::Expression(e) => Statement::Expression(Expr::compile(e)?),
-                Statement::Assign(left, op, right) => {
-                    Statement::Assign(Expr::compile(left)?, op, Expr::compile(right)?)
+                Statement::Assign(left, right) => {
+                    Statement::Assign(Expr::compile(left)?, Expr::compile(right)?)
                 }
+                Statement::AugmentedAssign(left, op, right) => Statement::AugmentedAssign(
+                    AugmentedAssignTargetExpr::compile(left)?,
+                    op,
+                    Expr::compile(right)?,
+                ),
                 s @ Statement::Load(..)
                 | s @ Statement::Pass
                 | s @ Statement::Break
@@ -683,16 +796,15 @@ impl Display for BinOp {
     }
 }
 
-impl Display for AssignOp {
+impl Display for AugmentedAssignOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
-            AssignOp::Assign => f.write_str(" = "),
-            AssignOp::Increment => f.write_str(" += "),
-            AssignOp::Decrement => f.write_str(" += "),
-            AssignOp::Multiplier => f.write_str(" *= "),
-            AssignOp::Divider => f.write_str(" /= "),
-            AssignOp::FloorDivider => f.write_str(" //= "),
-            AssignOp::Percent => f.write_str(" %= "),
+            AugmentedAssignOp::Increment => f.write_str(" += "),
+            AugmentedAssignOp::Decrement => f.write_str(" += "),
+            AugmentedAssignOp::Multiplier => f.write_str(" *= "),
+            AugmentedAssignOp::Divider => f.write_str(" /= "),
+            AugmentedAssignOp::FloorDivider => f.write_str(" //= "),
+            AugmentedAssignOp::Percent => f.write_str(" %= "),
         }
     }
 }
@@ -834,6 +946,22 @@ impl Display for Expr {
     }
 }
 
+impl Display for AugmentedAssignTargetExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AugmentedAssignTargetExpr::Dot(object, field) => {
+                write!(f, "{}.{}", object.node, field.node)
+            }
+            AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
+                write!(f, "{}[{}]", array.node, index.node)
+            }
+            AugmentedAssignTargetExpr::Identifier(s) | AugmentedAssignTargetExpr::Slot(_, s) => {
+                s.node.fmt(f)
+            }
+        }
+    }
+}
+
 impl Display for Argument {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
@@ -874,7 +1002,8 @@ impl Statement {
             Statement::Return(Some(ref e)) => writeln!(f, "{}return {}", tab, e.node),
             Statement::Return(None) => writeln!(f, "{}return", tab),
             Statement::Expression(ref e) => writeln!(f, "{}{}", tab, e.node),
-            Statement::Assign(ref l, ref op, ref r) => {
+            Statement::Assign(ref l, ref r) => writeln!(f, "{}{} = {}", tab, l.node, r.node),
+            Statement::AugmentedAssign(ref l, ref op, ref r) => {
                 writeln!(f, "{}{}{}{}", tab, l.node, op, r.node)
             }
             Statement::Statements(ref v) => {
