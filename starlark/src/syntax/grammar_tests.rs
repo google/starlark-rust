@@ -202,6 +202,22 @@ fail(2)
 }
 
 #[test]
+fn augmented_assignment_incorrect_target() {
+    let program = "[] += 1";
+    let lexer = super::lexer::Lexer::new(program);
+    let mut codemap = codemap::CodeMap::new();
+    let filespan = codemap
+        .add_file("<test>".to_owned(), program.to_owned())
+        .span;
+    match StarlarkParser::new().parse(program, filespan, lexer) {
+        Ok(..) => panic!("expecting error"),
+        Err(e) => {
+            assert!(format!("{:?}", e).contains("incorrect augmented assignment target"));
+        }
+    };
+}
+
+#[test]
 fn smoke_test() {
     let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
     let mut diagnostics = Vec::new();

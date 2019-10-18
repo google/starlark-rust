@@ -63,7 +63,7 @@ build_file_: Statement = "\n"* <(<BuildTopStmt> "\n"+)*>
     => Statement::Statements(<>);
 
 TopStmt: AstStatement = { DefStmt, SimpleStmt<BuildTopStmt> };
-BuildTopStmt: AstStatement = { AssignStmt, ExprStmt, LoadStmt };
+BuildTopStmt: AstStatement = { AssignStmt, AugmentedAssignStmt, ExprStmt, LoadStmt };
 
 DefStmt: AstStatement = ASTS<DefStmt_>;
 DefStmt_: Statement =
@@ -125,22 +125,26 @@ SmallStmt: AstStatement = {
     <@L> "pass" <@R>
         => Statement::Pass.to_ast(file_span.subspan(<>)),
     AssignStmt,
+    AugmentedAssignStmt,
     ExprStmt
 };
 
-AssignOp: AssignOp = {
-    "=" => AssignOp::Assign,
-    "+=" => AssignOp::Increment,
-    "-=" => AssignOp::Decrement,
-    "*=" => AssignOp::Multiplier,
-    "/=" => AssignOp::Divider,
-    "//=" => AssignOp::FloorDivider,
-    "%=" => AssignOp::Percent,
+AssignStmt: AstStatement = ASTS<AssignStmt_>;
+AssignStmt_: Statement = <TestList> "=" <TestList>
+        => Statement::Assign(<>);
+
+AugmentedAssignOp: AugmentedAssignOp = {
+    "+=" => AugmentedAssignOp::Increment,
+    "-=" => AugmentedAssignOp::Decrement,
+    "*=" => AugmentedAssignOp::Multiplier,
+    "/=" => AugmentedAssignOp::Divider,
+    "//=" => AugmentedAssignOp::FloorDivider,
+    "%=" => AugmentedAssignOp::Percent,
 };
 
-AssignStmt: AstStatement = ASTS<AssignStmt_>;
-AssignStmt_: Statement = <TestList> <AssignOp> <TestList>
-        => Statement::Assign(<>);
+AugmentedAssignStmt: AstStatement = ASTS<AugmentedAssignStmt_>;
+AugmentedAssignStmt_: Statement = <lhs:TestList> <op:AugmentedAssignOp> <rhs:TestList>
+        =>? Ok(Statement::AugmentedAssign(AugmentedAssignTargetExpr::from_expr(lhs)?, op, rhs));
 
 // In python ExprStmt is an AssignStmt (
 // https://docs.python.org/3/reference/grammar.html). This ExprStmt is
