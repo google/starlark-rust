@@ -26,7 +26,7 @@ pub(crate) struct Set {
 }
 
 impl Set {
-    pub fn empty() -> Value {
+    pub fn _empty() -> Value {
         Value::new(Set::default())
     }
 
@@ -88,11 +88,11 @@ impl Set {
         Ok(())
     }
 
-    pub fn insert_hashed(&mut self, v: HashedValue) {
+    pub fn _insert_hashed(&mut self, v: HashedValue) {
         self.content.insert(v);
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub fn _is_empty(&self) -> bool {
         self.content.is_empty()
     }
 
