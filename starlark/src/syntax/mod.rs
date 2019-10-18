@@ -31,14 +31,7 @@ mod grammar {
     include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
 }
 
-// TODO(damienmg): there doesn't seem to have a way to reactivate default
-#[cfg(test)]
-mod grammar_tests {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/syntax/grammar.tests.rs"
-    ));
-}
+mod grammar_tests;
 
 #[doc(hidden)]
 pub mod parser;
