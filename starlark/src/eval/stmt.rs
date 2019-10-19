@@ -15,6 +15,8 @@
 //! Interpreter-ready statement
 
 use crate::eval::def::DefCompiled;
+use crate::syntax::ast::AssignTargetExpr;
+use crate::syntax::ast::AstAssignTargetExpr;
 use crate::syntax::ast::AstAugmentedAssignTargetExpr;
 use crate::syntax::ast::AstExpr;
 use crate::syntax::ast::AstStatement;
@@ -37,12 +39,12 @@ pub enum StatementCompiled {
     Pass,
     Return(Option<AstExpr>),
     Expression(AstExpr),
-    Assign(AstExpr, AstExpr),
+    Assign(AstAssignTargetExpr, AstExpr),
     AugmentedAssign(AstAugmentedAssignTargetExpr, AugmentedAssignOp, AstExpr),
     Statements(Vec<AstStatementCompiled>),
     If(AstExpr, AstStatementCompiled),
     IfElse(AstExpr, AstStatementCompiled, AstStatementCompiled),
-    For(AstExpr, AstExpr, AstStatementCompiled),
+    For(AstAssignTargetExpr, AstExpr, AstStatementCompiled),
     Def(DefCompiled),
     Load(AstString, Vec<(AstString, AstString)>),
 }
@@ -56,7 +58,7 @@ impl StatementCompiled {
                     StatementCompiled::Def(DefCompiled::new(name, params, suite)?)
                 }
                 Statement::For(var, over, body) => StatementCompiled::For(
-                    Expr::compile(var)?,
+                    AssignTargetExpr::compile(var)?,
                     Expr::compile(over)?,
                     StatementCompiled::compile(body)?,
                 ),
@@ -78,9 +80,10 @@ impl StatementCompiled {
                         .collect::<Result<_, _>>()?,
                 ),
                 Statement::Expression(e) => StatementCompiled::Expression(Expr::compile(e)?),
-                Statement::Assign(left, right) => {
-                    StatementCompiled::Assign(Expr::compile(left)?, Expr::compile(right)?)
-                }
+                Statement::Assign(left, right) => StatementCompiled::Assign(
+                    AssignTargetExpr::compile(left)?,
+                    Expr::compile(right)?,
+                ),
                 Statement::AugmentedAssign(left, op, right) => StatementCompiled::AugmentedAssign(
                     AugmentedAssignTargetExpr::compile(left)?,
                     op,

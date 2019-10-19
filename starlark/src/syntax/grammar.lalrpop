@@ -102,7 +102,7 @@ ElseStmt: AstStatement = {
 
 ForStmt: AstStatement = ASTS<ForStmt_>;
 ForStmt_: Statement = "for" <e:ExprList> "in" <c:OrTest> ":" <s:Suite>
-    => Statement::For(e, c, s);
+    =>? Ok(Statement::For(AssignTargetExpr::from_expr(e)?, c, s));
 
 SimpleStmt<S>: AstStatement =
     <l:@L> <e:S> <v:(";" <S>)*> ";"? <r:@R> "\n" => {
@@ -130,8 +130,8 @@ SmallStmt: AstStatement = {
 };
 
 AssignStmt: AstStatement = ASTS<AssignStmt_>;
-AssignStmt_: Statement = <TestList> "=" <TestList>
-        => Statement::Assign(<>);
+AssignStmt_: Statement = <t:TestList> "=" <e:TestList>
+        =>? Ok(Statement::Assign(AssignTargetExpr::from_expr(t)?, e));
 
 AugmentedAssignOp: AugmentedAssignOp = {
     "+=" => AugmentedAssignOp::Increment,
@@ -259,8 +259,8 @@ CompClause: Vec<AstClause> = <e:ForInClause> <v:CompIter*>
 CompIter = {ForInClause, IfClause};
 
 ForInClause: AstClause = ASTC<ForInClause_>;
-ForInClause_: Clause = "for" <ExprList> "in" <OrTest>
-    => Clause::For(<>);
+ForInClause_: Clause = "for" <var:ExprList> "in" <iter:OrTest>
+    =>? Ok(Clause::For(AssignTargetExpr::from_expr(var)?, iter));
 IfClause: AstClause = ASTC<IfClause_>;
 IfClause_: Clause = "if" <OrTest>
     => Clause::If(<>);

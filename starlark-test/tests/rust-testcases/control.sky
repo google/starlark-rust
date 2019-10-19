@@ -11,3 +11,10 @@ def qqq():
 def qqq():
     a = []
     (a,) += [[]]  ###  incorrect augmented assignment target
+---
+def rrr():
+    # note this is a parse time error
+    [a, 1] = [3, 1]       ###  incorrect assignment target
+---
+def rrr():
+    (a, foo()) = [3, 1]   ###  incorrect assignment target

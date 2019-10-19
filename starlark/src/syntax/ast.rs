@@ -33,6 +33,8 @@ pub type AstExpr = Box<Spanned<Expr>>;
 #[doc(hidden)]
 pub type AstAugmentedAssignTargetExpr = Spanned<AugmentedAssignTargetExpr>;
 #[doc(hidden)]
+pub type AstAssignTargetExpr = Spanned<AssignTargetExpr>;
+#[doc(hidden)]
 pub type AstArgument = Spanned<Argument>;
 #[doc(hidden)]
 pub type AstString = Spanned<String>;
@@ -57,6 +59,7 @@ const MULTIPLE_KWARGS_DICTS_IN_PARAMS_ERROR_CODE: &str = "CS07";
 const DUPLICATED_PARAM_NAME_ERROR_CODE: &str = "CS08";
 const BREAK_OR_CONTINUE_OUTSIDE_OF_LOOP_ERROR_CODE: &str = "CS09";
 const INCORRECT_AUGMENTED_ASSIGNMENT_TARGET_ERROR_CODE: &str = "CS10";
+const INCORRECT_ASSIGNMENT_TARGET_ERROR_CODE: &str = "CS11";
 
 #[doc(hidden)]
 pub trait ToAst<T> {
@@ -148,6 +151,18 @@ pub enum Expr {
 }
 to_ast_trait!(Expr, AstExpr, Box);
 
+/// `x` in `x = a`
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub enum AssignTargetExpr {
+    Identifier(AstString),
+    Slot(usize, AstString),
+    Dot(AstExpr, AstString),
+    ArrayIndirection(AstExpr, AstExpr),
+    Subtargets(Vec<AstAssignTargetExpr>),
+}
+to_ast_trait!(AssignTargetExpr, AstAssignTargetExpr);
+
 /// `x` in `x += a`
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -231,26 +246,6 @@ impl Expr {
             }
         }
         Ok(Expr::Call(f, pos_args, named_args, args_array, kwargs_dict))
-    }
-
-    pub(crate) fn collect_locals_from_assign_expr(
-        expr: &AstExpr,
-        local_names_to_indices: &mut HashMap<String, usize>,
-    ) {
-        match expr.node {
-            Expr::Tuple(ref exprs) | Expr::List(ref exprs) => {
-                for expr in exprs {
-                    Expr::collect_locals_from_assign_expr(expr, local_names_to_indices);
-                }
-            }
-            Expr::Identifier(ref ident) => {
-                let len = local_names_to_indices.len();
-                local_names_to_indices
-                    .entry(ident.node.clone())
-                    .or_insert(len);
-            }
-            _ => {}
-        }
     }
 
     pub(crate) fn transform_locals_to_slots(
@@ -425,9 +420,116 @@ impl Expr {
     }
 }
 
+impl AssignTargetExpr {
+    // Performing this transformation in Rust code rather than in grammar
+    // to deal with ambiguous grammar.
+    pub(crate) fn from_expr(
+        expr: AstExpr,
+    ) -> Result<AstAssignTargetExpr, lalrpop_util::ParseError<u64, lexer::Token, lexer::LexerError>>
+    {
+        Ok(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                Expr::Identifier(ident) => AssignTargetExpr::Identifier(ident),
+                Expr::ArrayIndirection(array, index) => {
+                    AssignTargetExpr::ArrayIndirection(array, index)
+                }
+                Expr::Dot(object, field) => AssignTargetExpr::Dot(object, field),
+                Expr::List(subtargets) | Expr::Tuple(subtargets) => AssignTargetExpr::Subtargets(
+                    subtargets
+                        .into_iter()
+                        .map(AssignTargetExpr::from_expr)
+                        .collect::<Result<_, _>>()?,
+                ),
+                _ => {
+                    return Err(lalrpop_util::ParseError::User {
+                        error: lexer::LexerError::WrappedError {
+                            span: expr.span,
+                            code: INCORRECT_ASSIGNMENT_TARGET_ERROR_CODE,
+                            label: "incorrect assignment target",
+                        },
+                    })
+                }
+            },
+        })
+    }
+
+    pub(crate) fn compile(expr: AstAssignTargetExpr) -> Result<AstAssignTargetExpr, Diagnostic> {
+        Ok(Spanned {
+            span: expr.span,
+            node: match expr.node {
+                AssignTargetExpr::ArrayIndirection(array, index) => {
+                    AssignTargetExpr::ArrayIndirection(Expr::compile(array)?, Expr::compile(index)?)
+                }
+                AssignTargetExpr::Dot(object, field) => {
+                    AssignTargetExpr::Dot(Expr::compile(object)?, field)
+                }
+                e @ AssignTargetExpr::Identifier(..) | e @ AssignTargetExpr::Slot(..) => e,
+                AssignTargetExpr::Subtargets(subtargets) => AssignTargetExpr::Subtargets(
+                    subtargets
+                        .into_iter()
+                        .map(AssignTargetExpr::compile)
+                        .collect::<Result<_, _>>()?,
+                ),
+            },
+        })
+    }
+
+    pub(crate) fn collect_locals_from_assign_expr(
+        expr: &AstAssignTargetExpr,
+        local_names_to_indices: &mut HashMap<String, usize>,
+    ) {
+        match expr.node {
+            AssignTargetExpr::Identifier(ref ident) => {
+                let len = local_names_to_indices.len();
+                local_names_to_indices
+                    .entry(ident.node.clone())
+                    .or_insert(len);
+            }
+            AssignTargetExpr::Subtargets(ref subtargets) => {
+                for s in subtargets {
+                    AssignTargetExpr::collect_locals_from_assign_expr(s, local_names_to_indices);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn transform_locals_to_slots(
+        expr: AstAssignTargetExpr,
+        locals: &HashMap<String, usize>,
+    ) -> AstAssignTargetExpr {
+        Spanned {
+            span: expr.span,
+            node: match expr.node {
+                AssignTargetExpr::Dot(object, field) => {
+                    AssignTargetExpr::Dot(Expr::transform_locals_to_slots(object, locals), field)
+                }
+                AssignTargetExpr::ArrayIndirection(array, index) => {
+                    AssignTargetExpr::ArrayIndirection(
+                        Expr::transform_locals_to_slots(array, locals),
+                        Expr::transform_locals_to_slots(index, locals),
+                    )
+                }
+                AssignTargetExpr::Identifier(ident) => match locals.get(&ident.node) {
+                    Some(&slot) => AssignTargetExpr::Slot(slot, ident),
+                    None => AssignTargetExpr::Identifier(ident),
+                },
+                AssignTargetExpr::Slot(..) => unreachable!(),
+                AssignTargetExpr::Subtargets(subtargets) => AssignTargetExpr::Subtargets(
+                    subtargets
+                        .into_iter()
+                        .map(|t| AssignTargetExpr::transform_locals_to_slots(t, locals))
+                        .collect(),
+                ),
+            },
+        }
+    }
+}
+
 impl AugmentedAssignTargetExpr {
-    /// Performing this transformation in Rust code rather than in grammar
-    /// to deal with ambiguous grammar.
+    // Performing this transformation in Rust code rather than in grammar
+    // to deal with ambiguous grammar.
     pub(crate) fn from_expr(
         expr: AstExpr,
     ) -> Result<
@@ -521,7 +623,7 @@ impl AugmentedAssignTargetExpr {
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum Clause {
-    For(AstExpr, AstExpr),
+    For(AstAssignTargetExpr, AstExpr),
     If(AstExpr),
 }
 to_ast_trait!(Clause, AstClause);
@@ -567,12 +669,12 @@ pub enum Statement {
     Pass,
     Return(Option<AstExpr>),
     Expression(AstExpr),
-    Assign(AstExpr, AstExpr),
+    Assign(AstAssignTargetExpr, AstExpr),
     AugmentedAssign(AstAugmentedAssignTargetExpr, AugmentedAssignOp, AstExpr),
     Statements(Vec<AstStatement>),
     If(AstExpr, AstStatement),
     IfElse(AstExpr, AstStatement, AstStatement),
-    For(AstExpr, AstExpr, AstStatement),
+    For(AstAssignTargetExpr, AstExpr, AstStatement),
     Def(AstString, Vec<AstParameter>, AstStatement),
     Load(AstString, Vec<(AstString, AstString)>),
 }
@@ -910,6 +1012,29 @@ impl Display for AugmentedAssignTargetExpr {
             }
             AugmentedAssignTargetExpr::Identifier(s) | AugmentedAssignTargetExpr::Slot(_, s) => {
                 s.node.fmt(f)
+            }
+        }
+    }
+}
+
+impl Display for AssignTargetExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AssignTargetExpr::Dot(object, field) => write!(f, "{}.{}", object.node, field.node),
+            AssignTargetExpr::ArrayIndirection(array, index) => {
+                write!(f, "{}[{}]", array.node, index.node)
+            }
+            AssignTargetExpr::Identifier(s) | AssignTargetExpr::Slot(_, s) => s.node.fmt(f),
+            AssignTargetExpr::Subtargets(subtargets) => {
+                write!(f, "[")?;
+                for (i, s) in subtargets.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                        s.node.fmt(f)?;
+                    }
+                }
+                write!(f, "]")?;
+                Ok(())
             }
         }
     }

@@ -15,8 +15,13 @@
 //! List/dict/set comprenension evaluation.
 
 use crate::eval::{eval_expr, make_set, set_expr, t, EvalException, EvalResult, EvaluationContext};
+use crate::syntax::ast::AssignTargetExpr;
+use crate::syntax::ast::AstAssignTargetExpr;
+use crate::syntax::ast::AstClause;
+use crate::syntax::ast::AstExpr;
+use crate::syntax::ast::Clause;
+use crate::syntax::ast::Expr;
 use crate::syntax::ast::ToAst;
-use crate::syntax::ast::{AstClause, AstExpr, Clause, Expr};
 use crate::values::dict::Dictionary;
 use crate::values::{TypedValue, Value};
 use codemap::{Span, Spanned};
@@ -29,7 +34,7 @@ use std::iter;
 /// Each `for` clause defines a scope while `if` doesn't.
 #[derive(Debug, Clone)]
 pub struct ClauseForCompiled {
-    var: AstExpr,
+    var: AstAssignTargetExpr,
     over: AstExpr,
     ifs: Vec<AstExpr>,
     local_names_to_indices: HashMap<String, usize>,
@@ -60,8 +65,8 @@ impl ClauseForCompiled {
             mut local_names_to_indices,
         } = clause;
         debug_assert!(local_names_to_indices.is_empty());
-        Expr::collect_locals_from_assign_expr(&var, &mut local_names_to_indices);
-        let var = Expr::compile(var)?;
+        AssignTargetExpr::collect_locals_from_assign_expr(&var, &mut local_names_to_indices);
+        let var = AssignTargetExpr::compile(var)?;
         let over = Expr::compile(over)?;
         let ifs = ifs
             .into_iter()

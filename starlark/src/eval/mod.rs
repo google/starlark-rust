@@ -718,10 +718,14 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
 }
 
 // Perform an assignment on the LHS represented by this AST element
-fn set_expr(expr: &AstExpr, context: &EvaluationContext, new_value: Value) -> EvalResult {
+fn set_expr(
+    expr: &AstAssignTargetExpr,
+    context: &EvaluationContext,
+    new_value: Value,
+) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
     match expr.node {
-        Expr::Tuple(ref v) | Expr::List(ref v) => {
+        AssignTargetExpr::Subtargets(ref v) => {
             // TODO: the span here should probably include the rvalue
             let new_values: Vec<Value> = t(new_value.iter(), expr)?.iter().collect();
             let l = v.len();
@@ -740,26 +744,25 @@ fn set_expr(expr: &AstExpr, context: &EvaluationContext, new_value: Value) -> Ev
                 ok
             }
         }
-        Expr::Dot(ref e, ref s) => {
+        AssignTargetExpr::Dot(ref e, ref s) => {
             t(eval_expr(e, context)?.set_attr(&(s.node), new_value), expr)?;
             ok
         }
-        Expr::Identifier(ref i) => {
+        AssignTargetExpr::Identifier(ref i) => {
             t(context.env.set(&i.node, new_value), expr)?;
             ok
         }
-        Expr::Slot(slot, ref i) => {
+        AssignTargetExpr::Slot(slot, ref i) => {
             t(context.env.set_slot(slot, &i.node, new_value), expr)?;
             ok
         }
-        Expr::ArrayIndirection(ref e, ref idx) => {
+        AssignTargetExpr::ArrayIndirection(ref e, ref idx) => {
             t(
                 eval_expr(e, context)?.set_at(eval_expr(idx, context)?, new_value),
                 expr,
             )?;
             ok
         }
-        _ => Err(EvalException::IncorrectLeftValue(expr.span)),
     }
 }
 
