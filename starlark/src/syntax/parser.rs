@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::ast::AstStatement;
 use super::dialect::Dialect;
 use super::errors::SyntaxError;
 use super::grammar::{BuildFileParser, StarlarkParser};
@@ -24,6 +23,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
 
+use crate::eval::stmt::AstStatementCompiled;
 use crate::syntax::ast::Statement;
 use lalrpop_util as lu;
 
@@ -172,7 +172,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     content: &str,
     dialect: Dialect,
     lexer: T2,
-) -> Result<AstStatement, Diagnostic> {
+) -> Result<AstStatementCompiled, Diagnostic> {
     let filespan = {
         map.lock()
             .unwrap()
@@ -204,7 +204,7 @@ pub fn parse(
     filename: &str,
     content: &str,
     dialect: Dialect,
-) -> Result<AstStatement, Diagnostic> {
+) -> Result<AstStatementCompiled, Diagnostic> {
     let content2 = content.to_owned();
     parse_lexer(map, filename, content, dialect, Lexer::new(&content2))
 }
@@ -226,7 +226,7 @@ pub fn parse_file(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     dialect: Dialect,
-) -> Result<AstStatement, Diagnostic> {
+) -> Result<AstStatementCompiled, Diagnostic> {
     let mut content = String::new();
     let mut file = iotry!(File::open(path));
     iotry!(file.read_to_string(&mut content));
