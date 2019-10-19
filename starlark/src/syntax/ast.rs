@@ -16,7 +16,8 @@
 
 use super::lexer;
 use crate::eval::compr::ComprehensionCompiled;
-use crate::eval::def::DefCompiled;
+use crate::eval::stmt::AstStatementCompiled;
+use crate::eval::stmt::StatementCompiled;
 use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -573,8 +574,6 @@ pub enum Statement {
     IfElse(AstExpr, AstStatement, AstStatement),
     For(AstExpr, AstExpr, AstStatement),
     Def(AstString, Vec<AstParameter>, AstStatement),
-    /// Post-processed `def` statement
-    DefCompiled(DefCompiled),
     Load(AstString, Vec<(AstString, AstString)>),
 }
 to_ast_trait!(Statement, AstStatement, Box);
@@ -687,7 +686,6 @@ impl Statement {
                 })
             }
             Statement::Def(.., ref stmt) => Statement::validate_break_continue(stmt),
-            Statement::DefCompiled(..) => unreachable!(),
             Statement::If(.., ref then_block) => Statement::validate_break_continue(then_block),
             Statement::IfElse(.., ref then_block, ref else_block) => {
                 Statement::validate_break_continue(then_block)?;
@@ -717,57 +715,12 @@ impl Statement {
         }
     }
 
-    pub(crate) fn compile(stmt: AstStatement) -> Result<AstStatement, Diagnostic> {
-        Ok(Box::new(Spanned {
-            span: stmt.span,
-            node: match stmt.node {
-                Statement::DefCompiled(..) => unreachable!(),
-                Statement::Def(name, params, suite) => {
-                    Statement::DefCompiled(DefCompiled::new(name, params, suite)?)
-                }
-                Statement::For(var, over, body) => Statement::For(
-                    Expr::compile(var)?,
-                    Expr::compile(over)?,
-                    Statement::compile(body)?,
-                ),
-                Statement::Return(expr) => Statement::Return(expr.map(Expr::compile).transpose()?),
-                Statement::If(cond, then_block) => {
-                    Statement::If(cond, Statement::compile(then_block)?)
-                }
-                Statement::IfElse(conf, then_block, else_block) => Statement::IfElse(
-                    conf,
-                    Statement::compile(then_block)?,
-                    Statement::compile(else_block)?,
-                ),
-                Statement::Statements(stmts) => Statement::Statements(
-                    stmts
-                        .into_iter()
-                        .map(Statement::compile)
-                        .collect::<Result<_, _>>()?,
-                ),
-                Statement::Expression(e) => Statement::Expression(Expr::compile(e)?),
-                Statement::Assign(left, right) => {
-                    Statement::Assign(Expr::compile(left)?, Expr::compile(right)?)
-                }
-                Statement::AugmentedAssign(left, op, right) => Statement::AugmentedAssign(
-                    AugmentedAssignTargetExpr::compile(left)?,
-                    op,
-                    Expr::compile(right)?,
-                ),
-                s @ Statement::Load(..)
-                | s @ Statement::Pass
-                | s @ Statement::Break
-                | s @ Statement::Continue => s,
-            },
-        }))
-    }
-
     pub(crate) fn compile_mod(
         stmt: AstStatement,
         _dialect: Dialect,
-    ) -> Result<AstStatement, Diagnostic> {
+    ) -> Result<AstStatementCompiled, Diagnostic> {
         Statement::validate_break_continue(&stmt)?;
-        let stmt = Statement::compile(stmt)?;
+        let stmt = StatementCompiled::compile(stmt)?;
         Ok(stmt)
     }
 }
@@ -1026,13 +979,7 @@ impl Statement {
                 writeln!(f, "{}for {} in {}:", tab, bind.node, coll.node)?;
                 suite.node.fmt_with_tab(f, tab + "  ")
             }
-            Statement::Def(ref name, ref params, ref suite)
-            | Statement::DefCompiled(DefCompiled {
-                ref name,
-                ref params,
-                ref suite,
-                ..
-            }) => {
+            Statement::Def(ref name, ref params, ref suite) => {
                 write!(f, "{}def {}(", tab, name.node)?;
                 comma_separated_fmt(f, params, |x, f| x.node.fmt(f), false)?;
                 f.write_str("):\n")?;

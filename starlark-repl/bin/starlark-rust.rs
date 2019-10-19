@@ -19,8 +19,8 @@ extern crate structopt;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use starlark::eval::interactive::{eval, eval_file, EvalError};
+use starlark::eval::stmt::AstStatementCompiled;
 use starlark::stdlib::global_environment_with_extensions;
-use starlark::syntax::ast::AstStatement;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::parser::{parse, parse_file};
 use starlark::values::Value;
@@ -121,7 +121,7 @@ fn main() {
 }
 
 fn maybe_print_ast_or_exit(
-    result: Result<AstStatement, Diagnostic>,
+    result: Result<AstStatementCompiled, Diagnostic>,
     codemap: &Arc<Mutex<CodeMap>>,
 ) {
     match result {

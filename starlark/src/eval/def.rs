@@ -16,6 +16,7 @@
 
 use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
+use crate::eval::stmt::{AstStatementCompiled, StatementCompiled};
 use crate::eval::{
     eval_stmt, EvalException, EvaluationContext, EvaluationContextEnvironment, IndexedLocals,
 };
@@ -44,7 +45,7 @@ use std::sync::{Arc, Mutex};
 pub struct DefCompiled {
     pub(crate) name: AstString,
     pub(crate) params: Vec<AstParameter>,
-    pub(crate) suite: AstStatement,
+    pub(crate) suite: AstStatementCompiled,
     local_names_to_indices: HashMap<String, usize>,
 }
 
@@ -67,7 +68,7 @@ impl DefCompiled {
 
         let suite = DefCompiled::transform_locals(suite, &local_names_to_indices);
 
-        let suite = Statement::compile(suite)?;
+        let suite = StatementCompiled::compile(suite)?;
 
         Ok(DefCompiled {
             name,
@@ -109,7 +110,7 @@ impl DefCompiled {
             | Statement::Pass
             | Statement::Return(..)
             | Statement::Expression(..) => {}
-            Statement::Load(..) | Statement::Def(..) | Statement::DefCompiled(..) => unreachable!(),
+            Statement::Load(..) | Statement::Def(..) => unreachable!(),
         }
     }
 
@@ -148,9 +149,7 @@ impl DefCompiled {
                     DefCompiled::transform_locals(else_block, locals),
                 ),
                 s @ Statement::Break | s @ Statement::Continue | s @ Statement::Pass => s,
-                Statement::Def(..) | Statement::Load(..) | Statement::DefCompiled(..) => {
-                    unreachable!()
-                }
+                Statement::Def(..) | Statement::Load(..) => unreachable!(),
                 Statement::Expression(expr) => {
                     Statement::Expression(Expr::transform_locals_to_slots(expr, locals))
                 }

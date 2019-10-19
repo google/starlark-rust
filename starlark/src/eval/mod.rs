@@ -22,6 +22,7 @@
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::eval::def::Def;
+use crate::eval::stmt::{AstStatementCompiled, StatementCompiled};
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -763,7 +764,7 @@ fn set_expr(expr: &AstExpr, context: &EvaluationContext, new_value: Value) -> Ev
 }
 
 fn eval_assign_modify(
-    stmt: &AstStatement,
+    stmt: &AstStatementCompiled,
     lhs: &AstAugmentedAssignTargetExpr,
     rhs: &AstExpr,
     context: &EvaluationContext,
@@ -786,40 +787,40 @@ where
     set_transformed(&lhs, context, t(op(&l, r), stmt)?)
 }
 
-fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
+fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalResult {
     match stmt.node {
-        Statement::Break => Err(EvalException::Break(stmt.span)),
-        Statement::Continue => Err(EvalException::Continue(stmt.span)),
-        Statement::Pass => Ok(Value::new(NoneType::None)),
-        Statement::Return(Some(ref e)) => {
+        StatementCompiled::Break => Err(EvalException::Break(stmt.span)),
+        StatementCompiled::Continue => Err(EvalException::Continue(stmt.span)),
+        StatementCompiled::Pass => Ok(Value::new(NoneType::None)),
+        StatementCompiled::Return(Some(ref e)) => {
             Err(EvalException::Return(stmt.span, eval_expr(e, context)?))
         }
-        Statement::Return(None) => {
+        StatementCompiled::Return(None) => {
             Err(EvalException::Return(stmt.span, Value::new(NoneType::None)))
         }
-        Statement::Expression(ref e) => eval_expr(e, context),
-        Statement::Assign(ref lhs, ref rhs) => {
+        StatementCompiled::Expression(ref e) => eval_expr(e, context),
+        StatementCompiled::Assign(ref lhs, ref rhs) => {
             let rhs = eval_expr(rhs, context)?;
             set_expr(lhs, context, rhs)
         }
-        Statement::AugmentedAssign(ref lhs, op, ref rhs) => {
+        StatementCompiled::AugmentedAssign(ref lhs, op, ref rhs) => {
             eval_assign_modify(stmt, lhs, rhs, context, op)
         }
-        Statement::If(ref cond, ref st) => {
+        StatementCompiled::If(ref cond, ref st) => {
             if eval_expr(cond, context)?.to_bool() {
                 eval_stmt(st, context)
             } else {
                 Ok(Value::new(NoneType::None))
             }
         }
-        Statement::IfElse(ref cond, ref st1, ref st2) => {
+        StatementCompiled::IfElse(ref cond, ref st1, ref st2) => {
             if eval_expr(cond, context)?.to_bool() {
                 eval_stmt(st1, context)
             } else {
                 eval_stmt(st2, context)
             }
         }
-        Statement::For(ref e1, ref e2, ref st) => {
+        StatementCompiled::For(ref e1, ref e2, ref st) => {
             let mut iterable = eval_expr(e2, context)?;
             let mut result = Ok(Value::new(NoneType::None));
             iterable.freeze_for_iteration();
@@ -838,7 +839,7 @@ fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
             iterable.unfreeze_for_iteration();
             result
         }
-        Statement::DefCompiled(ref stmt) => {
+        StatementCompiled::Def(ref stmt) => {
             let mut p = Vec::new();
             for x in &stmt.params {
                 p.push(match x.node {
@@ -860,8 +861,7 @@ fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
             t(context.env.set(&stmt.name.node, f.clone()), &stmt.name)?;
             Ok(f)
         }
-        Statement::Def(..) => unreachable!(),
-        Statement::Load(ref name, ref v) => {
+        StatementCompiled::Load(ref name, ref v) => {
             let loadenv = context.env.loader().load(name)?;
             for &(ref new_name, ref orig_name) in v.iter() {
                 t(
@@ -875,7 +875,7 @@ fn eval_stmt(stmt: &AstStatement, context: &EvaluationContext) -> EvalResult {
             }
             Ok(Value::new(NoneType::None))
         }
-        Statement::Statements(ref v) => {
+        StatementCompiled::Statements(ref v) => {
             let mut r = Value::new(NoneType::None);
             for stmt in v {
                 r = eval_stmt(stmt, context)?;
@@ -990,3 +990,4 @@ mod tests;
 
 pub(crate) mod compr;
 pub(crate) mod def;
+pub mod stmt;
