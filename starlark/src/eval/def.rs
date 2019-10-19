@@ -20,6 +20,7 @@ use crate::eval::stmt::{AstStatementCompiled, StatementCompiled};
 use crate::eval::{
     eval_stmt, EvalException, EvaluationContext, EvaluationContextEnvironment, IndexedLocals,
 };
+use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstParameter;
 use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
@@ -81,7 +82,7 @@ impl DefCompiled {
     fn collect_locals(stmt: &AstStatement, local_names_to_indices: &mut HashMap<String, usize>) {
         match stmt.node {
             Statement::Assign(ref dest, ..) => {
-                Expr::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                AssignTargetExpr::collect_locals_from_assign_expr(dest, local_names_to_indices);
             }
             Statement::AugmentedAssign(ref dest, ..) => {
                 AugmentedAssignTargetExpr::collect_locals_from_assign_expr(
@@ -90,7 +91,7 @@ impl DefCompiled {
                 );
             }
             Statement::For(ref dest, _, ref body) => {
-                Expr::collect_locals_from_assign_expr(dest, local_names_to_indices);
+                AssignTargetExpr::collect_locals_from_assign_expr(dest, local_names_to_indices);
                 DefCompiled::collect_locals(body, local_names_to_indices);
             }
             Statement::Statements(ref stmts) => {
@@ -120,7 +121,7 @@ impl DefCompiled {
             span: stmts.span,
             node: match stmts.node {
                 Statement::Assign(left, right) => Statement::Assign(
-                    Expr::transform_locals_to_slots(left, locals),
+                    AssignTargetExpr::transform_locals_to_slots(left, locals),
                     Expr::transform_locals_to_slots(right, locals),
                 ),
                 Statement::AugmentedAssign(target, op, rhs) => Statement::AugmentedAssign(
@@ -129,7 +130,7 @@ impl DefCompiled {
                     Expr::transform_locals_to_slots(rhs, locals),
                 ),
                 Statement::For(var, collection, body) => Statement::For(
-                    Expr::transform_locals_to_slots(var, locals),
+                    AssignTargetExpr::transform_locals_to_slots(var, locals),
                     Expr::transform_locals_to_slots(collection, locals),
                     DefCompiled::transform_locals(body, locals),
                 ),
