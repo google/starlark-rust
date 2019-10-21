@@ -16,6 +16,7 @@
 //! native functions to starlark.
 
 pub mod param;
+pub mod signature;
 
 /// Generate param name for named or unnamed parameter
 #[doc(hidden)]
@@ -40,11 +41,11 @@ macro_rules! starlark_signature {
         $( starlark_signature!($signature $($rest)+) )?;
     };
     ($signature:ident * $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::ArgsArray(stringify!($t).to_owned()));
+        $signature.push_args(stringify!($t));
         $( starlark_signature!($signature $($rest)+) )?
     };
     ($signature:ident ** $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::KWArgsDict(stringify!($t).to_owned()));
+        $signature.push_kwargs(stringify!($t));
         $( starlark_signature!($signature $($rest)+) )?
     };
 
@@ -58,33 +59,29 @@ macro_rules! starlark_signature {
 
     // handle params without default value (both named and unnamed)
     ($signature:ident $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::Normal(starlark_param_name!($is_named $t).to_owned()));
+        $signature.push_normal(starlark_param_name!($is_named $t));
         $( starlark_signature!($signature $($rest)+) )?
     };
     ($signature:ident ? $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push($crate::values::function::FunctionParameter::Optional(starlark_param_name!($is_named $t).to_owned()));
+        $signature.push_optional(starlark_param_name!($is_named $t));
         $( starlark_signature!($signature $($rest)+) )?
     };
 
     // handle params with default value (both named and unnamed)
     ($signature:ident $is_named:tt $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
-        $signature.push(
-            $crate::values::function::FunctionParameter::WithDefaultValue(
-                starlark_param_name!($is_named $t).to_owned(),
-                // explicitly specify parameter type to:
-                // * verify that default value is convertible to required type
-                // * help type inference find type parameters
-                ::std::convert::From::<starlark_parse_param_type!(1 : $pt)>::from($e)
-            )
+        // explicitly specify parameter type to:
+        // * verify that default value is convertible to required type
+        // * help type inference find type parameters
+        $signature.push_with_default_value::<starlark_parse_param_type!(1 : $pt)>(
+            starlark_param_name!($is_named $t),
+            $e,
         );
         $( starlark_signature!($signature $($rest)+) )?
     };
     ($signature:ident $is_named:tt $t:ident = $e:expr $(,$($rest:tt)+)?) => {
-        $signature.push(
-            $crate::values::function::FunctionParameter::WithDefaultValue(
-                starlark_param_name!($is_named $t).to_owned(),
-                $crate::values::Value::from($e)
-            )
+        $signature.push_with_default_value(
+            starlark_param_name!($is_named $t),
+            $e,
         );
         $( starlark_signature!($signature $($rest)+) )?
     };
@@ -202,9 +199,9 @@ macro_rules! starlark_signatures {
         {
             let name = stringify!($name).trim_matches('_');
             #[allow(unused_mut)]
-            let mut signature = Vec::new();
+            let mut signature = $crate::stdlib::macros::signature::SignatureBuilder::default();
             starlark_signature!(signature $($signature)*);
-            $env.set(name, $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature)).unwrap();
+            $env.set(name, $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature.build())).unwrap();
         }
         $(starlark_signatures!{ $env,
             $($rest)+
@@ -214,10 +211,10 @@ macro_rules! starlark_signatures {
             $($($rest:tt)+)?) => {
         {
             let name = stringify!($name).trim_matches('_');
-            let mut signature = Vec::new();
+            let mut signature = $crate::stdlib::macros::signature::SignatureBuilder::default();
             starlark_signature!(signature $($signature)*);
             $env.add_type_value(stringify!($ty), name,
-                $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature));
+                $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature.build()));
         }
         $(starlark_signatures!{ $env,
             $($rest)+
