@@ -30,7 +30,7 @@ use std::fmt::{Display, Formatter};
 #[doc(hidden)]
 pub type AstExpr = Box<Spanned<Expr>>;
 #[doc(hidden)]
-pub type AstAugmentedAssignTargetExpr = Box<Spanned<AugmentedAssignTargetExpr>>;
+pub type AstAugmentedAssignTargetExpr = Spanned<AugmentedAssignTargetExpr>;
 #[doc(hidden)]
 pub type AstArgument = Spanned<Argument>;
 #[doc(hidden)]
@@ -156,7 +156,7 @@ pub enum AugmentedAssignTargetExpr {
     Dot(AstExpr, AstString),
     ArrayIndirection(AstExpr, AstExpr),
 }
-to_ast_trait!(AugmentedAssignTargetExpr, AstAugmentedAssignTargetExpr, Box);
+to_ast_trait!(AugmentedAssignTargetExpr, AstAugmentedAssignTargetExpr);
 
 impl Expr {
     pub fn check_call(
@@ -433,7 +433,7 @@ impl AugmentedAssignTargetExpr {
         AstAugmentedAssignTargetExpr,
         lalrpop_util::ParseError<u64, lexer::Token, lexer::LexerError>,
     > {
-        Ok(Box::new(Spanned {
+        Ok(Spanned {
             span: expr.span,
             node: match expr.node {
                 Expr::Identifier(ident) => AugmentedAssignTargetExpr::Identifier(ident),
@@ -451,13 +451,13 @@ impl AugmentedAssignTargetExpr {
                     })
                 }
             },
-        }))
+        })
     }
 
     pub(crate) fn compile(
         expr: AstAugmentedAssignTargetExpr,
     ) -> Result<AstAugmentedAssignTargetExpr, Diagnostic> {
-        Ok(Box::new(Spanned {
+        Ok(Spanned {
             span: expr.span,
             node: match expr.node {
                 AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
@@ -472,7 +472,7 @@ impl AugmentedAssignTargetExpr {
                 e @ AugmentedAssignTargetExpr::Identifier(..)
                 | e @ AugmentedAssignTargetExpr::Slot(..) => e,
             },
-        }))
+        })
     }
 
     pub(crate) fn collect_locals_from_assign_expr(
@@ -494,7 +494,7 @@ impl AugmentedAssignTargetExpr {
         expr: AstAugmentedAssignTargetExpr,
         locals: &HashMap<String, usize>,
     ) -> AstAugmentedAssignTargetExpr {
-        Box::new(Spanned {
+        Spanned {
             span: expr.span,
             node: match expr.node {
                 AugmentedAssignTargetExpr::Dot(object, field) => AugmentedAssignTargetExpr::Dot(
@@ -513,7 +513,7 @@ impl AugmentedAssignTargetExpr {
                 },
                 AugmentedAssignTargetExpr::Slot(..) => unreachable!(),
             },
-        })
+        }
     }
 }
 
