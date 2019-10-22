@@ -28,7 +28,10 @@ use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::Expr;
 use crate::syntax::ast::Statement;
 use crate::values::error::ValueError;
-use crate::values::function::{FunctionParameter, FunctionType};
+use crate::values::function::FunctionParameter;
+use crate::values::function::FunctionSignature;
+use crate::values::function::FunctionType;
+use crate::values::function::StrOrRepr;
 use crate::values::none::NoneType;
 use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
 use codemap::{CodeMap, Spanned};
@@ -164,7 +167,7 @@ impl DefCompiled {
 
 /// Starlark function internal representation and implementation of [`TypedValue`].
 pub(crate) struct Def {
-    signature: Vec<FunctionParameter>,
+    signature: FunctionSignature,
     function_type: FunctionType,
     captured_env: Environment,
     map: Arc<Mutex<CodeMap>>,
@@ -174,7 +177,7 @@ pub(crate) struct Def {
 impl Def {
     pub fn new(
         module: String,
-        signature: Vec<FunctionParameter>,
+        signature: FunctionSignature,
         stmt: DefCompiled,
         map: Arc<Mutex<CodeMap>>,
         env: Environment,
@@ -204,11 +207,11 @@ impl TypedValue for Def {
     }
 
     fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
-        function::to_str(buf, &self.function_type, &self.signature)
+        function::str_impl(buf, &self.function_type, &self.signature, StrOrRepr::Str)
     }
 
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
-        function::repr_impl(buf, &self.function_type, &self.signature)
+        function::str_impl(buf, &self.function_type, &self.signature, StrOrRepr::Repr)
     }
 
     fn call(
@@ -240,12 +243,15 @@ impl TypedValue for Def {
             kwargs,
         )?;
 
-        for s in &self.signature {
+        for (s, positional_only) in self.signature.iter() {
             let (name, v) = match s {
-                FunctionParameter::Normal(ref name) => (name, parser.next_normal(name)?),
-                FunctionParameter::WithDefaultValue(ref name, ref default_value) => {
-                    (name, parser.next_with_default_value(name, default_value))
+                FunctionParameter::Normal(ref name) => {
+                    (name, parser.next_normal(name, positional_only)?)
                 }
+                FunctionParameter::WithDefaultValue(ref name, ref default_value) => (
+                    name,
+                    parser.next_with_default_value(name, positional_only, default_value),
+                ),
                 FunctionParameter::ArgsArray(ref name) => (name, parser.next_args_array().into()),
                 FunctionParameter::KWArgsDict(ref name) => {
                     (name, parser.next_kwargs_dict().try_into().unwrap())

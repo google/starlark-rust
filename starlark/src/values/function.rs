@@ -34,6 +34,34 @@ pub enum FunctionParameter {
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
+pub struct FunctionSignature {
+    params: Vec<FunctionParameter>,
+    /// Number of leading positional-only parameters
+    positional_count: usize,
+}
+
+impl FunctionSignature {
+    pub(crate) fn new(
+        parameters: Vec<FunctionParameter>,
+        positional_count: usize,
+    ) -> FunctionSignature {
+        FunctionSignature {
+            params: parameters,
+            positional_count,
+        }
+    }
+
+    pub(crate) fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a FunctionParameter, bool)> + 'a {
+        let positional_count = self.positional_count;
+        self.params
+            .iter()
+            .enumerate()
+            .map(move |(i, p)| (p, i < positional_count))
+    }
+}
+
+#[derive(Debug, Clone)]
+#[doc(hidden)]
 pub enum FunctionType {
     Native(String),
     Def(String, String),
@@ -139,7 +167,7 @@ pub struct NativeFunction {
     /// Note it is a function pointer, not `Box<Fn(...)>`
     /// to avoid generic instantiation and allocation for each native function.
     function: fn(&CallStack, TypeValues, ParameterParser) -> ValueResult,
-    signature: Vec<FunctionParameter>,
+    signature: FunctionSignature,
     function_type: FunctionType,
 }
 
@@ -163,7 +191,7 @@ pub enum FunctionError {
     NotEnoughParameter {
         missing: String,
         function_type: FunctionType,
-        signature: Vec<FunctionParameter>,
+        signature: FunctionSignature,
     },
     ArgsValueIsNotString,
     ArgsArrayIsNotIterable,
@@ -227,7 +255,7 @@ impl NativeFunction {
     pub fn new(
         name: String,
         function: fn(&CallStack, TypeValues, ParameterParser) -> ValueResult,
-        signature: Vec<FunctionParameter>,
+        signature: FunctionSignature,
     ) -> Value {
         Value::new(NativeFunction {
             function,
@@ -261,59 +289,64 @@ impl FunctionType {
     }
 }
 
-pub(crate) fn repr_impl(
-    buf: &mut String,
-    function_type: &FunctionType,
-    signature: &[FunctionParameter],
-) -> fmt::Result {
-    let v: Vec<String> = signature
-        .iter()
-        .map(|x| -> String {
-            match x {
-                FunctionParameter::Normal(ref name) => name.clone(),
-                FunctionParameter::Optional(ref name) => format!("?{}", name),
-                FunctionParameter::WithDefaultValue(ref name, ref value) => {
-                    format!("{} = {}", name, value.to_repr())
-                }
-                FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
-                FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
-            }
-        })
-        .collect();
-    write!(buf, "{}({})", function_type.to_repr(), v.join(", "))
+pub(crate) enum StrOrRepr {
+    Str,
+    Repr,
 }
 
-pub(crate) fn repr(function_type: &FunctionType, signature: &[FunctionParameter]) -> String {
+pub(crate) fn str_impl(
+    buf: &mut String,
+    function_type: &FunctionType,
+    signature: &FunctionSignature,
+    str_or_repr: StrOrRepr,
+) -> fmt::Result {
+    write!(
+        buf,
+        "{}",
+        match str_or_repr {
+            StrOrRepr::Str => function_type.to_str(),
+            StrOrRepr::Repr => function_type.to_repr(),
+        }
+    )?;
+    write!(buf, "(")?;
+
+    for (i, x) in signature.params.iter().enumerate() {
+        if i != 0 && i == signature.positional_count {
+            write!(buf, ", /")?;
+        }
+
+        if i != 0 {
+            write!(buf, ", ")?;
+        }
+
+        match x {
+            FunctionParameter::Normal(ref name) => write!(buf, "{}", name)?,
+            FunctionParameter::Optional(ref name) => write!(buf, "?{}", name)?,
+            FunctionParameter::WithDefaultValue(ref name, ref value) => {
+                write!(buf, "{} = {}", name, value.to_repr())?;
+            }
+            FunctionParameter::ArgsArray(ref name) => write!(buf, "*{}", name)?,
+            FunctionParameter::KWArgsDict(ref name) => write!(buf, "**{}", name)?,
+        }
+    }
+
+    if signature.positional_count != 0 && signature.positional_count == signature.params.len() {
+        write!(buf, ", /")?;
+    }
+
+    write!(buf, ")")?;
+    Ok(())
+}
+
+pub(crate) fn repr(function_type: &FunctionType, signature: &FunctionSignature) -> String {
     let mut buf = String::new();
-    repr_impl(&mut buf, function_type, signature).unwrap();
+    str_impl(&mut buf, function_type, signature, StrOrRepr::Repr).unwrap();
     buf
-}
-
-pub(crate) fn to_str(
-    buf: &mut String,
-    function_type: &FunctionType,
-    signature: &[FunctionParameter],
-) -> fmt::Result {
-    let v: Vec<String> = signature
-        .iter()
-        .map(|x| -> String {
-            match x {
-                FunctionParameter::Normal(ref name) => name.clone(),
-                FunctionParameter::Optional(ref name) => name.clone(),
-                FunctionParameter::WithDefaultValue(ref name, ref value) => {
-                    format!("{} = {}", name, value.to_repr())
-                }
-                FunctionParameter::ArgsArray(ref name) => format!("*{}", name),
-                FunctionParameter::KWArgsDict(ref name) => format!("**{}", name),
-            }
-        })
-        .collect();
-    write!(buf, "{}({})", function_type.to_str(), v.join(", "))
 }
 
 #[doc(hidden)]
 pub struct ParameterParser<'a> {
-    signature: &'a [FunctionParameter],
+    signature: &'a FunctionSignature,
     // current parameter index in function signature
     index: usize,
     function_type: &'a FunctionType,
@@ -323,7 +356,7 @@ pub struct ParameterParser<'a> {
 
 impl<'a> ParameterParser<'a> {
     pub fn new(
-        signature: &'a [FunctionParameter],
+        signature: &'a FunctionSignature,
         function_type: &'a FunctionType,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
@@ -370,36 +403,49 @@ impl<'a> ParameterParser<'a> {
         })
     }
 
-    pub fn next_normal(&mut self, name: &str) -> Result<Value, ValueError> {
+    pub fn next_normal(&mut self, name: &str, positional_only: bool) -> Result<Value, ValueError> {
         if let Some(x) = self.positional.next() {
             self.index += 1;
-            Ok(x)
-        } else if let Some(ref r) = self.kwargs.remove(name) {
-            self.index += 1;
-            Ok(r.clone())
-        } else {
-            Err(FunctionError::NotEnoughParameter {
-                missing: name.to_string(),
-                function_type: self.function_type.clone(),
-                signature: self.signature.to_owned(),
-            }
-            .into())
+            return Ok(x);
         }
+
+        if !positional_only {
+            if let Some(ref r) = self.kwargs.remove(name) {
+                self.index += 1;
+                return Ok(r.clone());
+            }
+        }
+
+        Err(FunctionError::NotEnoughParameter {
+            missing: name.to_string(),
+            function_type: self.function_type.clone(),
+            signature: self.signature.clone(),
+        }
+        .into())
     }
 
-    pub fn next_optional(&mut self, name: &str) -> Option<Value> {
+    pub fn next_optional(&mut self, name: &str, positional_only: bool) -> Option<Value> {
         self.index += 1;
         if let Some(x) = self.positional.next() {
-            Some(x)
-        } else if let Some(ref r) = self.kwargs.remove(name) {
-            Some(r.clone())
-        } else {
-            None
+            return Some(x);
         }
+
+        if !positional_only {
+            if let Some(ref r) = self.kwargs.remove(name) {
+                return Some(r.clone());
+            }
+        }
+
+        None
     }
 
-    pub fn next_with_default_value(&mut self, name: &str, default_value: &Value) -> Value {
-        self.next_optional(name)
+    pub fn next_with_default_value(
+        &mut self,
+        name: &str,
+        positional_only: bool,
+        default_value: &Value,
+    ) -> Value {
+        self.next_optional(name, positional_only)
             .unwrap_or_else(|| default_value.clone())
     }
 
@@ -417,7 +463,7 @@ impl<'a> ParameterParser<'a> {
         if self.positional.next().is_some() || !self.kwargs.is_empty() {
             return Err(FunctionError::ExtraParameter.into());
         }
-        debug_assert_eq!(self.index, self.signature.len());
+        debug_assert_eq!(self.index, self.signature.params.len());
         Ok(())
     }
 
@@ -425,14 +471,17 @@ impl<'a> ParameterParser<'a> {
     pub fn next_arg(&mut self) -> Result<FunctionArg, ValueError> {
         // Macros call this function exactly once for each signature item.
         // So it's safe to panic here.
-        assert!(self.index != self.signature.len());
-        Ok(match &self.signature[self.index] {
-            FunctionParameter::Normal(ref name) => FunctionArg::Normal(self.next_normal(name)?),
+        assert!(self.index != self.signature.params.len());
+        let positional_only = self.index < self.signature.positional_count;
+        Ok(match &self.signature.params[self.index] {
+            FunctionParameter::Normal(ref name) => {
+                FunctionArg::Normal(self.next_normal(name, positional_only)?)
+            }
             FunctionParameter::Optional(ref name) => {
-                FunctionArg::Optional(self.next_optional(name))
+                FunctionArg::Optional(self.next_optional(name, positional_only))
             }
             FunctionParameter::WithDefaultValue(ref name, ref value) => {
-                FunctionArg::Normal(self.next_with_default_value(name, value))
+                FunctionArg::Normal(self.next_with_default_value(name, positional_only, value))
             }
             FunctionParameter::ArgsArray(..) => FunctionArg::ArgsArray(self.next_args_array()),
             FunctionParameter::KWArgsDict(..) => FunctionArg::KWArgsDict(self.next_kwargs_dict()),
@@ -451,10 +500,10 @@ impl TypedValue for NativeFunction {
     }
 
     fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
-        to_str(buf, &self.function_type, &self.signature)
+        str_impl(buf, &self.function_type, &self.signature, StrOrRepr::Str)
     }
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
-        repr_impl(buf, &self.function_type, &self.signature)
+        str_impl(buf, &self.function_type, &self.signature, StrOrRepr::Repr)
     }
 
     const TYPE: &'static str = "function";
@@ -519,5 +568,124 @@ impl TypedValue for WrappedMethod {
             .collect();
         self.method
             .call(call_stack, type_values, positional, named, args, kwargs)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::values::function::{FunctionParameter, FunctionSignature, FunctionType};
+
+    #[test]
+    fn fmt_signature_positional() {
+        assert_eq!(
+            "<native function f>()",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(vec![], 0)
+            )
+        );
+        assert_eq!(
+            "<native function f>(a)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(vec![FunctionParameter::Normal("a".to_owned())], 0)
+            )
+        );
+        assert_eq!(
+            "<native function f>(a, /)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(vec![FunctionParameter::Normal("a".to_owned())], 1)
+            )
+        );
+        assert_eq!(
+            "<native function f>(a, b)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(
+                    vec![
+                        FunctionParameter::Normal("a".to_owned()),
+                        FunctionParameter::Normal("b".to_owned()),
+                    ],
+                    0,
+                )
+            )
+        );
+        assert_eq!(
+            "<native function f>(a, /, b)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(
+                    vec![
+                        FunctionParameter::Normal("a".to_owned()),
+                        FunctionParameter::Normal("b".to_owned()),
+                    ],
+                    1,
+                )
+            )
+        );
+        assert_eq!(
+            "<native function f>(a, b, /)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(
+                    vec![
+                        FunctionParameter::Normal("a".to_owned()),
+                        FunctionParameter::Normal("b".to_owned()),
+                    ],
+                    2,
+                )
+            )
+        );
+        assert_eq!(
+            "<native function f>(a, b, /, **k)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(
+                    vec![
+                        FunctionParameter::Normal("a".to_owned()),
+                        FunctionParameter::Normal("b".to_owned()),
+                        FunctionParameter::KWArgsDict("k".to_owned()),
+                    ],
+                    2,
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn fmt_signature_optional() {
+        assert_eq!(
+            "<native function f>(?a)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(vec![FunctionParameter::Optional("a".to_owned())], 0)
+            )
+        );
+        assert_eq!(
+            "<native function f>(?a, /)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(vec![FunctionParameter::Optional("a".to_owned())], 1)
+            )
+        );
+    }
+
+    #[test]
+    fn fmt_signature_with_default_value() {
+        assert_eq!(
+            "<native function f>(a = 10)",
+            repr(
+                &FunctionType::Native("f".to_owned()),
+                &FunctionSignature::new(
+                    vec![FunctionParameter::WithDefaultValue(
+                        "a".to_owned(),
+                        Value::new(10),
+                    )],
+                    0,
+                )
+            )
+        );
     }
 }
