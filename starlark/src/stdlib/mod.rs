@@ -90,7 +90,7 @@ starlark_module! {global_functions =>
     /// any([0, False]) == False
     /// # )").unwrap());
     /// ```
-    any(#x) {
+    any(x, /) {
         for i in &x.iter()? {
             if i.to_bool() {
                 return Ok(Value::new(true));
@@ -123,7 +123,7 @@ starlark_module! {global_functions =>
     /// all([0, False]) == False
     /// # )").unwrap());
     /// ```
-    all(#x) {
+    all(x, /) {
         for i in &x.iter()? {
             if !i.to_bool() {
                 return Ok(Value::new(false));
@@ -162,7 +162,7 @@ starlark_module! {global_functions =>
     /// bool(0) == False
     /// # )").unwrap());
     /// ```
-    bool(#x = false) {
+    bool(x = false, /) {
         Ok(Value::new(x.to_bool()))
     }
 
@@ -187,7 +187,7 @@ starlark_module! {global_functions =>
     /// chr(0x1F63F) == '😿'
     /// # )").unwrap());
     /// ```
-    chr(#i) {
+    chr(i, /) {
         let cp = i.to_int()? as u32;
         match std::char::from_u32(cp) {
             Some(x) => Ok(Value::new(x.to_string())),
@@ -233,7 +233,7 @@ starlark_module! {global_functions =>
     /// dict([(1, 2)], x=3) == {1: 2, 'x': 3}
     /// # )").unwrap());
     /// ```
-    dict(?#a, **kwargs) {
+    dict(?a, /, **kwargs) {
         let mut map = Dictionary::new();
         if let Some(a) = a {
             match a.get_type() {
@@ -297,7 +297,7 @@ starlark_module! {global_functions =>
     /// "capitalize" in dir("abc")
     /// # ))).unwrap());
     /// ```
-    dir(env env, #x) {
+    dir(env env, x, /) {
         let mut result = env.list_type_value(&x);
         if let Ok(v) = x.dir_attr() {
             result.extend(v);
@@ -327,7 +327,7 @@ starlark_module! {global_functions =>
     /// enumerate(["one", "two"], 1) == [(1, "one"), (2, "two")]
     /// # )"#).unwrap());
     /// ```
-    enumerate(#it, #offset: i64 = 0) {
+    enumerate(it, offset: i64 = 0, /) {
         let v : Vec<Value> =
             it
             .iter()?
@@ -353,7 +353,7 @@ starlark_module! {global_functions =>
     /// getattr("banana", "split")("a") == ["b", "n", "n", ""] # equivalent to "banana".split("a")
     /// # "#).unwrap());
     /// ```
-    getattr(env env, #a, #attr: String, #default = NoneType::None) {
+    getattr(env env, a, attr: String, default = NoneType::None, /) {
         match a.get_attr(&attr) {
             Ok(v) => Ok(v),
             x => match env.get_type_value(&a, &attr) {
@@ -373,7 +373,7 @@ starlark_module! {global_functions =>
     /// ): test if an object has an attribute
     ///
     /// `hasattr(x, name)` reports whether x has an attribute (field or method) named `name`.
-    hasattr(env env, #a, #attr: String) {
+    hasattr(env env, a, attr: String, /) {
         Ok(Value::new(
             match env.get_type_value(&a, &attr) {
                 Some(..) => true,
@@ -393,7 +393,7 @@ starlark_module! {global_functions =>
     /// `hash(x) == hash(y)``.
     ///
     /// `hash` fails if x, or any value upon which its hash depends, is unhashable.
-    hash(#a) {
+    hash(a, /) {
         Ok(Value::new(a.get_hash()? as i64))
     }
 
@@ -418,7 +418,7 @@ starlark_module! {global_functions =>
     /// specified by name.
     ///
     /// `int()` with no arguments returns 0.
-    int(#a, ?base) {
+    int(a, /, ?base) {
         if a.get_type() == "string" {
             let s = a.to_str();
             let base = match base {
@@ -498,7 +498,7 @@ starlark_module! {global_functions =>
     /// `len(x)` returns the number of elements in its argument.
     ///
     /// It is a dynamic error if its argument is not a sequence.
-    len(#a) {
+    len(a, /) {
         Ok(Value::new(a.length()?))
     }
 
@@ -510,7 +510,7 @@ starlark_module! {global_functions =>
     /// iterable sequence x.
     ///
     /// With no argument, `list()` returns a new empty list.
-    list(?#a) {
+    list(?a, /) {
         if let Some(a) = a {
             Ok(Value::from(a.to_vec()?))
         } else {
@@ -659,7 +659,7 @@ starlark_module! {global_functions =>
     /// ord("Й")                                == 1049
     /// # )"#).unwrap());
     /// ```
-    ord(#a) {
+    ord(a, /) {
         if a.get_type() != "string" || a.length()? != 1 {
             starlark_err!(
                 ORD_EXPECT_ONE_CHAR_ERROR_CODE,
@@ -707,7 +707,7 @@ starlark_module! {global_functions =>
     /// list(range(10, 3, -2))                  == [10, 8, 6, 4]
     /// # )"#).unwrap());
     /// ```
-    range(#a1: i64, ?#a2: Option<i64>, ?#a3: Option<i64>) {
+    range(a1: i64, ?a2: Option<i64>, ?a3: Option<i64>, /) {
         let start = match a2 {
             None => 0,
             Some(_) => a1,
@@ -749,7 +749,7 @@ starlark_module! {global_functions =>
     /// repr([1, "x"])          == "[1, \"x\"]"
     /// # )"#).unwrap());
     /// ```
-    repr(#a) {
+    repr(a, /) {
         Ok(Value::new(a.to_repr()))
     }
 
@@ -770,7 +770,7 @@ starlark_module! {global_functions =>
     /// reversed({"one": 1, "two": 2}.keys())           == ["two", "one"]
     /// # )"#).unwrap());
     /// ```
-    reversed(#a) {
+    reversed(a, /) {
         let v: Vec<Value> = a.to_vec()?;
         let v: Vec<Value> = v.into_iter().rev().collect();
         Ok(Value::from(v))
@@ -803,7 +803,7 @@ starlark_module! {global_functions =>
     /// sorted(["two", "three", "four"], key=len, reverse=True)  == ["three", "four", "two"] # longest to shortest
     /// # )"#).unwrap());
     /// ```
-    sorted(call_stack cs, env e, #x, ?key, reverse = false) {
+    sorted(call_stack cs, env e, x, /, ?key, reverse = false) {
         let it = x.iter()?;
         let x = it.iter();
         let mut it = match key {
@@ -865,7 +865,7 @@ starlark_module! {global_functions =>
     /// str([1, "x"])                   == "[1, \"x\"]"
     /// # )"#).unwrap());
     /// ```
-    _str(#a) {
+    _str(a, /) {
         Ok(Value::new(a.to_str()))
     }
 
@@ -874,7 +874,7 @@ starlark_module! {global_functions =>
     /// ): returns a tuple containing the elements of the iterable x.
     ///
     /// With no arguments, `tuple()` returns the empty tuple.
-    tuple(?#a) {
+    tuple(?a, /) {
         if let Some(a) = a {
             Ok(Value::new(tuple::Tuple::new(a.to_vec()?)))
         } else {
@@ -894,7 +894,7 @@ starlark_module! {global_functions =>
     /// type(0)                 == "int"
     /// # )"#).unwrap());
     /// ```
-    _type(#a) {
+    _type(a, /) {
         Ok(Value::new(a.get_type().to_owned()))
     }
 

@@ -78,7 +78,7 @@ starlark_module! {global =>
     /// x.get("three", 0) == 0
     /// # )"#).unwrap());
     /// ```
-    dict.get(this, #key, #default = NoneType::None) {
+    dict.get(this, key, default = NoneType::None, /) {
         match this.at(key) {
             Err(ValueError::KeyNotFound(..)) => Ok(default),
             x => x
@@ -160,7 +160,7 @@ starlark_module! {global =>
     /// ```python
     /// x.pop("four")  # error: missing key
     /// ```
-    dict.pop(this, #key, #default = NoneType::None) {
+    dict.pop(this, key, default = NoneType::None, /) {
         let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
         match this.remove(&key)? {
             Some(x) => Ok(x),
@@ -244,7 +244,7 @@ starlark_module! {global =>
     /// x == {"one": 1, "two": 2, "three": 0, "four": None}
     /// # )"#).unwrap());
     /// ```
-    dict.setdefault(this, #key, #default = NoneType::None) {
+    dict.setdefault(this, key, default = NoneType::None, /) {
         let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
         if let Some(r) = this.get(&key)? {
             return Ok(r.clone())
@@ -285,7 +285,7 @@ starlark_module! {global =>
     /// x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
     /// # )"#).unwrap());
     /// ```
-    dict.update(this, ?#pairs, **kwargs) {
+    dict.update(this, ?pairs, /, **kwargs) {
         if let Some(pairs) = pairs {
             match pairs.get_type() {
                 "list" => for v in &pairs.iter()? {

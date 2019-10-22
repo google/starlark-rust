@@ -18,22 +18,14 @@
 pub mod param;
 pub mod signature;
 
-/// Generate param name for named or unnamed parameter
-#[doc(hidden)]
-#[macro_export]
-macro_rules! starlark_param_name {
-    ((named) $ident:tt) => {
-        stringify!($ident)
-    };
-    (# $ident:tt) => {
-        concat!("$", stringify!($ident))
-    };
-}
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signature {
     ($signature:ident) => {};
+    ($signature:ident / $(,$($rest:tt)+)?) => {
+        $signature.push_slash();
+        $( starlark_signature!($signature $($rest)+) )?
+    };
     ($signature:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
         $( starlark_signature!($signature $($rest)+) )?;
     };
@@ -49,38 +41,30 @@ macro_rules! starlark_signature {
         $( starlark_signature!($signature $($rest)+) )?
     };
 
-    // insert `(named)` tt if param is not unnamed
-    ($signature:ident $t:ident $($rest:tt)*) => {
-        starlark_signature!($signature (named) $t $($rest)*)
-    };
-    ($signature:ident ? $t:ident $($rest:tt)*) => {
-        starlark_signature!($signature ? (named) $t $($rest)*)
-    };
-
     // handle params without default value (both named and unnamed)
-    ($signature:ident $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push_normal(starlark_param_name!($is_named $t));
+    ($signature:ident $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+        $signature.push_normal(stringify!($t));
         $( starlark_signature!($signature $($rest)+) )?
     };
-    ($signature:ident ? $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
-        $signature.push_optional(starlark_param_name!($is_named $t));
+    ($signature:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+        $signature.push_optional(stringify!($t));
         $( starlark_signature!($signature $($rest)+) )?
     };
 
     // handle params with default value (both named and unnamed)
-    ($signature:ident $is_named:tt $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
+    ($signature:ident $t:ident : $pt:ty = $e:expr $(,$($rest:tt)+)?) => {
         // explicitly specify parameter type to:
         // * verify that default value is convertible to required type
         // * help type inference find type parameters
         $signature.push_with_default_value::<starlark_parse_param_type!(1 : $pt)>(
-            starlark_param_name!($is_named $t),
+            stringify!($t),
             $e,
         );
         $( starlark_signature!($signature $($rest)+) )?
     };
-    ($signature:ident $is_named:tt $t:ident = $e:expr $(,$($rest:tt)+)?) => {
+    ($signature:ident $t:ident = $e:expr $(,$($rest:tt)+)?) => {
         $signature.push_with_default_value(
-            starlark_param_name!($is_named $t),
+            stringify!($t),
             $e,
         );
         $( starlark_signature!($signature $($rest)+) )?
@@ -112,6 +96,9 @@ macro_rules! starlark_parse_param_type {
 #[macro_export]
 macro_rules! starlark_signature_extraction {
     ($args:ident $call_stack:ident $env:ident) => {};
+    ($args:ident $call_stack:ident $env:ident / $(,$($rest:tt)+)?) => {
+        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
+    };
     ($args:ident $call_stack:ident $env:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
         let $e = $call_stack;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
@@ -133,24 +120,16 @@ macro_rules! starlark_signature_extraction {
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
     };
 
-    // insert `(named)` tt if param is not unnamed
-    ($args:ident $call_stack:ident $env:ident $t:ident $($rest:tt)*) => {
-        starlark_signature_extraction!($args $call_stack $env (named) $t $($rest)*);
-    };
-    ($args:ident $call_stack:ident $env:ident ? $t:ident $($rest:tt)*) => {
-        starlark_signature_extraction!($args $call_stack $env ? (named) $t $($rest)*);
-    };
-
-    ($args:ident $call_stack:ident $env:ident ? $is_named:tt $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
-            $args.next_arg()?.into_optional(starlark_param_name!(# $t))?;
+            $args.next_arg()?.into_optional(stringify!($t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
     };
-    ($args:ident $call_stack:ident $env:ident $is_named:tt $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
+    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
-            $args.next_arg()?.into_normal(starlark_param_name!($is_named $t))?;
+            $args.next_arg()?.into_normal(stringify!($t))?;
         $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
     };
 }
@@ -243,15 +222,15 @@ macro_rules! starlark_signatures {
 /// starlark_module!{ my_starlark_module =>
 ///     // Declare a 'str' function (_ are trimmed away and just here to avoid collision with
 ///     // reserved keyword)
-///     // #a argument will be binded to a `a` Rust value, the '#' prevent the argument from
-///     // being used by name when calling the method.
-///     __str__(#a) {
+///     // `a` argument will be binded to a `a` Rust value, the `/` marks all preceding arguments
+///     // as positional only.
+///     __str__(a, /) {
 ///       Ok(Value::new(a.to_str().to_owned()))
 ///     }
 ///
 ///     // Declare a function my_fun that takes one positional parameter 'a', a named and
 ///     // positional parameter 'b', a args array 'args' and a keyword dictionary `kwargs`
-///     my_fun(#a, b, c = 1, *args, **kwargs) {
+///     my_fun(a, /, b, c = 1, *args, **kwargs) {
 ///       // ...
 /// # Ok(Value::new(true))
 ///     }
@@ -293,8 +272,8 @@ macro_rules! starlark_signatures {
 /// # use starlark::values::*;
 /// # use starlark::environment::Environment;
 /// # starlark_module!{ my_starlark_module =>
-/// #     __str__(#a) { Ok(Value::new(a.to_str().to_owned())) }
-/// #     my_fun(#a, b, c = 1, *args, **kwargs) { Ok(Value::new(true)) }
+/// #     __str__(a, /) { Ok(Value::new(a.to_str().to_owned())) }
+/// #     my_fun(a, /, b, c = 1, *args, **kwargs) { Ok(Value::new(true)) }
 /// # }
 /// # fn main() {
 /// #    let env =

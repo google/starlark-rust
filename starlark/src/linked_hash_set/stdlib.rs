@@ -36,7 +36,7 @@ starlark_module! {global =>
     /// iterable sequence x.
     ///
     /// With no argument, `set()` returns a new empty set.
-    set(?#a) {
+    set(?a, /) {
         let mut s = Set::default();
         if let Some(a) = a {
             for x in &a.iter()? {
@@ -70,7 +70,7 @@ starlark_module! {global =>
     /// x == set([1, 2, 3])
     /// # )"#).unwrap());
     /// ```
-    set.add(this, #el) {
+    set.add(this, el, /) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         this.insert_if_absent(el)?;
         Ok(Value::new(NoneType::None))
@@ -183,7 +183,7 @@ starlark_module! {global =>
     /// x == set([4])
     /// # "#).unwrap());
     /// ```
-    set.difference_update(this, #other) {
+    set.difference_update(this, other, /) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         let previous_length = this.len() as usize;
         let mut values = Vec::with_capacity(previous_length);
@@ -219,7 +219,7 @@ starlark_module! {global =>
     /// x == set([1, 3])
     /// # )"#).unwrap());
     /// ```
-    set.discard(this, #needle) {
+    set.discard(this, needle, /) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         this.remove(&needle)?;
         Ok(Value::new(NoneType::None))
@@ -287,7 +287,7 @@ starlark_module! {global =>
     /// x == set([2])
     /// # "#).unwrap());
     /// ```
-    set.intersection_update(this, #other) {
+    set.intersection_update(this, other, /) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         let previous_length = this.len();
         let mut values = Vec::with_capacity(previous_length);
@@ -323,7 +323,7 @@ starlark_module! {global =>
     /// x.isdisjoint(set([1, 5])) == False
     /// # )"#).unwrap());
     /// ```
-    set.isdisjoint(this, #other) {
+    set.isdisjoint(this, other, /) {
         ok!(Set::compare(&this, &other, &|s1, s2| Ok(s1.intersection(s2).next().is_none()))?)
     }
 
@@ -347,7 +347,7 @@ starlark_module! {global =>
     /// x.issubset(set([1, 2, 3, 4, 5])) == True
     /// # )"#).unwrap());
     /// ```
-    set.issubset(this, #other) {
+    set.issubset(this, other, /) {
         ok!(Set::compare(&this, &other, &|this, other| Ok(this.is_subset(other)))?)
     }
 
@@ -371,7 +371,7 @@ starlark_module! {global =>
     /// x.issuperset(set([1, 2, 3, 4, 5])) == False
     /// # )"#).unwrap());
     /// ```
-    set.issuperset(this, #other) {
+    set.issuperset(this, other, /) {
         ok!(Set::compare(&this, &other, &|this, other| Ok(other.is_subset(this)))?)
     }
 
@@ -399,7 +399,7 @@ starlark_module! {global =>
     /// x == set([3])
     /// # )"#).unwrap());
     /// ```
-    set.pop(this, #index = NoneType::None) {
+    set.pop(this, index = NoneType::None, /) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         let length = this.len() as i64;
         let index = if index.get_type() == "NoneType" {
@@ -448,7 +448,7 @@ starlark_module! {global =>
     ///
     /// A subsequent call to `x.remove(2)` would yield an error because the element won't be
     /// found.
-    set.remove(this, #needle) {
+    set.remove(this, needle, /) {
         let mut this = this.downcast_mut::<Set>()?.unwrap();
         let did_remove = this.remove(&needle)?;
         if did_remove {
@@ -483,7 +483,7 @@ starlark_module! {global =>
     /// x.symmetric_difference(z) == set([1, 2, 3, 4, 5])
     /// # )"#).unwrap());
     /// ```
-    set.symmetric_difference(this, #other) {
+    set.symmetric_difference(this, other, /) {
         Set::compare(&this, &other, &|s1, s2| {
             Ok(Set::from(s1.symmetric_difference(s2).cloned().collect()).unwrap())
         })
@@ -523,7 +523,7 @@ starlark_module! {global =>
     /// z == set([5])
     /// # )"#).unwrap());
     /// ```
-    set.symmetric_difference_update(this, #other) {
+    set.symmetric_difference_update(this, other, /) {
         let symmetric_difference = Set::compare(&this, &other, &|s1, s2| {
             Ok(Set::from(s1.symmetric_difference(s2).cloned().collect()).unwrap())
         })?;

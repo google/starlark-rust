@@ -125,7 +125,6 @@ impl<T: TryParamConvertFromValue> TryParamConvertFromValue for EitherValueOrNone
 mod test {
     use crate::starlark_fun;
     use crate::starlark_module;
-    use crate::starlark_param_name;
     use crate::starlark_parse_param_type;
     use crate::starlark_signature;
     use crate::starlark_signature_extraction;
