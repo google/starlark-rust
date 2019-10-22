@@ -22,7 +22,9 @@
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::eval::def::Def;
-use crate::eval::stmt::{AstStatementCompiled, StatementCompiled};
+use crate::eval::stmt::AstStatementCompiled;
+use crate::eval::stmt::BlockCompiled;
+use crate::eval::stmt::StatementCompiled;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -794,7 +796,6 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
     match stmt.node {
         StatementCompiled::Break => Err(EvalException::Break(stmt.span)),
         StatementCompiled::Continue => Err(EvalException::Continue(stmt.span)),
-        StatementCompiled::Pass => Ok(Value::new(NoneType::None)),
         StatementCompiled::Return(Some(ref e)) => {
             Err(EvalException::Return(stmt.span, eval_expr(e, context)?))
         }
@@ -809,18 +810,11 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
         StatementCompiled::AugmentedAssign(ref lhs, op, ref rhs) => {
             eval_assign_modify(stmt, lhs, rhs, context, op)
         }
-        StatementCompiled::If(ref cond, ref st) => {
-            if eval_expr(cond, context)?.to_bool() {
-                eval_stmt(st, context)
-            } else {
-                Ok(Value::new(NoneType::None))
-            }
-        }
         StatementCompiled::IfElse(ref cond, ref st1, ref st2) => {
             if eval_expr(cond, context)?.to_bool() {
-                eval_stmt(st1, context)
+                eval_block(st1, context)
             } else {
-                eval_stmt(st2, context)
+                eval_block(st2, context)
             }
         }
         StatementCompiled::For(ref e1, ref e2, ref st) => {
@@ -829,7 +823,7 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
             iterable.freeze_for_iteration();
             for v in &t(iterable.iter(), &e2.span)? {
                 set_expr(e1, context, v)?;
-                match eval_stmt(st, context) {
+                match eval_block(st, context) {
                     Err(EvalException::Break(..)) => break,
                     Err(EvalException::Continue(..)) => (),
                     Err(x) => {
@@ -878,14 +872,15 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
             }
             Ok(Value::new(NoneType::None))
         }
-        StatementCompiled::Statements(ref v) => {
-            let mut r = Value::new(NoneType::None);
-            for stmt in v {
-                r = eval_stmt(stmt, context)?;
-            }
-            Ok(r)
-        }
     }
+}
+
+fn eval_block(block: &BlockCompiled, context: &EvaluationContext) -> EvalResult {
+    let mut r = Value::new(NoneType::None);
+    for stmt in &block.0 {
+        r = eval_stmt(stmt, context)?;
+    }
+    Ok(r)
 }
 
 /// Evaluate a content provided by a custom Lexer, mutate the environment accordingly and return
@@ -915,7 +910,7 @@ pub fn eval_lexer<
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_stmt(
+    match eval_block(
         &parse_lexer(map, filename, content, dialect, lexer)?,
         &context,
     ) {
@@ -946,7 +941,7 @@ pub fn eval<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_stmt(&parse(map, path, content, build)?, &context) {
+    match eval_block(&parse(map, path, content, build)?, &context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -972,7 +967,7 @@ pub fn eval_file<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_stmt(&parse_file(map, path, build)?, &context) {
+    match eval_block(&parse_file(map, path, build)?, &context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
