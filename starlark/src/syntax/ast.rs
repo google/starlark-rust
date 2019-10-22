@@ -16,8 +16,7 @@
 
 use super::lexer;
 use crate::eval::compr::ComprehensionCompiled;
-use crate::eval::stmt::AstStatementCompiled;
-use crate::eval::stmt::StatementCompiled;
+use crate::eval::stmt::BlockCompiled;
 use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -29,7 +28,7 @@ use std::fmt::{Display, Formatter};
 // Boxed types used for storing information from the parsing will be used especially for the
 // location of the AST item
 #[doc(hidden)]
-pub type AstExpr = Box<Spanned<Expr>>;
+pub(crate) type AstExpr = Box<Spanned<Expr>>;
 #[doc(hidden)]
 pub type AstAugmentedAssignTargetExpr = Spanned<AugmentedAssignTargetExpr>;
 #[doc(hidden)]
@@ -820,10 +819,9 @@ impl Statement {
     pub(crate) fn compile_mod(
         stmt: AstStatement,
         _dialect: Dialect,
-    ) -> Result<AstStatementCompiled, Diagnostic> {
+    ) -> Result<BlockCompiled, Diagnostic> {
         Statement::validate_break_continue(&stmt)?;
-        let stmt = StatementCompiled::compile(stmt)?;
-        Ok(stmt)
+        BlockCompiled::compile_stmt(stmt)
     }
 }
 

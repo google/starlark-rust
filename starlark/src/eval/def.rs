@@ -16,10 +16,12 @@
 
 use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
-use crate::eval::stmt::{AstStatementCompiled, StatementCompiled};
-use crate::eval::{
-    eval_stmt, EvalException, EvaluationContext, EvaluationContextEnvironment, IndexedLocals,
-};
+use crate::eval::eval_block;
+use crate::eval::stmt::BlockCompiled;
+use crate::eval::EvalException;
+use crate::eval::EvaluationContext;
+use crate::eval::EvaluationContextEnvironment;
+use crate::eval::IndexedLocals;
 use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstParameter;
 use crate::syntax::ast::AstStatement;
@@ -49,7 +51,7 @@ use std::sync::{Arc, Mutex};
 pub struct DefCompiled {
     pub(crate) name: AstString,
     pub(crate) params: Vec<AstParameter>,
-    pub(crate) suite: AstStatementCompiled,
+    pub(crate) suite: BlockCompiled,
     local_names_to_indices: HashMap<String, usize>,
 }
 
@@ -72,7 +74,7 @@ impl DefCompiled {
 
         let suite = DefCompiled::transform_locals(suite, &local_names_to_indices);
 
-        let suite = StatementCompiled::compile(suite)?;
+        let suite = BlockCompiled::compile_stmt(suite)?;
 
         Ok(DefCompiled {
             name,
@@ -267,7 +269,7 @@ impl TypedValue for Def {
 
         parser.check_no_more_args()?;
 
-        match eval_stmt(&self.stmt.suite, &mut ctx) {
+        match eval_block(&self.stmt.suite, &mut ctx) {
             Err(EvalException::Return(_s, ret)) => Ok(ret),
             Err(x) => Err(ValueError::DiagnosedError(x.into())),
             Ok(..) => Ok(Value::new(NoneType::None)),

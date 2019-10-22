@@ -29,29 +29,37 @@ use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
 
 #[doc(hidden)]
-pub type AstStatementCompiled = Box<Spanned<StatementCompiled>>;
+pub(crate) type AstStatementCompiled = Spanned<StatementCompiled>;
 
 /// Interperter-ready version of [`Statement`](crate::syntax::ast::Statement)
 #[derive(Debug, Clone)]
-pub enum StatementCompiled {
+pub(crate) enum StatementCompiled {
     Break,
     Continue,
-    Pass,
     Return(Option<AstExpr>),
     Expression(AstExpr),
     Assign(AstAssignTargetExpr, AstExpr),
     AugmentedAssign(AstAugmentedAssignTargetExpr, AugmentedAssignOp, AstExpr),
-    Statements(Vec<AstStatementCompiled>),
-    If(AstExpr, AstStatementCompiled),
-    IfElse(AstExpr, AstStatementCompiled, AstStatementCompiled),
-    For(AstAssignTargetExpr, AstExpr, AstStatementCompiled),
+    IfElse(AstExpr, BlockCompiled, BlockCompiled),
+    For(AstAssignTargetExpr, AstExpr, BlockCompiled),
     Def(DefCompiled),
     Load(AstString, Vec<(AstString, AstString)>),
 }
 
-impl StatementCompiled {
-    pub(crate) fn compile(stmt: AstStatement) -> Result<AstStatementCompiled, Diagnostic> {
-        Ok(Box::new(Spanned {
+#[derive(Debug, Clone)]
+pub struct BlockCompiled(pub(crate) Vec<AstStatementCompiled>);
+
+impl BlockCompiled {
+    fn compile_stmts(stmts: Vec<AstStatement>) -> Result<BlockCompiled, Diagnostic> {
+        let mut r = Vec::new();
+        for stmt in stmts {
+            r.extend(Self::compile_stmt(stmt)?.0);
+        }
+        Ok(BlockCompiled(r))
+    }
+
+    pub(crate) fn compile_stmt(stmt: AstStatement) -> Result<BlockCompiled, Diagnostic> {
+        Ok(BlockCompiled(vec![Spanned {
             span: stmt.span,
             node: match stmt.node {
                 Statement::Def(name, params, suite) => {
@@ -60,25 +68,24 @@ impl StatementCompiled {
                 Statement::For(var, over, body) => StatementCompiled::For(
                     AssignTargetExpr::compile(var)?,
                     Expr::compile(over)?,
-                    StatementCompiled::compile(body)?,
+                    BlockCompiled::compile_stmt(body)?,
                 ),
                 Statement::Return(expr) => {
                     StatementCompiled::Return(expr.map(Expr::compile).transpose()?)
                 }
-                Statement::If(cond, then_block) => {
-                    StatementCompiled::If(cond, StatementCompiled::compile(then_block)?)
-                }
+                Statement::If(cond, then_block) => StatementCompiled::IfElse(
+                    cond,
+                    BlockCompiled::compile_stmt(then_block)?,
+                    BlockCompiled(Vec::new()),
+                ),
                 Statement::IfElse(conf, then_block, else_block) => StatementCompiled::IfElse(
                     conf,
-                    StatementCompiled::compile(then_block)?,
-                    StatementCompiled::compile(else_block)?,
+                    BlockCompiled::compile_stmt(then_block)?,
+                    BlockCompiled::compile_stmt(else_block)?,
                 ),
-                Statement::Statements(stmts) => StatementCompiled::Statements(
-                    stmts
-                        .into_iter()
-                        .map(StatementCompiled::compile)
-                        .collect::<Result<_, _>>()?,
-                ),
+                Statement::Statements(stmts) => {
+                    return Self::compile_stmts(stmts);
+                }
                 Statement::Expression(e) => StatementCompiled::Expression(Expr::compile(e)?),
                 Statement::Assign(left, right) => StatementCompiled::Assign(
                     AssignTargetExpr::compile(left)?,
@@ -90,10 +97,10 @@ impl StatementCompiled {
                     Expr::compile(right)?,
                 ),
                 Statement::Load(module, args) => StatementCompiled::Load(module, args),
-                Statement::Pass => StatementCompiled::Pass,
+                Statement::Pass => return Ok(BlockCompiled(Vec::new())),
                 Statement::Break => StatementCompiled::Break,
                 Statement::Continue => StatementCompiled::Continue,
             },
-        }))
+        }]))
     }
 }
