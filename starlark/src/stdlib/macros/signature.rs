@@ -17,14 +17,14 @@
 //! Signature construction utilities used in macros.
 
 use crate::values::function::FunctionParameter;
+use crate::values::function::FunctionSignature;
 use crate::values::Value;
-use std::mem;
 
 /// Signature builder utility used in macros. Do not use directly.
 #[derive(Default)]
 pub struct SignatureBuilder {
     params: Vec<FunctionParameter>,
-    seen_slash: bool,
+    positional_count: Option<usize>,
 }
 
 impl SignatureBuilder {
@@ -54,23 +54,11 @@ impl SignatureBuilder {
             .push(FunctionParameter::ArgsArray(name.to_owned()));
     }
     pub fn push_slash(&mut self) {
-        assert!(!self.seen_slash);
-        self.seen_slash = true;
-        self.params = mem::replace(&mut self.params, Vec::new())
-            .into_iter()
-            .map(|p| match p {
-                FunctionParameter::Normal(n) => FunctionParameter::Normal(format!("${}", n)),
-                FunctionParameter::Optional(n) => FunctionParameter::Optional(format!("${}", n)),
-                FunctionParameter::WithDefaultValue(n, value) => {
-                    FunctionParameter::WithDefaultValue(format!("${}", n), value)
-                }
-                FunctionParameter::ArgsArray(..) => panic!("/ after *args"),
-                FunctionParameter::KWArgsDict(..) => panic!("/ after **args"),
-            })
-            .collect();
+        assert!(self.positional_count.is_none());
+        self.positional_count = Some(self.params.len());
     }
 
-    pub fn build(self) -> Vec<FunctionParameter> {
-        self.params
+    pub fn build(self) -> FunctionSignature {
+        FunctionSignature::new(self.params, self.positional_count.unwrap_or(0))
     }
 }

@@ -29,7 +29,9 @@ use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
 use crate::values::error::ValueError;
-use crate::values::function::{FunctionParameter, WrappedMethod};
+use crate::values::function::FunctionParameter;
+use crate::values::function::FunctionSignature;
+use crate::values::function::WrappedMethod;
 use crate::values::none::NoneType;
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
@@ -853,7 +855,7 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
             }
             let f = Def::new(
                 context.env.assert_module_env().name(),
-                p,
+                FunctionSignature::new(p, 0),
                 stmt.clone(),
                 context.map.clone(),
                 context.env.assert_module_env().clone(),
