@@ -47,7 +47,7 @@ starlark_module! {global =>
     /// x == [1, 2, 3]
     /// # )"#).unwrap());
     /// ```
-    list.append(this, #el) {
+    list.append(this, el, /) {
         let mut this = this.downcast_mut::<List>()?.unwrap();
         this.push(el)?;
         Ok(Value::new(NoneType::None))
@@ -100,7 +100,7 @@ starlark_module! {global =>
     /// x == [1, 2, 3, "foo"]
     /// # )"#).unwrap());
     /// ```
-    list.extend(this, #other) {
+    list.extend(this, other, /) {
         let mut this = this.downcast_mut::<List>()?.unwrap();
         this.extend(other)?;
         Ok(Value::new(NoneType::None))
@@ -135,7 +135,7 @@ starlark_module! {global =>
     /// x.index("a", -2) == 5  # bananA
     /// # )"#).unwrap());
     /// ```
-    list.index(this, #needle, #start = 0, #end = NoneType::None) {
+    list.index(this, needle, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         let it = this.iter()?;
         let mut it = it.iter().skip(start).take(end - start);
@@ -175,7 +175,7 @@ starlark_module! {global =>
     /// x == ["a", "b", "c", "d", "e"]
     /// # )"#).unwrap());
     /// ```
-    list.insert(this, #index, #el) {
+    list.insert(this, index, el, /) {
         let mut this = this.downcast_mut::<List>()?.unwrap();
         convert_indices!(this, index);
         this.insert(index, el)?;
@@ -206,7 +206,7 @@ starlark_module! {global =>
     /// x == [1]
     /// # )"#).unwrap());
     /// ```
-    list.pop(this, ?#index) {
+    list.pop(this, ?index, /) {
         let mut this = this.downcast_mut::<List>()?.unwrap();
         let index = match index {
             Some(index) => index.to_int()?,
@@ -242,7 +242,7 @@ starlark_module! {global =>
     /// A subsequence call to `x.remove(2)` would yield an error because the element won't be
     /// found.
     /// ```
-    list.remove(this, #needle) {
+    list.remove(this, needle, /) {
         let mut this = this.downcast_mut::<List>()?.unwrap();
         this.remove(needle)?;
         Ok(Value::new(NoneType::None))

@@ -18,11 +18,13 @@
 
 use crate::values::function::FunctionParameter;
 use crate::values::Value;
+use std::mem;
 
 /// Signature builder utility used in macros. Do not use directly.
 #[derive(Default)]
 pub struct SignatureBuilder {
     params: Vec<FunctionParameter>,
+    seen_slash: bool,
 }
 
 impl SignatureBuilder {
@@ -50,6 +52,22 @@ impl SignatureBuilder {
     pub fn push_args(&mut self, name: &str) {
         self.params
             .push(FunctionParameter::ArgsArray(name.to_owned()));
+    }
+    pub fn push_slash(&mut self) {
+        assert!(!self.seen_slash);
+        self.seen_slash = true;
+        self.params = mem::replace(&mut self.params, Vec::new())
+            .into_iter()
+            .map(|p| match p {
+                FunctionParameter::Normal(n) => FunctionParameter::Normal(format!("${}", n)),
+                FunctionParameter::Optional(n) => FunctionParameter::Optional(format!("${}", n)),
+                FunctionParameter::WithDefaultValue(n, value) => {
+                    FunctionParameter::WithDefaultValue(format!("${}", n), value)
+                }
+                FunctionParameter::ArgsArray(..) => panic!("/ after *args"),
+                FunctionParameter::KWArgsDict(..) => panic!("/ after **args"),
+            })
+            .collect();
     }
 
     pub fn build(self) -> Vec<FunctionParameter> {

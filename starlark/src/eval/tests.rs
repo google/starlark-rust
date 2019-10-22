@@ -200,7 +200,6 @@ def f(): return x
 fn test_type_values_are_imported_from_caller() {
     use crate::starlark_fun;
     use crate::starlark_module;
-    use crate::starlark_param_name;
     use crate::starlark_parse_param_type;
     use crate::starlark_signature;
     use crate::starlark_signature_extraction;

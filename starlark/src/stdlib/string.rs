@@ -299,7 +299,7 @@ starlark_module! {global =>
     /// "hello, world!".count("o", 7, 12) == 1  # in "world"
     /// # )"#).unwrap());
     /// ```
-    string.count(this: String, #needle: String, #start = 0, #end = NoneType::None) {
+    string.count(this: String, needle: String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         let n = needle.as_str();
         let mut counter = 0 as i64;
@@ -328,7 +328,7 @@ starlark_module! {global =>
     /// "filename.sky".endswith(".sky") == True
     /// # )"#).unwrap());
     /// ```
-    string.endswith(this: String, #suffix: String) {
+    string.endswith(this: String, suffix: String, /) {
         ok!(this.ends_with(suffix.as_str()))
     }
 
@@ -359,7 +359,7 @@ starlark_module! {global =>
     /// "bonbon".find("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.find(this: String, #needle: String, #start = 0, #end = NoneType::None) {
+    string.find(this: String, needle: String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         let needle = needle.to_str();
         if let Some(substring) = this.as_str().get(start..end) {
@@ -511,7 +511,7 @@ starlark_module! {global =>
     /// "bonbon".index("on", 2, 5) # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.index(this: String, #needle: String, #start = 0, #end = NoneType::None) {
+    string.index(this: String, needle: String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
             if let Some(offset) = substring.find(needle.as_str()) {
@@ -785,7 +785,7 @@ starlark_module! {global =>
     /// "a".join("ctmrn".split_codepoints()) == "catamaran"
     /// # )"#).unwrap());
     /// ```
-    string.join(this: String, #to_join) {
+    string.join(this: String, to_join, /) {
         let mut r = String::new();
         let to_join_iter = to_join.iter()?;
         for (index, item) in to_join_iter.iter().enumerate() {
@@ -854,7 +854,7 @@ starlark_module! {global =>
     /// "one/two/three".partition("/")	 == ("one", "/", "two/three")
     /// # )"#).unwrap());
     /// ```
-    string.partition(this: String, #needle = " ") {
+    string.partition(this: String, needle = " ", /) {
         check_string!(needle, partition);
         let needle = needle.to_str();
         if needle.is_empty() {
@@ -896,7 +896,7 @@ starlark_module! {global =>
     /// "banana".replace("a", "o", 2)	 == "bonona"
     /// # )"#).unwrap());
     /// ```
-    string.replace(this: String, #old: String, #new: String, ?#count: Option<usize>) {
+    string.replace(this: String, old: String, new: String, ?count: Option<usize>, /) {
         ok!(
             match count {
                 None => this.replace(old.as_str(), new.as_str()),
@@ -927,7 +927,7 @@ starlark_module! {global =>
     /// "bonbon".rfind("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.rfind(this: String, #needle: String, #start = 0, #end = NoneType::None) {
+    string.rfind(this: String, needle: String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
             if let Some(offset) = substring.rfind(needle.as_str()) {
@@ -959,7 +959,7 @@ starlark_module! {global =>
     /// "bonbon".rindex("on", 2, 5)   # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.rindex(this: String, #needle: String, #start = 0, #end = NoneType::None) {
+    string.rindex(this: String, needle: String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.get(start..end) {
             if let Some(offset) = substring.rfind(needle.as_str()) {
@@ -987,7 +987,7 @@ starlark_module! {global =>
     /// "one/two/three".rpartition("/")	 == ("one/two", "/", "three")
     /// # )"#).unwrap());
     /// ```
-    string.rpartition(this: String, #needle: String = " ".to_owned()) {
+    string.rpartition(this: String, needle: String = " ".to_owned(), /) {
         if needle.is_empty() {
             starlark_err!(
                 INCORRECT_PARAMETER_TYPE_ERROR_CODE,
@@ -1030,7 +1030,7 @@ starlark_module! {global =>
     /// "one two  three".rsplit(None, 1) == ["one two", "three"]
     /// # )"#).unwrap());
     /// ```
-    string.rsplit(this: String, #sep = NoneType::None, #maxsplit = NoneType::None) {
+    string.rsplit(this: String, sep = NoneType::None, maxsplit = NoneType::None, /) {
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None
         } else {
@@ -1121,7 +1121,7 @@ starlark_module! {global =>
     /// "banana".split("n", 1) == ["ba", "ana"]
     /// # )"#).unwrap());
     /// ```
-    string.split(this: String, #sep = NoneType::None, #maxsplit = NoneType::None) {
+    string.split(this: String, sep = NoneType::None, maxsplit = NoneType::None, /) {
         let this = this.to_str();
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None
@@ -1203,7 +1203,7 @@ starlark_module! {global =>
     /// "one\n\ntwo".splitlines(True) == ["one\n", "\n", "two"]
     /// # )"#).unwrap());
     /// ```
-    string.splitlines(this: String, #keepends = false) {
+    string.splitlines(this: String, keepends = false, /) {
         check_type!(keepends, "string.splitlines", bool);
         let this = this.to_str();
         let mut s = this.as_str();
@@ -1248,7 +1248,7 @@ starlark_module! {global =>
     /// "filename.sky".startswith("filename") == True
     /// # )"#).unwrap());
     /// ```
-    string.startswith(this: String, #prefix) {
+    string.startswith(this: String, prefix, /) {
         check_string!(prefix, startswith);
         ok!(this.to_str().starts_with(prefix.to_str().as_str()))
     }
