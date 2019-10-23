@@ -14,14 +14,19 @@
 
 //! Interpreter-ready statement
 
+use crate::eval::compiler::GlobalCompiler;
+use crate::eval::compiler::LocalCompiler;
 use crate::eval::def::DefCompiled;
-use crate::syntax::ast::AstAugmentedAssignTargetExpr;
-use crate::syntax::ast::AstExpr;
+use crate::eval::expr::AssignTargetExprCompiled;
+use crate::eval::expr::AstAssignTargetExprCompiled;
+use crate::eval::expr::AstAugmentedAssignTargetExprCompiled;
+use crate::eval::expr::AstExprCompiled;
+use crate::eval::expr::AugmentedAssignTargetExprCompiled;
+use crate::eval::expr::ExprCompiled;
 use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignOp;
 use crate::syntax::ast::Statement;
-use crate::syntax::ast::{AstAssignTargetExpr, AugmentedAssignTargetExpr, Expr};
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
 
@@ -33,12 +38,16 @@ pub(crate) type AstStatementCompiled = Spanned<StatementCompiled>;
 pub(crate) enum StatementCompiled {
     Break,
     Continue,
-    Return(Option<AstExpr>),
-    Expression(AstExpr),
-    Assign(AstAssignTargetExpr, AstExpr),
-    AugmentedAssign(AstAugmentedAssignTargetExpr, AugmentedAssignOp, AstExpr),
-    IfElse(AstExpr, BlockCompiled, BlockCompiled),
-    For(AstAssignTargetExpr, AstExpr, BlockCompiled),
+    Return(Option<AstExprCompiled>),
+    Expression(AstExprCompiled),
+    Assign(AstAssignTargetExprCompiled, AstExprCompiled),
+    AugmentedAssign(
+        AstAugmentedAssignTargetExprCompiled,
+        AugmentedAssignOp,
+        AstExprCompiled,
+    ),
+    IfElse(AstExprCompiled, BlockCompiled, BlockCompiled),
+    For(AstAssignTargetExprCompiled, AstExprCompiled, BlockCompiled),
     Def(DefCompiled),
     Load(AstString, Vec<(AstString, AstString)>),
 }
@@ -47,39 +56,62 @@ pub(crate) enum StatementCompiled {
 pub struct BlockCompiled(pub(crate) Vec<AstStatementCompiled>);
 
 impl BlockCompiled {
-    fn compile_local_stmts(stmts: Vec<AstStatement>) -> Result<BlockCompiled, Diagnostic> {
+    fn compile_local_stmts(
+        stmts: Vec<AstStatement>,
+        compiler: &mut LocalCompiler,
+    ) -> Result<BlockCompiled, Diagnostic> {
         let mut r = Vec::new();
         for stmt in stmts {
-            r.extend(Self::compile_local(stmt)?.0);
+            r.extend(Self::compile_local(stmt, compiler)?.0);
         }
         Ok(BlockCompiled(r))
     }
 
-    pub(crate) fn compile_local(stmt: AstStatement) -> Result<BlockCompiled, Diagnostic> {
+    pub(crate) fn compile_local(
+        stmt: AstStatement,
+        compiler: &mut LocalCompiler,
+    ) -> Result<BlockCompiled, Diagnostic> {
         Ok(BlockCompiled(vec![Spanned {
             span: stmt.span,
             node: match stmt.node {
                 Statement::Def(..) => unreachable!(),
                 Statement::For(var, over, body) => {
-                    StatementCompiled::For(var, over, BlockCompiled::compile_local(body)?)
+                    let over = ExprCompiled::compile(over, compiler)?;
+                    StatementCompiled::For(
+                        AssignTargetExprCompiled::compile(var, compiler)?,
+                        over,
+                        BlockCompiled::compile_local(body, compiler)?,
+                    )
                 }
-                Statement::Return(expr) => StatementCompiled::Return(expr),
+                Statement::Return(Some(expr)) => {
+                    StatementCompiled::Return(Some(ExprCompiled::compile(expr, compiler)?))
+                }
+                Statement::Return(None) => StatementCompiled::Return(None),
                 Statement::If(cond, then_block) => StatementCompiled::IfElse(
-                    cond,
-                    BlockCompiled::compile_local(then_block)?,
+                    ExprCompiled::compile(cond, compiler)?,
+                    BlockCompiled::compile_local(then_block, compiler)?,
                     BlockCompiled(Vec::new()),
                 ),
-                Statement::IfElse(conf, then_block, else_block) => StatementCompiled::IfElse(
-                    conf,
-                    BlockCompiled::compile_local(then_block)?,
-                    BlockCompiled::compile_local(else_block)?,
+                Statement::IfElse(cond, then_block, else_block) => StatementCompiled::IfElse(
+                    ExprCompiled::compile(cond, compiler)?,
+                    BlockCompiled::compile_local(then_block, compiler)?,
+                    BlockCompiled::compile_local(else_block, compiler)?,
                 ),
-                Statement::Statements(stmts) => return BlockCompiled::compile_local_stmts(stmts),
-                Statement::Expression(e) => StatementCompiled::Expression(e),
-                Statement::Assign(left, right) => StatementCompiled::Assign(left, right),
-                Statement::AugmentedAssign(left, op, right) => {
-                    StatementCompiled::AugmentedAssign(left, op, right)
+                Statement::Statements(stmts) => {
+                    return BlockCompiled::compile_local_stmts(stmts, compiler)
                 }
+                Statement::Expression(e) => {
+                    StatementCompiled::Expression(ExprCompiled::compile(e, compiler)?)
+                }
+                Statement::Assign(left, right) => StatementCompiled::Assign(
+                    AssignTargetExprCompiled::compile(left, compiler)?,
+                    ExprCompiled::compile(right, compiler)?,
+                ),
+                Statement::AugmentedAssign(left, op, right) => StatementCompiled::AugmentedAssign(
+                    AugmentedAssignTargetExprCompiled::compile_impl(left, compiler)?,
+                    op,
+                    ExprCompiled::compile(right, compiler)?,
+                ),
                 Statement::Load(module, args) => StatementCompiled::Load(module, args),
                 Statement::Pass => return Ok(BlockCompiled(Vec::new())),
                 Statement::Break => StatementCompiled::Break,
@@ -104,35 +136,39 @@ impl BlockCompiled {
                     StatementCompiled::Def(DefCompiled::new(name, params, suite)?)
                 }
                 Statement::For(var, over, body) => StatementCompiled::For(
-                    var,
-                    Expr::compile_global(over)?,
+                    AssignTargetExprCompiled::compile(var, &mut GlobalCompiler)?,
+                    ExprCompiled::compile_global(over)?,
                     BlockCompiled::compile_global(body)?,
                 ),
                 Statement::If(cond, then_block) => StatementCompiled::IfElse(
-                    Expr::compile_global(cond)?,
+                    ExprCompiled::compile_global(cond)?,
                     BlockCompiled::compile_global(then_block)?,
                     BlockCompiled(Vec::new()),
                 ),
                 Statement::IfElse(cond, then_block, else_block) => StatementCompiled::IfElse(
-                    Expr::compile_global(cond)?,
+                    ExprCompiled::compile_global(cond)?,
                     BlockCompiled::compile_global(then_block)?,
                     BlockCompiled::compile_global(else_block)?,
                 ),
                 Statement::Statements(stmts) => return BlockCompiled::compile_global_stmts(stmts),
                 Statement::Expression(expr) => {
-                    StatementCompiled::Expression(Expr::compile_global(expr)?)
+                    StatementCompiled::Expression(ExprCompiled::compile_global(expr)?)
                 }
                 Statement::Return(Some(expr)) => {
-                    StatementCompiled::Return(Some(Expr::compile_global(expr)?))
+                    StatementCompiled::Return(Some(ExprCompiled::compile_global(expr)?))
                 }
-                Statement::Assign(target, source) => {
-                    StatementCompiled::Assign(target, Expr::compile_global(source)?)
-                }
+                Statement::Assign(target, source) => StatementCompiled::Assign(
+                    AssignTargetExprCompiled::compile(target, &mut GlobalCompiler)?,
+                    ExprCompiled::compile_global(source)?,
+                ),
                 Statement::AugmentedAssign(target, op, source) => {
                     StatementCompiled::AugmentedAssign(
-                        AugmentedAssignTargetExpr::compile_global(target)?,
+                        AugmentedAssignTargetExprCompiled::compile_impl(
+                            target,
+                            &mut GlobalCompiler,
+                        )?,
                         op,
-                        Expr::compile_global(source)?,
+                        ExprCompiled::compile_global(source)?,
                     )
                 }
                 Statement::Load(path, map) => StatementCompiled::Load(path, map),
