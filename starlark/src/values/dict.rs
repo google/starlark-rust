@@ -16,7 +16,6 @@
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::iter::TypedIterable;
-use crate::values::none::NoneType;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap; // To preserve insertion order
 use std::collections::HashMap;
@@ -76,12 +75,12 @@ impl Dictionary {
         self.content.get(key)
     }
 
-    pub fn insert(&mut self, key: Value, value: Value) -> Result<Value, ValueError> {
+    pub fn insert(&mut self, key: Value, value: Value) -> Result<(), ValueError> {
         let key = key.clone_for_container(self)?;
         let key = HashedValue::new(key)?;
         let value = value.clone_for_container(self)?;
         self.content.insert(key, value);
-        Ok(Value::new(NoneType::None))
+        Ok(())
     }
 
     pub fn remove_hashed(&mut self, key: &HashedValue) -> Option<Value> {

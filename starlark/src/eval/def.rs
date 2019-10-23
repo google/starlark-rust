@@ -17,6 +17,9 @@
 use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::eval::eval_block;
+use crate::eval::locals::Locals;
+use crate::eval::locals::LocalsBuilder;
+use crate::eval::locals::LocalsQuery;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::EvalException;
 use crate::eval::EvaluationContext;
@@ -39,7 +42,6 @@ use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
 use codemap::{CodeMap, Spanned};
 use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt;
 use std::iter;
@@ -52,7 +54,7 @@ pub struct DefCompiled {
     pub(crate) name: AstString,
     pub(crate) params: Vec<AstParameter>,
     pub(crate) suite: BlockCompiled,
-    local_names_to_indices: HashMap<String, usize>,
+    locals: Locals,
 }
 
 impl DefCompiled {
@@ -61,67 +63,74 @@ impl DefCompiled {
         params: Vec<AstParameter>,
         suite: AstStatement,
     ) -> Result<DefCompiled, Diagnostic> {
-        let mut local_names_to_indices = HashMap::new();
+        let mut locals_builder = LocalsBuilder::default();
 
         for p in &params {
-            let len = local_names_to_indices.len();
-            local_names_to_indices
-                .entry(p.name().to_owned())
-                .or_insert(len);
+            locals_builder.register_local(p.name());
         }
 
-        DefCompiled::collect_locals(&suite, &mut local_names_to_indices);
+        DefCompiled::collect_locals(&suite, &mut locals_builder);
 
-        let suite = DefCompiled::transform_locals(suite, &local_names_to_indices);
+        let locals = locals_builder.build();
 
-        let suite = BlockCompiled::compile_stmt(suite)?;
+        let mut locals_query = LocalsQuery::new(&locals);
+
+        let suite = DefCompiled::transform_locals(suite, &mut locals_query);
+
+        let suite = BlockCompiled::compile_local(suite)?;
 
         Ok(DefCompiled {
             name,
             params,
             suite,
-            local_names_to_indices,
+            locals,
         })
     }
 
-    fn collect_locals(stmt: &AstStatement, local_names_to_indices: &mut HashMap<String, usize>) {
+    fn collect_locals(stmt: &AstStatement, locals_builder: &mut LocalsBuilder) {
         match stmt.node {
-            Statement::Assign(ref dest, ..) => {
-                AssignTargetExpr::collect_locals_from_assign_expr(dest, local_names_to_indices);
+            Statement::Assign(ref dest, ref source) => {
+                AssignTargetExpr::collect_locals_from_assign_expr(dest, locals_builder);
+                Expr::collect_locals(source, locals_builder);
             }
-            Statement::AugmentedAssign(ref dest, ..) => {
-                AugmentedAssignTargetExpr::collect_locals_from_assign_expr(
-                    dest,
-                    local_names_to_indices,
-                );
+            Statement::AugmentedAssign(ref dest, _op, ref source) => {
+                AugmentedAssignTargetExpr::collect_locals_from_assign_expr(dest, locals_builder);
+                Expr::collect_locals(source, locals_builder);
             }
-            Statement::For(ref dest, _, ref body) => {
-                AssignTargetExpr::collect_locals_from_assign_expr(dest, local_names_to_indices);
-                DefCompiled::collect_locals(body, local_names_to_indices);
+            Statement::For(ref dest, ref iter, ref body) => {
+                AssignTargetExpr::collect_locals_from_assign_expr(dest, locals_builder);
+                Expr::collect_locals(iter, locals_builder);
+                DefCompiled::collect_locals(body, locals_builder);
             }
             Statement::Statements(ref stmts) => {
                 for stmt in stmts {
-                    DefCompiled::collect_locals(stmt, local_names_to_indices);
+                    DefCompiled::collect_locals(stmt, locals_builder);
                 }
             }
-            Statement::If(_, ref then_block) => {
-                DefCompiled::collect_locals(then_block, local_names_to_indices);
+            Statement::If(ref cond, ref then_block) => {
+                Expr::collect_locals(cond, locals_builder);
+                DefCompiled::collect_locals(then_block, locals_builder);
             }
-            Statement::IfElse(_, ref then_block, ref else_block) => {
-                DefCompiled::collect_locals(then_block, local_names_to_indices);
-                DefCompiled::collect_locals(else_block, local_names_to_indices);
+            Statement::IfElse(ref cond, ref then_block, ref else_block) => {
+                Expr::collect_locals(cond, locals_builder);
+                DefCompiled::collect_locals(then_block, locals_builder);
+                DefCompiled::collect_locals(else_block, locals_builder);
             }
-            Statement::Break
-            | Statement::Continue
-            | Statement::Pass
-            | Statement::Return(..)
-            | Statement::Expression(..) => {}
+            Statement::Return(ref expr) => {
+                if let Some(expr) = expr {
+                    Expr::collect_locals(expr, locals_builder);
+                }
+            }
+            Statement::Expression(ref expr) => {
+                Expr::collect_locals(expr, locals_builder);
+            }
+            Statement::Break | Statement::Continue | Statement::Pass => {}
             Statement::Load(..) | Statement::Def(..) => unreachable!(),
         }
     }
 
     /// Transform statement replacing local variables access by name with access by index
-    fn transform_locals(stmts: AstStatement, locals: &HashMap<String, usize>) -> AstStatement {
+    fn transform_locals(stmts: AstStatement, locals: &mut LocalsQuery) -> AstStatement {
         Box::new(Spanned {
             span: stmts.span,
             node: match stmts.node {
@@ -228,9 +237,9 @@ impl TypedValue for Def {
         // argument binding
         let mut ctx = EvaluationContext {
             call_stack: call_stack.to_owned(),
-            env: EvaluationContextEnvironment::Function(
+            env: EvaluationContextEnvironment::Local(
                 self.captured_env.clone(),
-                IndexedLocals::new(&self.stmt.local_names_to_indices),
+                IndexedLocals::new(&self.stmt.locals),
             ),
             type_values,
             map: self.map.clone(),
@@ -245,7 +254,7 @@ impl TypedValue for Def {
             kwargs,
         )?;
 
-        for (s, positional_only) in self.signature.iter() {
+        for (i, (s, positional_only)) in self.signature.iter().enumerate() {
             let (name, v) = match s {
                 FunctionParameter::Normal(ref name) => {
                     (name, parser.next_normal(name, positional_only)?)
@@ -262,9 +271,13 @@ impl TypedValue for Def {
                     unreachable!("optional parameters only exist in native functions")
                 }
             };
-            if let Err(x) = ctx.env.set(name, v) {
-                return Err(x.into());
+
+            // tricky part: we know that we assign locals for function parameters
+            // sequentially starting from 0
+            if cfg!(debug_assertions) {
+                assert_eq!(i, ctx.env.top_level_local_to_slot(name));
             }
+            ctx.env.set_slot(i, name, v);
         }
 
         parser.check_no_more_args()?;
