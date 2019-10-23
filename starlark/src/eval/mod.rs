@@ -318,12 +318,11 @@ impl<'a> EvaluationContextEnvironment<'a> {
         }
     }
 
-    fn set_slot(&self, slot: usize, name: &str, value: Value) -> Result<(), EnvironmentError> {
+    fn set_slot(&self, slot: usize, name: &str, value: Value) {
         match self {
             EvaluationContextEnvironment::Function(_, locals)
             | EvaluationContextEnvironment::Nested(_, locals) => {
                 locals.set_slot(slot, name, value);
-                Ok(())
             }
             _ => unreachable!("slot in non-indexed environment"),
         }
@@ -523,7 +522,7 @@ fn set_transformed<'a>(
             ok
         }
         TransformedExpr::Slot(slot, ident) => {
-            t(context.env.set_slot(*slot, &ident.node, new_value), ident)?;
+            context.env.set_slot(*slot, &ident.node, new_value);
             ok
         }
     }
@@ -753,7 +752,7 @@ fn set_expr(
             ok
         }
         AssignTargetExpr::Slot(slot, ref i) => {
-            t(context.env.set_slot(slot, &i.node, new_value), expr)?;
+            context.env.set_slot(slot, &i.node, new_value);
             ok
         }
         AssignTargetExpr::ArrayIndirection(ref e, ref idx) => {
