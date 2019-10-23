@@ -147,7 +147,21 @@ def assert_(cond, msg="assertion failed"):
     }
 }
 
-#[cfg(rustc_nightly)]
+#[cfg(not(rustc_nightly))]
+pub struct Bencher {}
+
+#[cfg(not(rustc_nightly))]
+impl Bencher {
+    pub fn iter<T, F>(&mut self, mut _inner: F)
+    where
+        F: FnMut() -> T,
+    {
+        // Bencher included here to typecheck `do_bench` function
+        // in stable and also to mute unused imports warnings
+        panic!("Bencher available only in nightly");
+    }
+}
+
 pub fn do_bench(bencher: &mut Bencher, path: &str) {
     let mut content = String::new();
     let mut file = File::open(path).unwrap();
