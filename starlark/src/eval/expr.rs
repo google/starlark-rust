@@ -50,8 +50,8 @@ pub(crate) type AstAssignTargetExprCompiled = Spanned<AssignTargetExprCompiled>;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AugmentedAssignTargetExprCompiled {
-    // TODO: there's no augmented assignment for global
-    Name(AstGlobalOrSlot),
+    // there's no augmented assignment for globals
+    Slot(usize, AstString),
     Dot(AstExprCompiled, AstString),
     ArrayIndirection(AstExprCompiled, AstExprCompiled),
 }
@@ -217,7 +217,6 @@ impl AssignTargetExprCompiled {
                 AssignTargetExpr::Identifier(a) => {
                     AssignTargetExprCompiled::Name(compiler.ast_ident(a))
                 }
-                AssignTargetExpr::Slot(..) => unreachable!(),
                 AssignTargetExpr::ArrayIndirection(array, index) => {
                     AssignTargetExprCompiled::ArrayIndirection(
                         ExprCompiled::compile(array, compiler)?,
@@ -247,9 +246,17 @@ impl AugmentedAssignTargetExprCompiled {
             span: expr.span,
             node: match expr.node {
                 AugmentedAssignTargetExpr::Identifier(a) => {
-                    AugmentedAssignTargetExprCompiled::Name(compiler.ast_ident(a))
+                    let span = a.span;
+                    match compiler.ident(a) {
+                        GlobalOrSlot::Global(..) => {
+                            unreachable!("must be filtered out at parse level")
+                        }
+                        GlobalOrSlot::Slot(slot, ident) => AugmentedAssignTargetExprCompiled::Slot(
+                            slot,
+                            Spanned { span, node: ident },
+                        ),
+                    }
                 }
-                AugmentedAssignTargetExpr::Slot(..) => unreachable!(),
                 AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
                     AugmentedAssignTargetExprCompiled::ArrayIndirection(
                         ExprCompiled::compile(array, compiler)?,

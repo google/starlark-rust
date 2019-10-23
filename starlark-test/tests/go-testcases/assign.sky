@@ -148,7 +148,7 @@ f()
 
 ---
 
-z += 3 ### Variable was not found
+z += 3 ### Augmented assignment is a binding and not allowed on a global variable
 
 ---
 # It's ok to define a global that shadows a built-in.

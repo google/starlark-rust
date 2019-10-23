@@ -28,7 +28,6 @@ use crate::eval::expr::AssignTargetExprCompiled;
 use crate::eval::expr::AstAssignTargetExprCompiled;
 use crate::eval::expr::AstAugmentedAssignTargetExprCompiled;
 use crate::eval::expr::AstExprCompiled;
-use crate::eval::expr::AstGlobalOrSlot;
 use crate::eval::expr::AugmentedAssignTargetExprCompiled;
 use crate::eval::expr::ExprCompiled;
 use crate::eval::expr::GlobalOrSlot;
@@ -477,7 +476,7 @@ fn eval_dot<'a>(
 enum TransformedExpr {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
-    Name(AstGlobalOrSlot),
+    Slot(usize, AstString),
 }
 
 fn set_transformed<'a>(
@@ -495,16 +494,10 @@ fn set_transformed<'a>(
             t(e.clone().set_at(idx.clone(), new_value), span)?;
             ok
         }
-        TransformedExpr::Name(n) => match &n.node {
-            GlobalOrSlot::Global(ident) => {
-                t(context.env.set_global(&ident, new_value), n)?;
-                ok
-            }
-            GlobalOrSlot::Slot(slot, ident) => {
-                context.env.set_slot(*slot, ident, new_value);
-                ok
-            }
-        },
+        TransformedExpr::Slot(slot, ident) => {
+            context.env.set_slot(*slot, &ident.node, new_value);
+            ok
+        }
     }
 }
 
@@ -523,10 +516,7 @@ fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationConte
             }
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
-        TransformedExpr::Name(n) => match &n.node {
-            GlobalOrSlot::Global(ident) => t(context.env.get_global(&ident), n),
-            GlobalOrSlot::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident), n),
-        },
+        TransformedExpr::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident.node), ident),
     }
 }
 
@@ -557,7 +547,9 @@ fn transform(
                 expr.span,
             ))
         }
-        AugmentedAssignTargetExprCompiled::Name(name) => Ok(TransformedExpr::Name(name.clone())),
+        AugmentedAssignTargetExprCompiled::Slot(index, ref ident) => {
+            Ok(TransformedExpr::Slot(*index, ident.clone()))
+        }
     }
 }
 

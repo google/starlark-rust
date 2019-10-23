@@ -59,6 +59,7 @@ const DUPLICATED_PARAM_NAME_ERROR_CODE: &str = "CS08";
 const BREAK_OR_CONTINUE_OUTSIDE_OF_LOOP_ERROR_CODE: &str = "CS09";
 const INCORRECT_AUGMENTED_ASSIGNMENT_TARGET_ERROR_CODE: &str = "CS10";
 const INCORRECT_ASSIGNMENT_TARGET_ERROR_CODE: &str = "CS11";
+const AUGMENTED_ASSIGN_IN_MOD: &str = "CS12";
 
 #[doc(hidden)]
 pub trait ToAst<T> {
@@ -152,7 +153,6 @@ to_ast_trait!(Expr, AstExpr, Box);
 #[derive(Debug, Clone)]
 pub enum AssignTargetExpr {
     Identifier(AstString),
-    Slot(usize, AstString),
     Dot(AstExpr, AstString),
     ArrayIndirection(AstExpr, AstExpr),
     Subtargets(Vec<AstAssignTargetExpr>),
@@ -164,7 +164,6 @@ to_ast_trait!(AssignTargetExpr, AstAssignTargetExpr);
 #[derive(Debug, Clone)]
 pub enum AugmentedAssignTargetExpr {
     Identifier(AstString),
-    Slot(usize, AstString),
     Dot(AstExpr, AstString),
     ArrayIndirection(AstExpr, AstExpr),
 }
@@ -381,29 +380,6 @@ impl AssignTargetExpr {
             },
         })
     }
-
-    /*
-    pub(crate) fn compile(expr: AstAssignTargetExpr) -> Result<AstAssignTargetExpr, Diagnostic> {
-        Ok(Spanned {
-            span: expr.span,
-            node: match expr.node {
-                AssignTargetExpr::ArrayIndirection(array, index) => {
-                    AssignTargetExpr::ArrayIndirection(Expr::compile(array)?, Expr::compile(index)?)
-                }
-                AssignTargetExpr::Dot(object, field) => {
-                    AssignTargetExpr::Dot(Expr::compile(object)?, field)
-                }
-                e @ AssignTargetExpr::Identifier(..) | e @ AssignTargetExpr::Slot(..) => e,
-                AssignTargetExpr::Subtargets(subtargets) => AssignTargetExpr::Subtargets(
-                    subtargets
-                        .into_iter()
-                        .map(AssignTargetExpr::compile)
-                        .collect::<Result<_, _>>()?,
-                ),
-            },
-        })
-    }
-    */
 
     pub(crate) fn collect_locals_from_assign_expr(
         expr: &AstAssignTargetExpr,
@@ -663,11 +639,63 @@ impl Statement {
         }
     }
 
+    pub(crate) fn validate_augmented_assignment_in_module(
+        stmt: &AstStatement,
+    ) -> Result<(), Diagnostic> {
+        match &stmt.node {
+            Statement::Break
+            | Statement::Continue
+            | Statement::Pass
+            | Statement::Return(..)
+            | Statement::Expression(..)
+            | Statement::Assign(..)
+            | Statement::Def(..)
+            | Statement::Load(..) => Ok(()),
+            Statement::AugmentedAssign(target, _, _) => match &target.node {
+                AugmentedAssignTargetExpr::Identifier(ident) => {
+                    return Err(Diagnostic {
+                        level: Level::Error,
+                        message: format!(
+                            "Augmented assignment is a binding \
+                             and not allowed on a global variable"
+                        ),
+                        code: Some(AUGMENTED_ASSIGN_IN_MOD.to_owned()),
+                        spans: vec![SpanLabel {
+                            span: ident.span,
+                            label: Some(format!("global variable")),
+                            style: SpanStyle::Primary,
+                        }],
+                    });
+                }
+                _ => Ok(()),
+            },
+            Statement::Statements(stmts) => {
+                for stmt in stmts {
+                    Self::validate_augmented_assignment_in_module(stmt)?;
+                }
+                Ok(())
+            }
+            // Although top-level if and for are not allowed,
+            // it's better to safer against possible future extensions
+            Statement::If(_, then_block) => {
+                Self::validate_augmented_assignment_in_module(then_block)?;
+                Ok(())
+            }
+            Statement::IfElse(_, then_block, else_block) => {
+                Self::validate_augmented_assignment_in_module(then_block)?;
+                Self::validate_augmented_assignment_in_module(else_block)?;
+                Ok(())
+            }
+            Statement::For(_, _, body) => Self::validate_augmented_assignment_in_module(body),
+        }
+    }
+
     pub(crate) fn compile_mod(
         stmt: AstStatement,
         _dialect: Dialect,
     ) -> Result<BlockCompiled, Diagnostic> {
         Statement::validate_break_continue(&stmt)?;
+        Statement::validate_augmented_assignment_in_module(&stmt)?;
         BlockCompiled::compile_global(stmt)
     }
 }
@@ -854,9 +882,7 @@ impl Display for AugmentedAssignTargetExpr {
             AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
                 write!(f, "{}[{}]", array.node, index.node)
             }
-            AugmentedAssignTargetExpr::Identifier(s) | AugmentedAssignTargetExpr::Slot(_, s) => {
-                s.node.fmt(f)
-            }
+            AugmentedAssignTargetExpr::Identifier(s) => s.node.fmt(f),
         }
     }
 }
@@ -868,7 +894,7 @@ impl Display for AssignTargetExpr {
             AssignTargetExpr::ArrayIndirection(array, index) => {
                 write!(f, "{}[{}]", array.node, index.node)
             }
-            AssignTargetExpr::Identifier(s) | AssignTargetExpr::Slot(_, s) => s.node.fmt(f),
+            AssignTargetExpr::Identifier(s) => s.node.fmt(f),
             AssignTargetExpr::Subtargets(subtargets) => {
                 write!(f, "[")?;
                 for (i, s) in subtargets.iter().enumerate() {
