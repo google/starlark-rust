@@ -15,9 +15,7 @@
 //! AST for parsed starlark files.
 
 use super::lexer;
-use crate::eval::locals::Locals;
 use crate::eval::locals::LocalsBuilder;
-use crate::eval::locals::LocalsQuery;
 use crate::eval::stmt::BlockCompiled;
 use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
@@ -133,8 +131,6 @@ pub enum Expr {
     ArrayIndirection(AstExpr, AstExpr),
     Slice(AstExpr, Option<AstExpr>, Option<AstExpr>, Option<AstExpr>),
     Identifier(AstString),
-    // local variable index
-    Slot(usize, AstString),
     IntLiteral(AstInt),
     StringLiteral(AstString),
     Not(AstExpr),
@@ -148,9 +144,6 @@ pub enum Expr {
     ListComprehension(AstExpr, Vec<AstClause>),
     SetComprehension(AstExpr, Vec<AstClause>),
     DictComprehension((AstExpr, AstExpr), Vec<AstClause>),
-    /// Creates a local scope for evaluation of subexpression in global scope.
-    /// Used for evaluate comprenensions in global scope.
-    Local(AstExpr, Locals),
 }
 to_ast_trait!(Expr, AstExpr, Box);
 
@@ -298,7 +291,6 @@ impl Expr {
                     Expr::collect_locals(c, locals_builder);
                 }
             }
-            Expr::Slot(..) => unreachable!(),
             Expr::Identifier(..) | Expr::IntLiteral(..) | Expr::StringLiteral(..) => {}
             Expr::Not(ref expr) | Expr::Plus(ref expr) | Expr::Minus(ref expr) => {
                 Expr::collect_locals(expr, locals_builder);
@@ -319,7 +311,6 @@ impl Expr {
             Expr::DictComprehension((ref k, ref v), ref clauses) => {
                 Self::collect_locals_from_compr_clauses(&[k, v], clauses, locals_builder);
             }
-            Expr::Local(..) => unreachable!(),
         }
     }
 
@@ -354,263 +345,6 @@ impl Expr {
                 }
             }
         }
-    }
-
-    /// Compile expression in module context
-    pub(crate) fn compile_global(expr: AstExpr) -> Result<AstExpr, Diagnostic> {
-        Ok(Box::new(Spanned {
-            span: expr.span,
-            node: match expr.node {
-                e @ Expr::IntLiteral(..)
-                | e @ Expr::StringLiteral(..)
-                | e @ Expr::Identifier(..) => e,
-                Expr::Tuple(values) => Expr::Tuple(
-                    values
-                        .into_iter()
-                        .map(Expr::compile_global)
-                        .collect::<Result<_, _>>()?,
-                ),
-                Expr::List(values) => Expr::List(
-                    values
-                        .into_iter()
-                        .map(Expr::compile_global)
-                        .collect::<Result<_, _>>()?,
-                ),
-                Expr::Set(values) => Expr::Set(
-                    values
-                        .into_iter()
-                        .map(Expr::compile_global)
-                        .collect::<Result<_, _>>()?,
-                ),
-                Expr::Dict(pairs) => Expr::Dict(
-                    pairs
-                        .into_iter()
-                        .map(|(k, v)| Ok((Expr::compile_global(k)?, Expr::compile_global(v)?)))
-                        .collect::<Result<_, _>>()?,
-                ),
-                Expr::Dot(object, field) => Expr::Dot(Expr::compile_global(object)?, field),
-                Expr::ArrayIndirection(array, index) => Expr::ArrayIndirection(
-                    Expr::compile_global(array)?,
-                    Expr::compile_global(index)?,
-                ),
-                Expr::Slice(array, a, b, c) => Expr::Slice(
-                    Expr::compile_global(array)?,
-                    a.map(Expr::compile_global).transpose()?,
-                    b.map(Expr::compile_global).transpose()?,
-                    c.map(Expr::compile_global).transpose()?,
-                ),
-                Expr::Not(expr) => Expr::Not(Expr::compile_global(expr)?),
-                Expr::Plus(expr) => Expr::Plus(Expr::compile_global(expr)?),
-                Expr::Minus(expr) => Expr::Minus(Expr::compile_global(expr)?),
-                Expr::Op(op, lhs, rhs) => {
-                    Expr::Op(op, Expr::compile_global(lhs)?, Expr::compile_global(rhs)?)
-                }
-                Expr::Call(func, args, named, star, star_star) => Expr::Call(
-                    Expr::compile_global(func)?,
-                    args.into_iter()
-                        .map(Expr::compile_global)
-                        .collect::<Result<_, _>>()?,
-                    named
-                        .into_iter()
-                        .map(|(n, v)| Ok((n, Expr::compile_global(v)?)))
-                        .collect::<Result<_, _>>()?,
-                    star.map(Expr::compile_global).transpose()?,
-                    star_star.map(Expr::compile_global).transpose()?,
-                ),
-                Expr::If(cond, then_expr, else_expr) => Expr::If(
-                    Expr::compile_global(cond)?,
-                    Expr::compile_global(then_expr)?,
-                    Expr::compile_global(else_expr)?,
-                ),
-                e @ Expr::ListComprehension(..)
-                | e @ Expr::SetComprehension(..)
-                | e @ Expr::DictComprehension(..) => {
-                    return Expr::compile_global_comprehension(Box::new(Spanned {
-                        span: expr.span,
-                        node: e,
-                    }));
-                }
-                Expr::Local(..) | Expr::Slot(..) => unreachable!(),
-            },
-        }))
-    }
-
-    pub(crate) fn transform_locals_to_slots(
-        expr: AstExpr,
-        locals_query: &mut LocalsQuery,
-    ) -> AstExpr {
-        Box::new(Spanned {
-            span: expr.span,
-            node: match expr.node {
-                Expr::Tuple(exprs) => Expr::Tuple(
-                    exprs
-                        .into_iter()
-                        .map(|expr| Expr::transform_locals_to_slots(expr, locals_query))
-                        .collect(),
-                ),
-                Expr::List(exprs) => Expr::List(
-                    exprs
-                        .into_iter()
-                        .map(|expr| Expr::transform_locals_to_slots(expr, locals_query))
-                        .collect(),
-                ),
-                Expr::Set(exprs) => Expr::Set(
-                    exprs
-                        .into_iter()
-                        .map(|expr| Expr::transform_locals_to_slots(expr, locals_query))
-                        .collect(),
-                ),
-                Expr::Dict(pairs) => Expr::Dict(
-                    pairs
-                        .into_iter()
-                        .map(|(key, value)| {
-                            (
-                                Expr::transform_locals_to_slots(key, locals_query),
-                                Expr::transform_locals_to_slots(value, locals_query),
-                            )
-                        })
-                        .collect(),
-                ),
-                Expr::Identifier(ident) => match locals_query.local_slot(&ident.node) {
-                    Some(slot) => Expr::Slot(slot, ident),
-                    None => Expr::Identifier(ident),
-                },
-                Expr::Slot(..) => unreachable!(),
-                Expr::Dot(left, right) => {
-                    Expr::Dot(Expr::transform_locals_to_slots(left, locals_query), right)
-                }
-                Expr::Call(function, args, kwargs, star_args, star_star_kwargs) => Expr::Call(
-                    Expr::transform_locals_to_slots(function, locals_query),
-                    args.into_iter()
-                        .map(|expr| Expr::transform_locals_to_slots(expr, locals_query))
-                        .collect(),
-                    kwargs
-                        .into_iter()
-                        .map(|(name, value)| {
-                            (name, Expr::transform_locals_to_slots(value, locals_query))
-                        })
-                        .collect(),
-                    star_args.map(|expr| Expr::transform_locals_to_slots(expr, locals_query)),
-                    star_star_kwargs
-                        .map(|expr| Expr::transform_locals_to_slots(expr, locals_query)),
-                ),
-                Expr::ArrayIndirection(array, index) => Expr::ArrayIndirection(
-                    Expr::transform_locals_to_slots(array, locals_query),
-                    Expr::transform_locals_to_slots(index, locals_query),
-                ),
-                Expr::Slice(array, p1, p2, p3) => Expr::Slice(
-                    array,
-                    p1.map(|expr| Expr::transform_locals_to_slots(expr, locals_query)),
-                    p2.map(|expr| Expr::transform_locals_to_slots(expr, locals_query)),
-                    p3.map(|expr| Expr::transform_locals_to_slots(expr, locals_query)),
-                ),
-                Expr::Not(expr) => Expr::Not(Expr::transform_locals_to_slots(expr, locals_query)),
-                Expr::Minus(expr) => {
-                    Expr::Minus(Expr::transform_locals_to_slots(expr, locals_query))
-                }
-                Expr::Plus(expr) => Expr::Plus(Expr::transform_locals_to_slots(expr, locals_query)),
-                Expr::Op(op, left, right) => Expr::Op(
-                    op,
-                    Expr::transform_locals_to_slots(left, locals_query),
-                    Expr::transform_locals_to_slots(right, locals_query),
-                ),
-                Expr::If(cond, then_expr, else_expr) => Expr::If(
-                    Expr::transform_locals_to_slots(cond, locals_query),
-                    Expr::transform_locals_to_slots(then_expr, locals_query),
-                    Expr::transform_locals_to_slots(else_expr, locals_query),
-                ),
-                n @ Expr::IntLiteral(..) | n @ Expr::StringLiteral(..) => n,
-                Expr::ListComprehension(expr, clauses) => Expr::transform_locals_to_slots_in_compr(
-                    clauses,
-                    locals_query,
-                    |clauses, locals_query| {
-                        Expr::ListComprehension(
-                            Expr::transform_locals_to_slots(expr, locals_query),
-                            clauses,
-                        )
-                    },
-                ),
-                Expr::SetComprehension(expr, clauses) => Expr::transform_locals_to_slots_in_compr(
-                    clauses,
-                    locals_query,
-                    |clauses, locals_query| {
-                        Expr::SetComprehension(
-                            Expr::transform_locals_to_slots(expr, locals_query),
-                            clauses,
-                        )
-                    },
-                ),
-                Expr::DictComprehension((k, v), clauses) => {
-                    Expr::transform_locals_to_slots_in_compr(
-                        clauses,
-                        locals_query,
-                        |clauses, locals_query| {
-                            Expr::DictComprehension(
-                                (
-                                    Expr::transform_locals_to_slots(k, locals_query),
-                                    Expr::transform_locals_to_slots(v, locals_query),
-                                ),
-                                clauses,
-                            )
-                        },
-                    )
-                }
-                Expr::Local(..) => unreachable!(),
-            },
-        })
-    }
-
-    // common implementation of `transform_locals` for comprehension expressions
-    fn transform_locals_to_slots_in_compr<R, F>(
-        clauses: Vec<AstClause>,
-        local_query: &mut LocalsQuery,
-        expr: F,
-    ) -> R
-    where
-        F: FnOnce(Vec<AstClause>, &mut LocalsQuery) -> R,
-    {
-        let mut transformed_clauses = Vec::new();
-        let mut scope_count = 0;
-        for clause in clauses {
-            transformed_clauses.push(Spanned {
-                span: clause.span,
-                node: match clause.node {
-                    Clause::If(expr) => {
-                        Clause::If(Expr::transform_locals_to_slots(expr, local_query))
-                    }
-                    Clause::For(target, expr) => {
-                        let expr = Expr::transform_locals_to_slots(expr, local_query);
-                        local_query.push_next_scope();
-                        scope_count += 1;
-                        let target =
-                            AssignTargetExpr::transform_locals_to_slots(target, local_query);
-                        Clause::For(target, expr)
-                    }
-                },
-            });
-        }
-        let r = expr(transformed_clauses, local_query);
-        for _ in 0..scope_count {
-            local_query.pop_scope();
-        }
-        r
-    }
-
-    fn compile_global_comprehension(expr: AstExpr) -> Result<AstExpr, Diagnostic> {
-        let mut locals_builder = LocalsBuilder::default();
-
-        Expr::collect_locals(&expr, &mut locals_builder);
-
-        let locals = locals_builder.build();
-
-        let mut locals_query = LocalsQuery::new(&locals);
-
-        let expr = Expr::transform_locals_to_slots(expr, &mut locals_query);
-
-        Ok(Box::new(Spanned {
-            span: expr.span,
-            node: Expr::Local(expr, locals),
-        }))
     }
 }
 
@@ -687,38 +421,6 @@ impl AssignTargetExpr {
             _ => {}
         }
     }
-
-    pub(crate) fn transform_locals_to_slots(
-        expr: AstAssignTargetExpr,
-        locals_query: &mut LocalsQuery,
-    ) -> AstAssignTargetExpr {
-        Spanned {
-            span: expr.span,
-            node: match expr.node {
-                AssignTargetExpr::Dot(object, field) => AssignTargetExpr::Dot(
-                    Expr::transform_locals_to_slots(object, locals_query),
-                    field,
-                ),
-                AssignTargetExpr::ArrayIndirection(array, index) => {
-                    AssignTargetExpr::ArrayIndirection(
-                        Expr::transform_locals_to_slots(array, locals_query),
-                        Expr::transform_locals_to_slots(index, locals_query),
-                    )
-                }
-                AssignTargetExpr::Identifier(ident) => match locals_query.local_slot(&ident.node) {
-                    Some(slot) => AssignTargetExpr::Slot(slot, ident),
-                    None => AssignTargetExpr::Identifier(ident),
-                },
-                AssignTargetExpr::Slot(..) => unreachable!(),
-                AssignTargetExpr::Subtargets(subtargets) => AssignTargetExpr::Subtargets(
-                    subtargets
-                        .into_iter()
-                        .map(|t| AssignTargetExpr::transform_locals_to_slots(t, locals_query))
-                        .collect(),
-                ),
-            },
-        }
-    }
 }
 
 impl AugmentedAssignTargetExpr {
@@ -761,55 +463,6 @@ impl AugmentedAssignTargetExpr {
             }
             _ => {}
         }
-    }
-
-    pub(crate) fn transform_locals_to_slots(
-        expr: AstAugmentedAssignTargetExpr,
-        locals_query: &mut LocalsQuery,
-    ) -> AstAugmentedAssignTargetExpr {
-        Spanned {
-            span: expr.span,
-            node: match expr.node {
-                AugmentedAssignTargetExpr::Dot(object, field) => AugmentedAssignTargetExpr::Dot(
-                    Expr::transform_locals_to_slots(object, locals_query),
-                    field,
-                ),
-                AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
-                    AugmentedAssignTargetExpr::ArrayIndirection(
-                        Expr::transform_locals_to_slots(array, locals_query),
-                        Expr::transform_locals_to_slots(index, locals_query),
-                    )
-                }
-                AugmentedAssignTargetExpr::Identifier(ident) => {
-                    match locals_query.local_slot(&ident.node) {
-                        Some(slot) => AugmentedAssignTargetExpr::Slot(slot, ident),
-                        None => AugmentedAssignTargetExpr::Identifier(ident),
-                    }
-                }
-                AugmentedAssignTargetExpr::Slot(..) => unreachable!(),
-            },
-        }
-    }
-
-    pub(crate) fn compile_global(
-        expr: AstAugmentedAssignTargetExpr,
-    ) -> Result<AstAugmentedAssignTargetExpr, Diagnostic> {
-        Ok(Spanned {
-            span: expr.span,
-            node: match expr.node {
-                AugmentedAssignTargetExpr::Slot(..) => unreachable!(),
-                s @ AugmentedAssignTargetExpr::Identifier(..) => s,
-                AugmentedAssignTargetExpr::Dot(object, field) => {
-                    AugmentedAssignTargetExpr::Dot(Expr::compile_global(object)?, field)
-                }
-                AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
-                    AugmentedAssignTargetExpr::ArrayIndirection(
-                        Expr::compile_global(array)?,
-                        Expr::compile_global(index)?,
-                    )
-                }
-            },
-        })
     }
 }
 
@@ -1148,7 +801,7 @@ impl Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Identifier(ref s) | Expr::Slot(_, ref s) => s.node.fmt(f),
+            Expr::Identifier(ref s) => s.node.fmt(f),
             Expr::IntLiteral(ref i) => i.node.fmt(f),
             Expr::Not(ref e) => write!(f, "(not {})", e.node),
             Expr::Minus(ref e) => write!(f, "-{}", e.node),
@@ -1188,7 +841,6 @@ impl Display for Expr {
                 f.write_str("}}")
             }
             Expr::StringLiteral(ref s) => fmt_string_literal(f, &s.node),
-            Expr::Local(ref expr, ..) => expr.fmt(f),
         }
     }
 }

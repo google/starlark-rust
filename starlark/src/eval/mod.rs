@@ -23,11 +23,19 @@ use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
 use crate::eval::compr::eval_one_dimensional_comprehension;
 use crate::eval::def::Def;
+use crate::eval::def::ParameterCompiled;
+use crate::eval::expr::AssignTargetExprCompiled;
+use crate::eval::expr::AstAssignTargetExprCompiled;
+use crate::eval::expr::AstAugmentedAssignTargetExprCompiled;
+use crate::eval::expr::AstExprCompiled;
+use crate::eval::expr::AstGlobalOrSlot;
+use crate::eval::expr::AugmentedAssignTargetExprCompiled;
+use crate::eval::expr::ExprCompiled;
+use crate::eval::expr::GlobalOrSlot;
 use crate::eval::locals::Locals;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
-use crate::syntax::ast::AstExpr;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -48,7 +56,10 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-fn eval_vector(v: &[AstExpr], ctx: &EvaluationContext) -> Result<Vec<Value>, EvalException> {
+fn eval_vector(
+    v: &[AstExprCompiled],
+    ctx: &EvaluationContext,
+) -> Result<Vec<Value>, EvalException> {
     v.into_iter().map(|s| eval_expr(s, ctx)).collect()
 }
 
@@ -344,9 +355,9 @@ impl<'a> EvaluationContext<'a> {
 }
 
 fn eval_compare<F>(
-    this: &AstExpr,
-    left: &AstExpr,
-    right: &AstExpr,
+    this: &AstExprCompiled,
+    left: &AstExprCompiled,
+    right: &AstExprCompiled,
     cmp: F,
     context: &EvaluationContext,
 ) -> EvalResult
@@ -359,9 +370,9 @@ where
 }
 
 fn eval_equals<F>(
-    this: &AstExpr,
-    left: &AstExpr,
-    right: &AstExpr,
+    this: &AstExprCompiled,
+    left: &AstExprCompiled,
+    right: &AstExprCompiled,
     cmp: F,
     context: &EvaluationContext,
 ) -> EvalResult
@@ -377,11 +388,11 @@ where
 }
 
 fn eval_slice<'a>(
-    this: &AstExpr,
-    a: &AstExpr,
-    start: &Option<AstExpr>,
-    stop: &Option<AstExpr>,
-    stride: &Option<AstExpr>,
+    this: &AstExprCompiled,
+    a: &AstExprCompiled,
+    start: &Option<AstExprCompiled>,
+    stop: &Option<AstExprCompiled>,
+    stride: &Option<AstExprCompiled>,
     context: &EvaluationContext,
 ) -> EvalResult {
     let a = eval_expr(a, context)?;
@@ -401,12 +412,12 @@ fn eval_slice<'a>(
 }
 
 fn eval_call<'a>(
-    this: &AstExpr,
-    e: &AstExpr,
-    pos: &[AstExpr],
-    named: &[(AstString, AstExpr)],
-    args: &Option<AstExpr>,
-    kwargs: &Option<AstExpr>,
+    this: &AstExprCompiled,
+    e: &AstExprCompiled,
+    pos: &[AstExprCompiled],
+    named: &[(AstString, AstExprCompiled)],
+    args: &Option<AstExprCompiled>,
+    kwargs: &Option<AstExprCompiled>,
     context: &EvaluationContext,
 ) -> EvalResult {
     let npos = eval_vector(pos, context)?;
@@ -445,8 +456,8 @@ fn eval_call<'a>(
 }
 
 fn eval_dot<'a>(
-    this: &AstExpr,
-    e: &AstExpr,
+    this: &AstExprCompiled,
+    e: &AstExprCompiled,
     s: &AstString,
     context: &EvaluationContext,
 ) -> EvalResult {
@@ -466,8 +477,7 @@ fn eval_dot<'a>(
 enum TransformedExpr {
     Dot(Value, String, Span),
     ArrayIndirection(Value, Value, Span),
-    Identifier(AstString),
-    Slot(usize, AstString),
+    Name(AstGlobalOrSlot),
 }
 
 fn set_transformed<'a>(
@@ -485,14 +495,16 @@ fn set_transformed<'a>(
             t(e.clone().set_at(idx.clone(), new_value), span)?;
             ok
         }
-        TransformedExpr::Identifier(ident) => {
-            t(context.env.set_global(&ident.node, new_value), ident)?;
-            ok
-        }
-        TransformedExpr::Slot(slot, ident) => {
-            context.env.set_slot(*slot, &ident.node, new_value);
-            ok
-        }
+        TransformedExpr::Name(n) => match &n.node {
+            GlobalOrSlot::Global(ident) => {
+                t(context.env.set_global(&ident, new_value), n)?;
+                ok
+            }
+            GlobalOrSlot::Slot(slot, ident) => {
+                context.env.set_slot(*slot, ident, new_value);
+                ok
+            }
+        },
     }
 }
 
@@ -511,8 +523,10 @@ fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationConte
             }
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
-        TransformedExpr::Identifier(ident) => t(context.env.get_global(&ident.node), ident),
-        TransformedExpr::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident.node), ident),
+        TransformedExpr::Name(n) => match &n.node {
+            GlobalOrSlot::Global(ident) => t(context.env.get_global(&ident), n),
+            GlobalOrSlot::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident), n),
+        },
     }
 }
 
@@ -527,33 +541,32 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
 // It is used to cache result of LHS in augmented assignment.
 // This transformation by default should be a deep copy (clone).
 fn transform(
-    expr: &AstAugmentedAssignTargetExpr,
+    expr: &AstAugmentedAssignTargetExprCompiled,
     context: &EvaluationContext,
 ) -> Result<TransformedExpr, EvalException> {
-    match expr.node {
-        AugmentedAssignTargetExpr::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
+    match &expr.node {
+        AugmentedAssignTargetExprCompiled::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
             eval_expr(e, context)?,
             s.node.clone(),
             expr.span,
         )),
-        AugmentedAssignTargetExpr::ArrayIndirection(ref e, ref idx) => {
+        AugmentedAssignTargetExprCompiled::ArrayIndirection(ref e, ref idx) => {
             Ok(TransformedExpr::ArrayIndirection(
                 eval_expr(e, context)?,
                 eval_expr(idx, context)?,
                 expr.span,
             ))
         }
-        AugmentedAssignTargetExpr::Slot(index, ref ident) => {
-            Ok(TransformedExpr::Slot(index, ident.clone()))
-        }
-        AugmentedAssignTargetExpr::Identifier(ref ident) => {
-            Ok(TransformedExpr::Identifier(ident.clone()))
-        }
+        AugmentedAssignTargetExprCompiled::Name(name) => Ok(TransformedExpr::Name(name.clone())),
     }
 }
 
 // Evaluate the AST in global context, create local context, and continue evaluating in local
-fn eval_expr_local(expr: &AstExpr, locals: &Locals, context: &EvaluationContext) -> EvalResult {
+fn eval_expr_local(
+    expr: &AstExprCompiled,
+    locals: &Locals,
+    context: &EvaluationContext,
+) -> EvalResult {
     let ctx = EvaluationContext {
         call_stack: context.call_stack.clone(),
         env: EvaluationContextEnvironment::Local(
@@ -568,31 +581,33 @@ fn eval_expr_local(expr: &AstExpr, locals: &Locals, context: &EvaluationContext)
 }
 
 // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
-fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
+fn eval_expr(expr: &AstExprCompiled, context: &EvaluationContext) -> EvalResult {
     match expr.node {
-        Expr::Tuple(ref v) => {
+        ExprCompiled::Tuple(ref v) => {
             let r = eval_vector(v, context)?;
             Ok(Value::new(tuple::Tuple::new(r)))
         }
-        Expr::Dot(ref e, ref s) => eval_dot(expr, e, s, context),
-        Expr::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
+        ExprCompiled::Dot(ref e, ref s) => eval_dot(expr, e, s, context),
+        ExprCompiled::Call(ref e, ref pos, ref named, ref args, ref kwargs) => {
             eval_call(expr, e, pos, named, args, kwargs, context)
         }
-        Expr::ArrayIndirection(ref e, ref idx) => {
+        ExprCompiled::ArrayIndirection(ref e, ref idx) => {
             let idx = eval_expr(idx, context)?;
             t(eval_expr(e, context)?.at(idx), expr)
         }
-        Expr::Slice(ref a, ref start, ref stop, ref stride) => {
+        ExprCompiled::Slice(ref a, ref start, ref stop, ref stride) => {
             eval_slice(expr, a, start, stop, stride, context)
         }
-        Expr::Identifier(ref i) => t(context.env.get_global(&i.node), i),
-        Expr::Slot(slot, ref i) => t(context.env.get_slot(slot, &i.node), i),
-        Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
-        Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
-        Expr::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
-        Expr::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
-        Expr::Plus(ref s) => t(eval_expr(s, context)?.plus(), expr),
-        Expr::Op(BinOp::Or, ref l, ref r) => {
+        ExprCompiled::Name(ref name) => match &name.node {
+            GlobalOrSlot::Global(ref i) => t(context.env.get_global(i), name),
+            GlobalOrSlot::Slot(slot, ref i) => t(context.env.get_slot(*slot, i), name),
+        },
+        ExprCompiled::IntLiteral(ref i) => Ok(Value::new(i.node)),
+        ExprCompiled::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
+        ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
+        ExprCompiled::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
+        ExprCompiled::Plus(ref s) => t(eval_expr(s, context)?.plus(), expr),
+        ExprCompiled::Op(BinOp::Or, ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if l.to_bool() {
                 l
@@ -600,7 +615,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
                 eval_expr(r, context)?
             })
         }
-        Expr::Op(BinOp::And, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::And, ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if !l.to_bool() {
                 l
@@ -608,45 +623,47 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
                 eval_expr(r, context)?
             })
         }
-        Expr::Op(BinOp::EqualsTo, ref l, ref r) => eval_equals(expr, l, r, |x| x, context),
-        Expr::Op(BinOp::Different, ref l, ref r) => eval_equals(expr, l, r, |x| !x, context),
-        Expr::Op(BinOp::LowerThan, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::EqualsTo, ref l, ref r) => eval_equals(expr, l, r, |x| x, context),
+        ExprCompiled::Op(BinOp::Different, ref l, ref r) => {
+            eval_equals(expr, l, r, |x| !x, context)
+        }
+        ExprCompiled::Op(BinOp::LowerThan, ref l, ref r) => {
             eval_compare(expr, l, r, |x| x == Ordering::Less, context)
         }
-        Expr::Op(BinOp::GreaterThan, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::GreaterThan, ref l, ref r) => {
             eval_compare(expr, l, r, |x| x == Ordering::Greater, context)
         }
-        Expr::Op(BinOp::LowerOrEqual, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::LowerOrEqual, ref l, ref r) => {
             eval_compare(expr, l, r, |x| x != Ordering::Greater, context)
         }
-        Expr::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
             eval_compare(expr, l, r, |x| x != Ordering::Less, context)
         }
-        Expr::Op(BinOp::In, ref l, ref r) => t(
+        ExprCompiled::Op(BinOp::In, ref l, ref r) => t(
             eval_expr(r, context)?
                 .is_in(&eval_expr(l, context)?)
                 .map(Value::new),
             expr,
         ),
-        Expr::Op(BinOp::NotIn, ref l, ref r) => t(
+        ExprCompiled::Op(BinOp::NotIn, ref l, ref r) => t(
             eval_expr(r, context)?
                 .is_in(&eval_expr(l, context)?)
                 .map(|r| Value::new(!r)),
             expr,
         ),
-        Expr::Op(BinOp::Substraction, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::Substraction, ref l, ref r) => {
             t(eval_expr(l, context)?.sub(eval_expr(r, context)?), expr)
         }
-        Expr::Op(BinOp::Addition, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::Addition, ref l, ref r) => {
             t(eval_expr(l, context)?.add(eval_expr(r, context)?), expr)
         }
-        Expr::Op(BinOp::Multiplication, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::Multiplication, ref l, ref r) => {
             t(eval_expr(l, context)?.mul(eval_expr(r, context)?), expr)
         }
-        Expr::Op(BinOp::Percent, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::Percent, ref l, ref r) => {
             t(eval_expr(l, context)?.percent(eval_expr(r, context)?), expr)
         }
-        Expr::Op(BinOp::Division, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::Division, ref l, ref r) => {
             let l = eval_expr(l, context)?;
             let r = eval_expr(r, context)?;
             // No types currently support / so always error.
@@ -657,25 +674,25 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             };
             Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)))
         }
-        Expr::Op(BinOp::FloorDivision, ref l, ref r) => t(
+        ExprCompiled::Op(BinOp::FloorDivision, ref l, ref r) => t(
             eval_expr(l, context)?.floor_div(eval_expr(r, context)?),
             expr,
         ),
-        Expr::Op(BinOp::Pipe, ref l, ref r) => {
+        ExprCompiled::Op(BinOp::Pipe, ref l, ref r) => {
             t(eval_expr(l, context)?.pipe(eval_expr(r, context)?), expr)
         }
-        Expr::If(ref cond, ref v1, ref v2) => {
+        ExprCompiled::If(ref cond, ref v1, ref v2) => {
             if eval_expr(cond, context)?.to_bool() {
                 eval_expr(v1, context)
             } else {
                 eval_expr(v2, context)
             }
         }
-        Expr::List(ref v) => {
+        ExprCompiled::List(ref v) => {
             let r = eval_vector(v, context)?;
             Ok(Value::from(r))
         }
-        Expr::Dict(ref v) => {
+        ExprCompiled::Dict(ref v) => {
             let mut r = dict::Dictionary::new();
             for s in v.iter() {
                 t(
@@ -685,14 +702,14 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             }
             Ok(r)
         }
-        Expr::Set(ref v) => {
+        ExprCompiled::Set(ref v) => {
             let mut values = Vec::with_capacity(v.len());
             for s in v {
                 values.push(eval_expr(s, context)?);
             }
             make_set(values, context, expr.span)
         }
-        Expr::ListComprehension(ref expr, ref clauses) => {
+        ExprCompiled::ListComprehension(ref expr, ref clauses) => {
             let mut list = Vec::new();
             eval_one_dimensional_comprehension(
                 &mut |context| {
@@ -704,7 +721,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             )?;
             Ok(Value::from(list))
         }
-        Expr::SetComprehension(ref expr, ref clauses) => {
+        ExprCompiled::SetComprehension(ref expr, ref clauses) => {
             let mut values = Vec::new();
             eval_one_dimensional_comprehension(
                 &mut |context| {
@@ -716,7 +733,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             )?;
             make_set(values, context, expr.span)
         }
-        Expr::DictComprehension((ref k, ref v), ref clauses) => {
+        ExprCompiled::DictComprehension((ref k, ref v), ref clauses) => {
             let mut dict = Dictionary::new_typed();
             eval_one_dimensional_comprehension(
                 &mut |context| {
@@ -730,19 +747,19 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             )?;
             Ok(Value::new(dict))
         }
-        Expr::Local(ref expr, ref locals) => eval_expr_local(expr, locals, context),
+        ExprCompiled::Local(ref expr, ref locals) => eval_expr_local(expr, locals, context),
     }
 }
 
 // Perform an assignment on the LHS represented by this AST element
 fn set_expr(
-    expr: &AstAssignTargetExpr,
+    expr: &AstAssignTargetExprCompiled,
     context: &EvaluationContext,
     new_value: Value,
 ) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
     match expr.node {
-        AssignTargetExpr::Subtargets(ref v) => {
+        AssignTargetExprCompiled::Subtargets(ref v) => {
             // TODO: the span here should probably include the rvalue
             let new_values: Vec<Value> = t(new_value.iter(), expr)?.iter().collect();
             let l = v.len();
@@ -761,19 +778,21 @@ fn set_expr(
                 ok
             }
         }
-        AssignTargetExpr::Dot(ref e, ref s) => {
+        AssignTargetExprCompiled::Dot(ref e, ref s) => {
             t(eval_expr(e, context)?.set_attr(&(s.node), new_value), expr)?;
             ok
         }
-        AssignTargetExpr::Identifier(ref i) => {
-            t(context.env.set_global(&i.node, new_value), expr)?;
-            ok
-        }
-        AssignTargetExpr::Slot(slot, ref i) => {
-            context.env.set_slot(slot, &i.node, new_value);
-            ok
-        }
-        AssignTargetExpr::ArrayIndirection(ref e, ref idx) => {
+        AssignTargetExprCompiled::Name(ref name) => match &name.node {
+            GlobalOrSlot::Global(ref i) => {
+                t(context.env.set_global(&i, new_value), expr)?;
+                ok
+            }
+            GlobalOrSlot::Slot(slot, ref i) => {
+                context.env.set_slot(*slot, &i, new_value);
+                ok
+            }
+        },
+        AssignTargetExprCompiled::ArrayIndirection(ref e, ref idx) => {
             t(
                 eval_expr(e, context)?.set_at(eval_expr(idx, context)?, new_value),
                 expr,
@@ -785,8 +804,8 @@ fn set_expr(
 
 fn eval_assign_modify(
     stmt: &AstStatementCompiled,
-    lhs: &AstAugmentedAssignTargetExpr,
-    rhs: &AstExpr,
+    lhs: &AstAugmentedAssignTargetExprCompiled,
+    rhs: &AstExprCompiled,
     context: &EvaluationContext,
     op: AugmentedAssignOp,
 ) -> EvalResult
@@ -855,12 +874,14 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
             let mut p = Vec::new();
             for x in &stmt.params {
                 p.push(match x.node {
-                    Parameter::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
-                    Parameter::WithDefaultValue(ref n, ref v) => {
+                    ParameterCompiled::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
+                    ParameterCompiled::WithDefaultValue(ref n, ref v) => {
                         FunctionParameter::WithDefaultValue(n.node.clone(), eval_expr(v, context)?)
                     }
-                    Parameter::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
-                    Parameter::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
+                    ParameterCompiled::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
+                    ParameterCompiled::KWArgs(ref n) => {
+                        FunctionParameter::KWArgsDict(n.node.clone())
+                    }
                 })
             }
             let f = Def::new(
@@ -1004,7 +1025,9 @@ pub mod testutil;
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod compiler;
 pub(crate) mod compr;
 pub(crate) mod def;
+pub(crate) mod expr;
 pub(crate) mod locals;
 pub mod stmt;

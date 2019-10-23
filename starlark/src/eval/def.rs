@@ -16,7 +16,10 @@
 
 use crate::environment::{Environment, TypeValues};
 use crate::eval::call_stack::CallStack;
+use crate::eval::compiler::LocalCompiler;
 use crate::eval::eval_block;
+use crate::eval::expr::AstExprCompiled;
+use crate::eval::expr::ExprCompiled;
 use crate::eval::locals::Locals;
 use crate::eval::locals::LocalsBuilder;
 use crate::eval::locals::LocalsQuery;
@@ -31,6 +34,7 @@ use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::Expr;
+use crate::syntax::ast::Parameter;
 use crate::syntax::ast::Statement;
 use crate::values::error::ValueError;
 use crate::values::function::FunctionParameter;
@@ -47,12 +51,37 @@ use std::fmt;
 use std::iter;
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug, Clone)]
+pub(crate) enum ParameterCompiled {
+    Normal(AstString),
+    WithDefaultValue(AstString, AstExprCompiled),
+    Args(AstString),
+    KWArgs(AstString),
+}
+pub(crate) type AstParameterCompiled = Spanned<ParameterCompiled>;
+
+impl ParameterCompiled {
+    fn compile(param: AstParameter) -> Result<AstParameterCompiled, Diagnostic> {
+        Ok(Spanned {
+            span: param.span,
+            node: match param.node {
+                Parameter::Normal(n) => ParameterCompiled::Normal(n),
+                Parameter::WithDefaultValue(n, d) => {
+                    ParameterCompiled::WithDefaultValue(n, ExprCompiled::compile_global(d)?)
+                }
+                Parameter::Args(args) => ParameterCompiled::Args(args),
+                Parameter::KWArgs(args) => ParameterCompiled::KWArgs(args),
+            },
+        })
+    }
+}
+
 /// `def` AST with post-processing suitable for faster excecution
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct DefCompiled {
     pub(crate) name: AstString,
-    pub(crate) params: Vec<AstParameter>,
+    pub(crate) params: Vec<AstParameterCompiled>,
     pub(crate) suite: BlockCompiled,
     locals: Locals,
 }
@@ -69,15 +98,20 @@ impl DefCompiled {
             locals_builder.register_local(p.name());
         }
 
+        let params = params
+            .into_iter()
+            .map(ParameterCompiled::compile)
+            .collect::<Result<_, _>>()?;
+
         DefCompiled::collect_locals(&suite, &mut locals_builder);
 
         let locals = locals_builder.build();
 
         let mut locals_query = LocalsQuery::new(&locals);
 
-        let suite = DefCompiled::transform_locals(suite, &mut locals_query);
+        let mut local_compiler = LocalCompiler::new(&mut locals_query);
 
-        let suite = BlockCompiled::compile_local(suite)?;
+        let suite = BlockCompiled::compile_local(suite, &mut local_compiler)?;
 
         Ok(DefCompiled {
             name,
@@ -127,52 +161,6 @@ impl DefCompiled {
             Statement::Break | Statement::Continue | Statement::Pass => {}
             Statement::Load(..) | Statement::Def(..) => unreachable!(),
         }
-    }
-
-    /// Transform statement replacing local variables access by name with access by index
-    fn transform_locals(stmts: AstStatement, locals: &mut LocalsQuery) -> AstStatement {
-        Box::new(Spanned {
-            span: stmts.span,
-            node: match stmts.node {
-                Statement::Assign(left, right) => Statement::Assign(
-                    AssignTargetExpr::transform_locals_to_slots(left, locals),
-                    Expr::transform_locals_to_slots(right, locals),
-                ),
-                Statement::AugmentedAssign(target, op, rhs) => Statement::AugmentedAssign(
-                    AugmentedAssignTargetExpr::transform_locals_to_slots(target, locals),
-                    op,
-                    Expr::transform_locals_to_slots(rhs, locals),
-                ),
-                Statement::For(var, collection, body) => Statement::For(
-                    AssignTargetExpr::transform_locals_to_slots(var, locals),
-                    Expr::transform_locals_to_slots(collection, locals),
-                    DefCompiled::transform_locals(body, locals),
-                ),
-                Statement::Statements(stmts) => Statement::Statements(
-                    stmts
-                        .into_iter()
-                        .map(|stmt| DefCompiled::transform_locals(stmt, locals))
-                        .collect(),
-                ),
-                Statement::If(cond, then_block) => Statement::If(
-                    Expr::transform_locals_to_slots(cond, locals),
-                    DefCompiled::transform_locals(then_block, locals),
-                ),
-                Statement::IfElse(cond, then_block, else_block) => Statement::IfElse(
-                    Expr::transform_locals_to_slots(cond, locals),
-                    DefCompiled::transform_locals(then_block, locals),
-                    DefCompiled::transform_locals(else_block, locals),
-                ),
-                s @ Statement::Break | s @ Statement::Continue | s @ Statement::Pass => s,
-                Statement::Def(..) | Statement::Load(..) => unreachable!(),
-                Statement::Expression(expr) => {
-                    Statement::Expression(Expr::transform_locals_to_slots(expr, locals))
-                }
-                Statement::Return(expr) => Statement::Return(
-                    expr.map(|expr| Expr::transform_locals_to_slots(expr, locals)),
-                ),
-            },
-        })
     }
 }
 

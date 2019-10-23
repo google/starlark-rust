@@ -15,29 +15,29 @@
 //! List/dict/set comprenension evaluation.
 
 use crate::eval::eval_expr;
+use crate::eval::expr::AstClauseCompiled;
+use crate::eval::expr::ClauseCompiled;
 use crate::eval::set_expr;
 use crate::eval::t;
 use crate::eval::EvalException;
 use crate::eval::EvaluationContext;
-use crate::syntax::ast::AstClause;
-use crate::syntax::ast::Clause;
 
 pub(crate) fn eval_one_dimensional_comprehension<
     F: FnMut(&EvaluationContext) -> Result<(), EvalException>,
 >(
     expr: &mut F,
-    clauses: &[AstClause],
+    clauses: &[AstClauseCompiled],
     context: &EvaluationContext,
 ) -> Result<(), EvalException> {
     if let Some((first, tl)) = clauses.split_first() {
         match &first.node {
-            Clause::If(ref cond) => {
+            ClauseCompiled::If(ref cond) => {
                 if !eval_expr(cond, context)?.to_bool() {
                     return Ok(());
                 }
                 eval_one_dimensional_comprehension(expr, tl, context)
             }
-            Clause::For(ref var, ref iter) => {
+            ClauseCompiled::For(ref var, ref iter) => {
                 let mut iterable = eval_expr(iter, context)?;
                 iterable.freeze_for_iteration();
                 for item in &t(iterable.iter(), iter)? {
