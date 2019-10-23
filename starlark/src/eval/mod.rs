@@ -21,15 +21,19 @@
 //! The BUILD dialect does not allow `def` statements.
 use crate::environment::{Environment, EnvironmentError, TypeValues};
 use crate::eval::call_stack::CallStack;
+use crate::eval::compr::eval_one_dimensional_comprehension;
 use crate::eval::def::Def;
+use crate::eval::locals::Locals;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
+use crate::syntax::ast::AstExpr;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
+use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
 use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
@@ -41,7 +45,6 @@ use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -202,33 +205,20 @@ pub trait FileLoader: 'static {
 
 /// Starlark `def` or comprehension local variables
 pub(crate) struct IndexedLocals<'a> {
-    // name to index is needed for nested contexts only
-    // (collection comprehensions).
-    // TODO: access nested context objects by slot index too and drop this field
-    name_to_index: &'a HashMap<String, usize>,
-    /// locals store the local variable in an array. Each local variable loose its
-    /// names and the `name_to_index` can be used to find a variable from name.
-    /// Once the parsing of the `def` is finished, only the nested contexts should
-    /// need it (the other one have been replaced during the parsing).
-    /// `locals` is used to optimize access speed to local variable
-    /// (versus looking into a hashmap).
+    // This field is not used at runtime, but could be used for debugging or
+    // for better diagnostics in the future
+    _local_defs: &'a Locals,
+    /// Local variables are stored in this array. Names to slots are  mapped
+    /// during analysis phase. Note access by index is much faster than by name.
     locals: RefCell<Vec<Option<Value>>>,
 }
 
 impl<'a> IndexedLocals<'a> {
-    fn new(name_to_index: &'a HashMap<String, usize>) -> IndexedLocals<'a> {
+    fn new(local_defs: &'a Locals) -> IndexedLocals<'a> {
         IndexedLocals {
-            name_to_index,
-            locals: RefCell::new(vec![None; name_to_index.len()]),
+            _local_defs: local_defs,
+            locals: RefCell::new(vec![None; local_defs.len()]),
         }
-    }
-
-    fn get(&self, name: &str) -> Result<Option<Value>, EnvironmentError> {
-        let slot = match self.name_to_index.get(name) {
-            Some(slot) => *slot,
-            None => return Ok(None),
-        };
-        Ok(Some(self.get_slot(slot, name)?))
     }
 
     fn get_slot(&self, slot: usize, name: &str) -> Result<Value, EnvironmentError> {
@@ -240,14 +230,6 @@ impl<'a> IndexedLocals<'a> {
         }
     }
 
-    fn set(&self, name: &str, value: Value) {
-        let slot = match self.name_to_index.get(name) {
-            Some(slot) => *slot,
-            None => panic!("unknown local: {}", name),
-        };
-        self.set_slot(slot, name, value);
-    }
-
     fn set_slot(&self, slot: usize, _name: &str, value: Value) {
         self.locals.borrow_mut()[slot] = Some(value);
     }
@@ -257,18 +239,15 @@ impl<'a> IndexedLocals<'a> {
 pub(crate) enum EvaluationContextEnvironment<'a> {
     /// Module-level
     Module(Environment, Rc<dyn FileLoader>),
-    /// Function-level
-    Function(Environment, IndexedLocals<'a>),
-    /// Scope inside function, e. g. list comprenension
-    Nested(&'a EvaluationContextEnvironment<'a>, IndexedLocals<'a>),
+    /// Function-level or comprehension in global scope
+    Local(Environment, IndexedLocals<'a>),
 }
 
 impl<'a> EvaluationContextEnvironment<'a> {
     fn env(&self) -> &Environment {
         match self {
             EvaluationContextEnvironment::Module(ref env, ..)
-            | EvaluationContextEnvironment::Function(ref env, ..) => env,
-            EvaluationContextEnvironment::Nested(ref parent, _) => parent.env(),
+            | EvaluationContextEnvironment::Local(ref env, ..) => env,
         }
     }
 
@@ -286,47 +265,42 @@ impl<'a> EvaluationContextEnvironment<'a> {
         }
     }
 
-    fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
+    fn get_global(&self, name: &str) -> Result<Value, EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.get(name),
-            EvaluationContextEnvironment::Function(env, locals) => match locals.get(name)? {
-                Some(v) => Ok(v),
-                None => env.get(name),
-            },
-            EvaluationContextEnvironment::Nested(parent, locals) => match locals.get(name)? {
-                Some(v) => Ok(v),
-                None => parent.get(name),
-            },
+            EvaluationContextEnvironment::Local(env, ..) => env.get(name),
         }
     }
 
     fn get_slot(&self, _slot: usize, name: &str) -> Result<Value, EnvironmentError> {
         match self {
-            EvaluationContextEnvironment::Function(_, locals)
-            | EvaluationContextEnvironment::Nested(_, locals) => locals.get_slot(_slot, name),
+            EvaluationContextEnvironment::Local(_, locals) => locals.get_slot(_slot, name),
             _ => unreachable!("slot in non-indexed environment"),
         }
     }
 
-    fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
+    fn set_global(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env.set(name, value),
-            EvaluationContextEnvironment::Function(_, locals) => {
-                locals.set(name, value);
-                Ok(())
-            }
-            EvaluationContextEnvironment::Nested(_, locals) => {
-                locals.set(name, value);
-                Ok(())
+            EvaluationContextEnvironment::Local(..) => {
+                unreachable!("named assign to {} in local scope", name);
             }
         }
     }
 
     fn set_slot(&self, slot: usize, name: &str, value: Value) {
         match self {
-            EvaluationContextEnvironment::Function(_, locals)
-            | EvaluationContextEnvironment::Nested(_, locals) => {
+            EvaluationContextEnvironment::Local(_, locals) => {
                 locals.set_slot(slot, name, value);
+            }
+            _ => unreachable!("slot in non-indexed environment"),
+        }
+    }
+
+    fn top_level_local_to_slot(&self, name: &str) -> usize {
+        match self {
+            EvaluationContextEnvironment::Local(_, locals) => {
+                locals._local_defs.top_level_name_to_slot(name).unwrap()
             }
             _ => unreachable!("slot in non-indexed environment"),
         }
@@ -335,8 +309,7 @@ impl<'a> EvaluationContextEnvironment<'a> {
     fn assert_module_env(&self) -> &Environment {
         match self {
             EvaluationContextEnvironment::Module(env, ..) => env,
-            EvaluationContextEnvironment::Function(..)
-            | EvaluationContextEnvironment::Nested(..) => {
+            EvaluationContextEnvironment::Local(..) => {
                 unreachable!("this function is meant to be called only on module level")
             }
         }
@@ -366,15 +339,6 @@ impl<'a> EvaluationContext<'a> {
             env: EvaluationContextEnvironment::Module(env, Rc::new(loader)),
             type_values,
             map,
-        }
-    }
-
-    fn child(&'a self, name_to_index: &'a HashMap<String, usize>) -> EvaluationContext<'a> {
-        EvaluationContext {
-            env: EvaluationContextEnvironment::Nested(&self.env, IndexedLocals::new(name_to_index)),
-            type_values: self.type_values.clone(),
-            call_stack: self.call_stack.clone(),
-            map: self.map.clone(),
         }
     }
 }
@@ -522,7 +486,7 @@ fn set_transformed<'a>(
             ok
         }
         TransformedExpr::Identifier(ident) => {
-            t(context.env.set(&ident.node, new_value), ident)?;
+            t(context.env.set_global(&ident.node, new_value), ident)?;
             ok
         }
         TransformedExpr::Slot(slot, ident) => {
@@ -547,7 +511,7 @@ fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationConte
             }
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
-        TransformedExpr::Identifier(ident) => t(context.env.get(&ident.node), ident),
+        TransformedExpr::Identifier(ident) => t(context.env.get_global(&ident.node), ident),
         TransformedExpr::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident.node), ident),
     }
 }
@@ -588,6 +552,21 @@ fn transform(
     }
 }
 
+// Evaluate the AST in global context, create local context, and continue evaluating in local
+fn eval_expr_local(expr: &AstExpr, locals: &Locals, context: &EvaluationContext) -> EvalResult {
+    let ctx = EvaluationContext {
+        call_stack: context.call_stack.clone(),
+        env: EvaluationContextEnvironment::Local(
+            // Note assertion that we where in module context
+            context.env.assert_module_env().clone(),
+            IndexedLocals::new(locals),
+        ),
+        type_values: context.type_values.clone(),
+        map: context.map.clone(),
+    };
+    eval_expr(expr, &ctx)
+}
+
 // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
 fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
     match expr.node {
@@ -606,7 +585,7 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
         Expr::Slice(ref a, ref start, ref stop, ref stride) => {
             eval_slice(expr, a, start, stop, stride, context)
         }
-        Expr::Identifier(ref i) => t(context.env.get(&i.node), i),
+        Expr::Identifier(ref i) => t(context.env.get_global(&i.node), i),
         Expr::Slot(slot, ref i) => t(context.env.get_slot(slot, &i.node), i),
         Expr::IntLiteral(ref i) => Ok(Value::new(i.node)),
         Expr::StringLiteral(ref s) => Ok(Value::new(s.node.clone())),
@@ -713,10 +692,45 @@ fn eval_expr(expr: &AstExpr, context: &EvaluationContext) -> EvalResult {
             }
             make_set(values, context, expr.span)
         }
-        Expr::ListComprehension(..) | Expr::DictComprehension(..) | Expr::SetComprehension(..) => {
-            unreachable!()
+        Expr::ListComprehension(ref expr, ref clauses) => {
+            let mut list = Vec::new();
+            eval_one_dimensional_comprehension(
+                &mut |context| {
+                    list.push(eval_expr(expr, context)?);
+                    Ok(())
+                },
+                clauses,
+                context,
+            )?;
+            Ok(Value::from(list))
         }
-        Expr::ComprehensionCompiled(ref e) => e.eval(expr.span, context),
+        Expr::SetComprehension(ref expr, ref clauses) => {
+            let mut values = Vec::new();
+            eval_one_dimensional_comprehension(
+                &mut |context| {
+                    values.push(eval_expr(expr, context)?);
+                    Ok(())
+                },
+                clauses,
+                context,
+            )?;
+            make_set(values, context, expr.span)
+        }
+        Expr::DictComprehension((ref k, ref v), ref clauses) => {
+            let mut dict = Dictionary::new_typed();
+            eval_one_dimensional_comprehension(
+                &mut |context| {
+                    t(
+                        dict.insert(eval_expr(k, context)?, eval_expr(v, context)?),
+                        &expr.span,
+                    )
+                },
+                clauses,
+                context,
+            )?;
+            Ok(Value::new(dict))
+        }
+        Expr::Local(ref expr, ref locals) => eval_expr_local(expr, locals, context),
     }
 }
 
@@ -752,7 +766,7 @@ fn set_expr(
             ok
         }
         AssignTargetExpr::Identifier(ref i) => {
-            t(context.env.set(&i.node, new_value), expr)?;
+            t(context.env.set_global(&i.node, new_value), expr)?;
             ok
         }
         AssignTargetExpr::Slot(slot, ref i) => {
@@ -856,7 +870,10 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &EvaluationContext) -> EvalRe
                 context.map.clone(),
                 context.env.assert_module_env().clone(),
             );
-            t(context.env.set(&stmt.name.node, f.clone()), &stmt.name)?;
+            t(
+                context.env.set_global(&stmt.name.node, f.clone()),
+                &stmt.name,
+            )?;
             Ok(f)
         }
         StatementCompiled::Load(ref name, ref v) => {
@@ -989,4 +1006,5 @@ mod tests;
 
 pub(crate) mod compr;
 pub(crate) mod def;
+pub(crate) mod locals;
 pub mod stmt;
