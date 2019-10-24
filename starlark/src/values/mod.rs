@@ -364,7 +364,7 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
 
     fn call(
         &self,
-        call_stack: &CallStack,
+        call_stack: &mut CallStack,
         type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
@@ -534,7 +534,7 @@ trait ValueHolderDyn {
 
     fn call(
         &self,
-        call_stack: &CallStack,
+        call_stack: &mut CallStack,
         type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
@@ -728,7 +728,7 @@ pub trait TypedValue: Sized + 'static {
     /// * kwargs: if provided, the `**kwargs` argument.
     fn call(
         &self,
-        _call_stack: &CallStack,
+        _call_stack: &mut CallStack,
         _type_values: TypeValues,
         _positional: Vec<Value>,
         _named: LinkedHashMap<String, Value>,
@@ -1135,7 +1135,7 @@ impl Value {
 
     pub fn call(
         &self,
-        call_stack: &CallStack,
+        call_stack: &mut CallStack,
         type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
