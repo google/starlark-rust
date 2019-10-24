@@ -215,7 +215,7 @@ impl TypedValue for Def {
 
     fn call(
         &self,
-        call_stack: &CallStack,
+        call_stack: &mut CallStack,
         type_values: TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
@@ -224,7 +224,7 @@ impl TypedValue for Def {
     ) -> ValueResult {
         // argument binding
         let mut ctx = EvaluationContext {
-            call_stack: call_stack.to_owned(),
+            call_stack,
             env: EvaluationContextEnvironment::Local(
                 self.captured_env.clone(),
                 IndexedLocals::new(&self.stmt.locals),

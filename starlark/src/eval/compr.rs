@@ -23,11 +23,11 @@ use crate::eval::EvalException;
 use crate::eval::EvaluationContext;
 
 pub(crate) fn eval_one_dimensional_comprehension<
-    F: FnMut(&EvaluationContext) -> Result<(), EvalException>,
+    F: FnMut(&mut EvaluationContext) -> Result<(), EvalException>,
 >(
     expr: &mut F,
     clauses: &[AstClauseCompiled],
-    context: &EvaluationContext,
+    context: &mut EvaluationContext,
 ) -> Result<(), EvalException> {
     if let Some((first, tl)) = clauses.split_first() {
         match &first.node {

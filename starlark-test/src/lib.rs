@@ -207,7 +207,7 @@ def assert_(cond, msg="assertion failed"):
     bencher.iter(|| {
         let env = env.child("bench");
         match bench_func.call(
-            &CallStack::default(),
+            &mut CallStack::default(),
             TypeValues::new(env),
             Vec::new(),
             LinkedHashMap::new(),

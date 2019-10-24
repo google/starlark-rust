@@ -140,7 +140,7 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($($rest:tt)+)?) => {
         $(#[$attr])*
         fn $fn(
-            __call_stack: &$crate::eval::call_stack::CallStack,
+            __call_stack: &mut $crate::eval::call_stack::CallStack,
             __env: $crate::environment::TypeValues,
             mut args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
@@ -156,7 +156,7 @@ macro_rules! starlark_fun {
             $($($rest:tt)+)?) => {
         $(#[$attr])*
         fn $fn(
-            __call_stack: &$crate::eval::call_stack::CallStack,
+            __call_stack: &mut $crate::eval::call_stack::CallStack,
             __env: $crate::environment::TypeValues,
             mut args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {

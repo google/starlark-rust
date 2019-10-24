@@ -41,6 +41,11 @@ impl CallStack {
         self.stack.push(Frame(function, code_map, pos));
     }
 
+    /// Pop an element from the stack, panic if stack is already empty.
+    pub fn pop(&mut self) {
+        self.stack.pop().unwrap();
+    }
+
     /// Test if call stack contains a function with given id.
     pub fn contains(&self, function_id: FunctionId) -> bool {
         self.stack
