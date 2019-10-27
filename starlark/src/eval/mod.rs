@@ -32,6 +32,7 @@ use crate::eval::expr::AugmentedAssignTargetExprCompiled;
 use crate::eval::expr::ExprCompiled;
 use crate::eval::expr::GlobalOrSlot;
 use crate::eval::locals::Locals;
+use crate::eval::module::Module;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
@@ -914,6 +915,10 @@ fn eval_block(block: &BlockCompiled, context: &EvaluationContext) -> EvalResult 
     Ok(r)
 }
 
+fn eval_module(module: &Module, context: &EvaluationContext) -> EvalResult {
+    eval_block(&module.0, context)
+}
+
 /// Evaluate a content provided by a custom Lexer, mutate the environment accordingly and return
 /// the evaluated value.
 ///
@@ -941,7 +946,7 @@ pub fn eval_lexer<
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_block(
+    match eval_module(
         &parse_lexer(map, filename, content, dialect, lexer)?,
         &context,
     ) {
@@ -972,7 +977,7 @@ pub fn eval<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_block(&parse(map, path, content, build)?, &context) {
+    match eval_module(&parse(map, path, content, build)?, &context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -998,7 +1003,7 @@ pub fn eval_file<T: FileLoader + 'static>(
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     let context = EvaluationContext::new(env.clone(), type_values, file_loader, map.clone());
-    match eval_block(&parse_file(map, path, build)?, &context) {
+    match eval_module(&parse_file(map, path, build)?, &context) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -1022,4 +1027,5 @@ pub(crate) mod compr;
 pub(crate) mod def;
 pub(crate) mod expr;
 pub(crate) mod locals;
+pub mod module;
 pub mod stmt;

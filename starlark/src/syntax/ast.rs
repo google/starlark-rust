@@ -16,8 +16,6 @@
 
 use super::lexer;
 use crate::eval::locals::LocalsBuilder;
-use crate::eval::stmt::BlockCompiled;
-use crate::syntax::dialect::Dialect;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use lalrpop_util;
@@ -590,7 +588,7 @@ impl Statement {
     }
 
     /// Validate `break` and `continue` is only used inside loops
-    fn validate_break_continue(stmt: &AstStatement) -> Result<(), Diagnostic> {
+    pub(crate) fn validate_break_continue(stmt: &AstStatement) -> Result<(), Diagnostic> {
         match stmt.node {
             Statement::Break | Statement::Continue => {
                 let kw = if let Statement::Break = stmt.node {
@@ -688,15 +686,6 @@ impl Statement {
             }
             Statement::For(_, _, body) => Self::validate_augmented_assignment_in_module(body),
         }
-    }
-
-    pub(crate) fn compile_mod(
-        stmt: AstStatement,
-        _dialect: Dialect,
-    ) -> Result<BlockCompiled, Diagnostic> {
-        Statement::validate_break_continue(&stmt)?;
-        Statement::validate_augmented_assignment_in_module(&stmt)?;
-        BlockCompiled::compile_global(stmt)
     }
 }
 

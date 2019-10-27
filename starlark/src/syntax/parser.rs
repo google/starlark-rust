@@ -23,8 +23,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
 
-use crate::eval::stmt::BlockCompiled;
-use crate::syntax::ast::Statement;
+use crate::eval::module::Module;
 use lalrpop_util as lu;
 
 // TODO: move that code in some common error code list?
@@ -172,7 +171,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     content: &str,
     dialect: Dialect,
     lexer: T2,
-) -> Result<BlockCompiled, Diagnostic> {
+) -> Result<Module, Diagnostic> {
     let filespan = {
         map.lock()
             .unwrap()
@@ -185,7 +184,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             Dialect::Bzl => StarlarkParser::new().parse(content, filespan, lexer),
         }
     } {
-        Result::Ok(v) => Ok(Statement::compile_mod(v, dialect)?),
+        Result::Ok(v) => Ok(Module::compile(v, dialect)?),
         Result::Err(p) => Result::Err(p.to_diagnostic(filespan)),
     }
 }
@@ -204,7 +203,7 @@ pub fn parse(
     filename: &str,
     content: &str,
     dialect: Dialect,
-) -> Result<BlockCompiled, Diagnostic> {
+) -> Result<Module, Diagnostic> {
     let content2 = content.to_owned();
     parse_lexer(map, filename, content, dialect, Lexer::new(&content2))
 }
@@ -226,7 +225,7 @@ pub fn parse_file(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     dialect: Dialect,
-) -> Result<BlockCompiled, Diagnostic> {
+) -> Result<Module, Diagnostic> {
     let mut content = String::new();
     let mut file = iotry!(File::open(path));
     iotry!(file.read_to_string(&mut content));
