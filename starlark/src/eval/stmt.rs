@@ -53,7 +53,7 @@ pub(crate) enum StatementCompiled {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockCompiled(pub(crate) Vec<AstStatementCompiled>);
+pub(crate) struct BlockCompiled(pub(crate) Vec<AstStatementCompiled>);
 
 impl BlockCompiled {
     fn compile_local_stmts(

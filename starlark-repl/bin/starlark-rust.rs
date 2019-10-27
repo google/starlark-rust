@@ -19,7 +19,7 @@ extern crate structopt;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use starlark::eval::interactive::{eval, eval_file, EvalError};
-use starlark::eval::stmt::BlockCompiled;
+use starlark::eval::module::Module;
 use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::parser::{parse, parse_file};
@@ -120,10 +120,7 @@ fn main() {
     }
 }
 
-fn maybe_print_ast_or_exit(
-    result: Result<BlockCompiled, Diagnostic>,
-    codemap: &Arc<Mutex<CodeMap>>,
-) {
+fn maybe_print_ast_or_exit(result: Result<Module, Diagnostic>, codemap: &Arc<Mutex<CodeMap>>) {
     match result {
         Ok(ast) => {
             println!("{:#?}", ast);
