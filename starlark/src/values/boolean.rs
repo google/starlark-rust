@@ -32,7 +32,7 @@ impl TypedValue for bool {
     const TYPE: &'static str = "bool";
 
     fn new_value(self) -> Value {
-        Value(ValueInner::Bool(ValueHolder::new(self)))
+        Value(ValueInner::Bool(self))
     }
 
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {

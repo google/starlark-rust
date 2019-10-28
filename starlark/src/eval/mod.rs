@@ -833,9 +833,8 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> Ev
             }
         }
         StatementCompiled::For(ref e1, ref e2, ref st) => {
-            let mut iterable = eval_expr(e2, context)?;
+            let iterable = eval_expr(e2, context)?;
             let mut result = Ok(Value::new(NoneType::None));
-            iterable.freeze_for_iteration();
             for v in &t(iterable.iter(), &e2.span)? {
                 set_expr(e1, context, v)?;
                 match eval_block(st, context) {
@@ -848,7 +847,6 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> Ev
                     _ => (),
                 }
             }
-            iterable.unfreeze_for_iteration();
             result
         }
         StatementCompiled::Def(ref stmt) => {

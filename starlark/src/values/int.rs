@@ -85,7 +85,7 @@ impl TypedValue for i64 {
     const TYPE: &'static str = "int";
 
     fn new_value(self) -> Value {
-        Value(ValueInner::Int(ValueHolder::new(self)))
+        Value(ValueInner::Int(self))
     }
 
     fn equals(&self, other: &i64) -> Result<bool, ValueError> {

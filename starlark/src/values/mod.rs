@@ -90,22 +90,21 @@ use crate::values::error::ValueError;
 use crate::values::iter::{FakeTypedIterable, RefIterable, TypedIterable};
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
-use std::any::Any;
-use std::cell::{RefCell, RefMut};
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Write as _;
 use std::marker;
 use std::rc::Rc;
+use std::usize;
 
 /// ValueInner wraps the actual value or a memory pointer
 /// to the actual value for complex type.
 #[derive(Clone)]
 enum ValueInner {
-    None(ValueHolder<NoneType>),
-    Bool(ValueHolder<bool>),
-    Int(ValueHolder<i64>),
-    Other(Rc<dyn ValueHolderDyn>),
+    None(NoneType),
+    Bool(bool),
+    Int(i64),
+    Other(Rc<ValueHolder<dyn TypedValueDyn>>),
 }
 
 /// A value in Starlark.
@@ -122,12 +121,28 @@ impl Value {
         t.new_value()
     }
 
-    fn value_holder(&self) -> &(dyn ValueHolderDyn + 'static) {
+    fn try_value_holder(
+        &self,
+        for_iter: bool,
+    ) -> Result<ObjectRef<dyn TypedValueDyn>, ObjectBorrowError> {
         match &self.0 {
-            ValueInner::None(n) => n,
-            ValueInner::Int(i) => i,
-            ValueInner::Bool(b) => b,
-            ValueInner::Other(rc) => &**rc,
+            ValueInner::None(n) => Ok(ObjectRef::immutable(n)),
+            ValueInner::Int(i) => Ok(ObjectRef::immutable(i)),
+            ValueInner::Bool(b) => Ok(ObjectRef::immutable(b)),
+            ValueInner::Other(rc) => rc.value.try_borrow(for_iter),
+        }
+    }
+
+    fn value_holder(&self) -> ObjectRef<dyn TypedValueDyn> {
+        self.try_value_holder(false).unwrap()
+    }
+
+    fn try_value_holder_mut(
+        &self,
+    ) -> Result<ObjectRefMut<dyn TypedValueDyn>, ObjectBorrowMutError> {
+        match &self.0 {
+            ValueInner::Other(rc) => rc.value.try_borrow_mut(),
+            _ => Err(ObjectBorrowMutError::Immutable),
         }
     }
 
@@ -151,17 +166,33 @@ impl Value {
 
     /// Determine if the value pointed by other is a descendant of self
     pub fn is_descendant_value(&self, other: &Value) -> bool {
-        self.value_holder().is_descendant(other.data_ptr())
+        self.is_descendant(other.data_ptr())
+    }
+
+    pub fn is_descendant(&self, other: DataPtr) -> bool {
+        match self.try_value_holder(false) {
+            Ok(v) => v.is_descendant_dyn(other),
+            Err(..) => {
+                // We have already borrowed mutably this value,
+                // which means we are trying to mutate it, assigning other to it.
+                true
+            }
+        }
     }
 
     /// Object data pointer.
     pub fn data_ptr(&self) -> DataPtr {
-        self.value_holder().data_ptr()
+        match &self.0 {
+            ValueInner::None(n) => DataPtr::from(n),
+            ValueInner::Int(i) => DataPtr::from(i),
+            ValueInner::Bool(b) => DataPtr::from(b),
+            ValueInner::Other(rc) => rc.data_ptr(),
+        }
     }
 
     /// Function id used to detect recursion.
     pub fn function_id(&self) -> FunctionId {
-        self.value_holder().function_id()
+        self.value_holder().function_id_dyn()
     }
 }
 
@@ -170,35 +201,6 @@ pub trait Mutability {
 
     /// This type is mutable or immutable.
     const MUTABLE: bool;
-
-    /// Type of cell which contains the object.
-    type Cell: RefCellOrImmutable<Content = Self::Content>;
-
-    /// Type of cell which contains mutability flag.
-    type MutabilityCell: MutabilityCell;
-}
-
-struct ValueHolder<T: TypedValue> {
-    mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell,
-    content: <<T as TypedValue>::Holder as Mutability>::Cell,
-}
-
-impl<T: TypedValue> ValueHolder<T> {
-    fn new(value: T) -> ValueHolder<T> {
-        ValueHolder {
-            mutability: <<T as TypedValue>::Holder as Mutability>::MutabilityCell::new(),
-            content: <<T as TypedValue>::Holder as Mutability>::Cell::new(value),
-        }
-    }
-}
-
-impl<T: TypedValue<Holder = Immutable<T>> + Clone> Clone for ValueHolder<T> {
-    fn clone(&self) -> Self {
-        ValueHolder {
-            mutability: self.mutability.clone(),
-            content: self.content.clone(),
-        }
-    }
 }
 
 /// Type parameter for immutable types.
@@ -209,30 +211,38 @@ pub struct Mutable<T>(marker::PhantomData<T>);
 impl<T: TypedValue> Mutability for Mutable<T> {
     type Content = T;
     const MUTABLE: bool = true;
-    type Cell = RefCell<T>;
-    type MutabilityCell = MutableMutability;
 }
 
 impl<T: TypedValue> Mutability for Immutable<T> {
     type Content = T;
     const MUTABLE: bool = false;
-    type Cell = ImmutableCell<T>;
-    type MutabilityCell = ImmutableMutability;
 }
 
 /// Pointer to data, used for cycle checks.
 #[derive(Copy, Clone, Debug, Eq)]
 pub struct DataPtr(*const ());
 
-impl<T: TypedValue> From<*const T> for DataPtr {
+impl<T: TypedValue + ?Sized> From<*const T> for DataPtr {
     fn from(p: *const T) -> Self {
         DataPtr(p as *const ())
     }
 }
 
-impl<T: TypedValue> From<&'_ T> for DataPtr {
+impl<T: TypedValue + ?Sized> From<*mut T> for DataPtr {
+    fn from(p: *mut T) -> Self {
+        DataPtr::from(p as *const T)
+    }
+}
+
+impl<T: TypedValue + ?Sized> From<&'_ T> for DataPtr {
     fn from(p: &T) -> Self {
         DataPtr::from(p as *const T)
+    }
+}
+
+impl From<&'_ dyn TypedValueDyn> for DataPtr {
+    fn from(p: &'_ dyn TypedValueDyn) -> Self {
+        DataPtr(p as *const dyn TypedValueDyn as *const ())
     }
 }
 
@@ -252,117 +262,82 @@ impl PartialEq for DataPtr {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FunctionId(pub DataPtr);
 
-impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
-    fn as_any_mut(&self) -> Result<Option<RefMut<'_, dyn Any>>, ValueError> {
-        self.mutability.get().test()?;
-        Ok(if T::Holder::MUTABLE {
-            Some(RefMut::map(self.content.borrow_mut(), |v| {
-                v as &mut dyn Any
-            }))
-        } else {
-            None
-        })
+impl<T: TypedValue> TypedValueDyn for T {
+    fn as_any_ref(&self) -> &dyn Any {
+        self as &dyn Any
     }
 
-    fn as_any_ref(&self) -> RefOrRef<'_, dyn Any> {
-        RefOrRef::map(self.content.borrow(), |v| v as &dyn Any)
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self as &mut dyn Any
     }
 
-    fn data_ptr(&self) -> DataPtr {
-        DataPtr::from(self.content.as_ptr())
-    }
-
-    fn function_id(&self) -> FunctionId {
-        self.content
-            .borrow()
-            .function_id()
-            .unwrap_or(FunctionId(self.data_ptr()))
+    fn function_id_dyn(&self) -> FunctionId {
+        self.function_id()
+            .unwrap_or(FunctionId(DataPtr::from(self)))
     }
 
     /// Freezes the current value.
-    fn freeze(&self) {
-        self.mutability.freeze();
-        for mut value in self
-            .content
-            .borrow()
-            .values_for_descendant_check_and_freeze()
-        {
+    fn freeze_dyn(&self) {
+        for mut value in self.values_for_descendant_check_and_freeze() {
             value.freeze();
         }
     }
 
-    /// Freezes the current value for iterating over.
-    fn freeze_for_iteration(&self) {
-        self.mutability.freeze_for_iteration();
+    fn to_str_impl_dyn(&self, buf: &mut String) -> fmt::Result {
+        self.to_str_impl(buf)
     }
 
-    /// Unfreezes the current value for iterating over.
-    fn unfreeze_for_iteration(&self) {
-        self.mutability.unfreeze_for_iteration();
+    fn to_repr_impl_dyn(&self, buf: &mut String) -> fmt::Result {
+        self.to_repr_impl(buf)
     }
 
-    fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
-        self.content.borrow().to_str_impl(buf)
-    }
-
-    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
-        self.content.borrow().to_repr_impl(buf)
-    }
-
-    fn get_type(&self) -> &'static str {
+    fn get_type_dyn(&self) -> &'static str {
         T::TYPE
     }
 
-    fn to_bool(&self) -> bool {
-        self.content.borrow().to_bool()
+    fn to_bool_dyn(&self) -> bool {
+        self.to_bool()
     }
 
-    fn to_int(&self) -> Result<i64, ValueError> {
-        self.content.borrow().to_int()
+    fn to_int_dyn(&self) -> Result<i64, ValueError> {
+        self.to_int()
     }
 
-    fn get_hash(&self) -> Result<u64, ValueError> {
-        self.content.borrow().get_hash()
+    fn get_hash_dyn(&self) -> Result<u64, ValueError> {
+        self.get_hash()
     }
 
-    fn is_descendant(&self, other: DataPtr) -> bool {
-        if self.data_ptr() == other {
+    fn is_descendant_dyn(&self, other: DataPtr) -> bool {
+        if DataPtr::from(self) == other {
             return true;
         }
-        if let Ok(borrow) = self.content.try_borrow() {
-            borrow
-                .values_for_descendant_check_and_freeze()
-                .any(|x| x.is_descendant(other))
-        } else {
-            // We have already borrowed mutably this value,
-            // which means we are trying to mutate it, assigning other to it.
-            true
-        }
+        self.values_for_descendant_check_and_freeze()
+            .any(|x| x.is_descendant(other))
     }
 
-    fn equals(&self, other: &Value) -> Result<bool, ValueError> {
+    fn equals_dyn(&self, other: &Value) -> Result<bool, ValueError> {
         let _stack_depth_guard = call_stack::try_inc()?;
 
         match other.downcast_ref::<T>() {
-            Some(other) => self.content.borrow().equals(&*other),
+            Some(other) => self.equals(&*other),
             None => Ok(false),
         }
     }
 
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
+    fn compare_dyn(&self, other: &Value) -> Result<Ordering, ValueError> {
         let _stack_depth_guard = call_stack::try_inc()?;
 
         match other.downcast_ref::<T>() {
-            Some(other) => self.content.borrow().compare(&*other),
+            Some(other) => self.compare(&*other),
             None => Err(ValueError::OperationNotSupported {
                 op: "compare".to_owned(),
-                left: self.get_type().to_owned(),
+                left: self.get_type_dyn().to_owned(),
                 right: Some(other.get_type().to_owned()),
             }),
         }
     }
 
-    fn call(
+    fn call_dyn(
         &self,
         call_stack: &mut CallStack,
         type_values: TypeValues,
@@ -371,168 +346,137 @@ impl<T: TypedValue> ValueHolderDyn for ValueHolder<T> {
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
-        self.content
-            .borrow()
-            .call(call_stack, type_values, positional, named, args, kwargs)
+        self.call(call_stack, type_values, positional, named, args, kwargs)
     }
 
-    fn at(&self, index: Value) -> Result<Value, ValueError> {
-        self.content.borrow().at(index)
+    fn at_dyn(&self, index: Value) -> Result<Value, ValueError> {
+        self.at(index)
     }
 
-    fn set_at(&self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        // must explicitly check for mutability, otherwise `borrow_mut` below will fail
-        if !T::Holder::MUTABLE {
-            return Err(ValueError::OperationNotSupported {
-                op: "[] =".to_owned(),
-                left: self.get_type().to_owned(),
-                right: Some(index.get_type().to_owned()),
-            });
-        }
-        self.mutability.get().test()?;
-        self.content.borrow_mut().set_at(index, new_value)
+    fn set_at_dyn(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
+        self.set_at(index, new_value)
     }
 
-    fn slice(
+    fn slice_dyn(
         &self,
         start: Option<Value>,
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> Result<Value, ValueError> {
-        self.content.borrow().slice(start, stop, stride)
+        self.slice(start, stop, stride)
     }
 
-    fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
-        let borrowed: RefOrRef<'_, T> = self.content.borrow();
-        let mut err = Ok(());
-        let typed_into_iter = RefOrRef::map(borrowed, |t| match t.iter() {
-            Ok(r) => r,
-            Err(e) => {
-                err = Err(e);
-                &FakeTypedIterable
-            }
-        });
-        err?;
-        Ok(RefIterable::new(typed_into_iter))
+    fn iter_dyn<'a>(&'a self) -> Result<&'a dyn TypedIterable, ValueError> {
+        self.iter()
     }
 
-    fn length(&self) -> Result<i64, ValueError> {
-        self.content.borrow().length()
+    fn length_dyn(&self) -> Result<i64, ValueError> {
+        self.length()
     }
 
-    fn get_attr(&self, attribute: &str) -> Result<Value, ValueError> {
-        self.content.borrow().get_attr(attribute)
+    fn get_attr_dyn(&self, attribute: &str) -> Result<Value, ValueError> {
+        self.get_attr(attribute)
     }
 
-    fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        self.content.borrow().has_attr(attribute)
+    fn has_attr_dyn(&self, attribute: &str) -> Result<bool, ValueError> {
+        self.has_attr(attribute)
     }
 
-    fn set_attr(&self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        // must explicitly check for mutability, otherwise `borrow_mut` below will fail
-        if !T::Holder::MUTABLE {
-            return Err(ValueError::OperationNotSupported {
-                op: format!(".{} =", attribute),
-                left: self.get_type().to_owned(),
-                right: None,
-            });
-        }
-        self.mutability.get().test()?;
-        self.content.borrow_mut().set_attr(attribute, new_value)
+    fn set_attr_dyn(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
+        self.set_attr(attribute, new_value)
     }
 
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        self.content.borrow().dir_attr()
+    fn dir_attr_dyn(&self) -> Result<Vec<String>, ValueError> {
+        self.dir_attr()
     }
 
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        self.content.borrow().is_in(other)
+    fn is_in_dyn(&self, other: &Value) -> Result<bool, ValueError> {
+        self.is_in(other)
     }
 
-    fn plus(&self) -> Result<Value, ValueError> {
-        self.content.borrow().plus().map(Value::new)
+    fn plus_dyn(&self) -> Result<Value, ValueError> {
+        self.plus().map(Value::new)
     }
 
-    fn minus(&self) -> Result<Value, ValueError> {
-        self.content.borrow().minus().map(Value::new)
+    fn minus_dyn(&self) -> Result<Value, ValueError> {
+        self.minus().map(Value::new)
     }
 
-    fn add(&self, other: Value) -> Result<Value, ValueError> {
+    fn add_dyn(&self, other: Value) -> Result<Value, ValueError> {
         match other.downcast_ref::<T>() {
-            Some(other) => self.content.borrow().add(&*other).map(Value::new),
+            Some(other) => self.add(&*other).map(Value::new),
             None => Err(ValueError::IncorrectParameterType),
         }
     }
 
-    fn sub(&self, other: Value) -> Result<Value, ValueError> {
+    fn sub_dyn(&self, other: Value) -> Result<Value, ValueError> {
         match other.downcast_ref() {
-            Some(other) => self.content.borrow().sub(&*other).map(Value::new),
+            Some(other) => self.sub(&*other).map(Value::new),
             None => Err(ValueError::IncorrectParameterType),
         }
     }
 
-    fn mul(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().mul(other)
+    fn mul_dyn(&self, other: Value) -> Result<Value, ValueError> {
+        self.mul(other)
     }
 
-    fn percent(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().percent(other)
+    fn percent_dyn(&self, other: Value) -> Result<Value, ValueError> {
+        self.percent(other)
     }
 
-    fn div(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().div(other)
+    fn div_dyn(&self, other: Value) -> Result<Value, ValueError> {
+        self.div(other)
     }
 
-    fn floor_div(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().floor_div(other)
+    fn floor_div_dyn(&self, other: Value) -> Result<Value, ValueError> {
+        self.floor_div(other)
     }
 
-    fn pipe(&self, other: Value) -> Result<Value, ValueError> {
-        self.content.borrow().pipe(other)
+    fn pipe_dyn(&self, other: Value) -> Result<Value, ValueError> {
+        self.pipe(other)
     }
 }
 
-/// `ValueHolder` as virtual functions to put into `Value`.
-/// Should not be used or implemented directly.
-trait ValueHolderDyn {
-    /// This function panics is value is borrowed,
-    /// `None` is returned for immutable types,
-    /// and `Err` is returned when value is locked for iteration or frozen.
-    fn as_any_mut(&self) -> Result<Option<RefMut<'_, dyn Any>>, ValueError>;
+struct ValueHolder<T: TypedValueDyn + ?Sized> {
+    value: ObjectCell<T>,
+}
 
-    /// This function panics if value is mutably borrowed.
-    fn as_any_ref(&self) -> RefOrRef<'_, dyn Any>;
-
+impl ValueHolder<dyn TypedValueDyn> {
     /// Pointer to `TypedValue` object, used for cycle checks.
-    fn data_ptr(&self) -> DataPtr;
+    fn data_ptr(&self) -> DataPtr {
+        DataPtr(self.value.get_ptr() as *const ())
+    }
+}
+
+/// Dynamically-dispatched version of [`ValueHolder`].
+pub(crate) trait TypedValueDyn: 'static {
+    fn as_any_ref(&self) -> &dyn Any;
+
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Id used to detect recursion (which is prohibited in Starlark)
-    fn function_id(&self) -> FunctionId;
+    fn function_id_dyn(&self) -> FunctionId;
 
-    fn freeze(&self);
+    fn freeze_dyn(&self);
 
-    fn freeze_for_iteration(&self);
+    fn to_str_impl_dyn(&self, buf: &mut String) -> fmt::Result;
 
-    fn unfreeze_for_iteration(&self);
+    fn to_repr_impl_dyn(&self, buf: &mut String) -> fmt::Result;
 
-    fn to_str_impl(&self, buf: &mut String) -> fmt::Result;
+    fn get_type_dyn(&self) -> &'static str;
 
-    fn to_repr_impl(&self, buf: &mut String) -> fmt::Result;
+    fn to_bool_dyn(&self) -> bool;
 
-    fn get_type(&self) -> &'static str;
+    fn to_int_dyn(&self) -> Result<i64, ValueError>;
 
-    fn to_bool(&self) -> bool;
+    fn get_hash_dyn(&self) -> Result<u64, ValueError>;
 
-    fn to_int(&self) -> Result<i64, ValueError>;
+    fn is_descendant_dyn(&self, other: DataPtr) -> bool;
 
-    fn get_hash(&self) -> Result<u64, ValueError>;
+    fn equals_dyn(&self, other: &Value) -> Result<bool, ValueError>;
+    fn compare_dyn(&self, other: &Value) -> Result<Ordering, ValueError>;
 
-    fn is_descendant(&self, other: DataPtr) -> bool;
-
-    fn equals(&self, other: &Value) -> Result<bool, ValueError>;
-    fn compare(&self, other: &Value) -> Result<Ordering, ValueError>;
-
-    fn call(
+    fn call_dyn(
         &self,
         call_stack: &mut CallStack,
         type_values: TypeValues,
@@ -542,47 +486,47 @@ trait ValueHolderDyn {
         kwargs: Option<Value>,
     ) -> ValueResult;
 
-    fn at(&self, index: Value) -> ValueResult;
+    fn at_dyn(&self, index: Value) -> ValueResult;
 
-    fn set_at(&self, index: Value, _new_value: Value) -> Result<(), ValueError>;
-    fn slice(
+    fn set_at_dyn(&mut self, index: Value, new_value: Value) -> Result<(), ValueError>;
+    fn slice_dyn(
         &self,
         start: Option<Value>,
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult;
 
-    fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError>;
+    fn iter_dyn(&self) -> Result<&dyn TypedIterable, ValueError>;
 
-    fn length(&self) -> Result<i64, ValueError>;
+    fn length_dyn(&self) -> Result<i64, ValueError>;
 
-    fn get_attr(&self, attribute: &str) -> ValueResult;
+    fn get_attr_dyn(&self, attribute: &str) -> ValueResult;
 
-    fn has_attr(&self, _attribute: &str) -> Result<bool, ValueError>;
+    fn has_attr_dyn(&self, _attribute: &str) -> Result<bool, ValueError>;
 
-    fn set_attr(&self, attribute: &str, _new_value: Value) -> Result<(), ValueError>;
+    fn set_attr_dyn(&mut self, attribute: &str, _new_value: Value) -> Result<(), ValueError>;
 
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError>;
+    fn dir_attr_dyn(&self) -> Result<Vec<String>, ValueError>;
 
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError>;
+    fn is_in_dyn(&self, other: &Value) -> Result<bool, ValueError>;
 
-    fn plus(&self) -> ValueResult;
+    fn plus_dyn(&self) -> ValueResult;
 
-    fn minus(&self) -> ValueResult;
+    fn minus_dyn(&self) -> ValueResult;
 
-    fn add(&self, other: Value) -> ValueResult;
+    fn add_dyn(&self, other: Value) -> ValueResult;
 
-    fn sub(&self, other: Value) -> ValueResult;
+    fn sub_dyn(&self, other: Value) -> ValueResult;
 
-    fn mul(&self, other: Value) -> ValueResult;
+    fn mul_dyn(&self, other: Value) -> ValueResult;
 
-    fn percent(&self, other: Value) -> ValueResult;
+    fn percent_dyn(&self, other: Value) -> ValueResult;
 
-    fn div(&self, other: Value) -> ValueResult;
+    fn div_dyn(&self, other: Value) -> ValueResult;
 
-    fn floor_div(&self, other: Value) -> ValueResult;
+    fn floor_div_dyn(&self, other: Value) -> ValueResult;
 
-    fn pipe(&self, other: Value) -> ValueResult;
+    fn pipe_dyn(&self, other: Value) -> ValueResult;
 }
 
 /// A trait for a value with a type that all variable container
@@ -599,7 +543,13 @@ pub trait TypedValue: Sized + 'static {
     /// This function should be overridden only by builtin types.
     #[doc(hidden)]
     fn new_value(self) -> Value {
-        Value(ValueInner::Other(Rc::new(ValueHolder::new(self))))
+        Value(ValueInner::Other(Rc::new(ValueHolder {
+            value: if Self::Holder::MUTABLE {
+                ObjectCell::new_mutable(self)
+            } else {
+                ObjectCell::new_immutable(self)
+            },
+        })))
     }
 
     /// Return a list of values to be used in freeze or descendant check operations.
@@ -1086,16 +1036,14 @@ impl fmt::Debug for Value {
 
 impl Value {
     pub fn freeze(&mut self) {
-        self.value_holder().freeze()
-    }
-    pub fn freeze_for_iteration(&mut self) {
-        self.value_holder().freeze_for_iteration()
-    }
-    pub fn unfreeze_for_iteration(&mut self) {
-        self.value_holder().unfreeze_for_iteration()
+        match &self.0 {
+            ValueInner::Other(rc) => rc.value.freeze(),
+            _ => {}
+        }
+        self.value_holder().freeze_dyn();
     }
     pub fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
-        self.value_holder().to_str_impl(buf)
+        self.value_holder().to_str_impl_dyn(buf)
     }
     pub fn to_str(&self) -> String {
         let mut buf = String::new();
@@ -1103,7 +1051,7 @@ impl Value {
         buf
     }
     pub fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
-        self.value_holder().to_repr_impl(buf)
+        self.value_holder().to_repr_impl_dyn(buf)
     }
     pub fn to_repr(&self) -> String {
         let mut buf = String::new();
@@ -1111,26 +1059,22 @@ impl Value {
         buf
     }
     pub fn get_type(&self) -> &'static str {
-        self.value_holder().get_type()
+        self.value_holder().get_type_dyn()
     }
     pub fn to_bool(&self) -> bool {
-        self.value_holder().to_bool()
+        self.value_holder().to_bool_dyn()
     }
     pub fn to_int(&self) -> Result<i64, ValueError> {
-        self.value_holder().to_int()
+        self.value_holder().to_int_dyn()
     }
     pub fn get_hash(&self) -> Result<u64, ValueError> {
-        self.value_holder().get_hash()
+        self.value_holder().get_hash_dyn()
     }
     pub fn equals(&self, other: &Value) -> Result<bool, ValueError> {
-        self.value_holder().equals(other)
+        self.value_holder().equals_dyn(other)
     }
     pub fn compare(&self, other: &Value) -> Result<Ordering, ValueError> {
-        self.value_holder().compare(other)
-    }
-
-    pub fn is_descendant(&self, other: DataPtr) -> bool {
-        self.value_holder().is_descendant(other)
+        self.value_holder().compare_dyn(other)
     }
 
     pub fn call(
@@ -1143,15 +1087,25 @@ impl Value {
         kwargs: Option<Value>,
     ) -> ValueResult {
         self.value_holder()
-            .call(call_stack, type_values, positional, named, args, kwargs)
+            .call_dyn(call_stack, type_values, positional, named, args, kwargs)
     }
 
     pub fn at(&self, index: Value) -> ValueResult {
-        self.value_holder().at(index)
+        self.value_holder().at_dyn(index)
     }
 
     pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        self.value_holder().set_at(index, new_value)
+        match self.try_value_holder_mut() {
+            Err(ObjectBorrowMutError::Immutable) => {
+                return Err(ValueError::OperationNotSupported {
+                    op: "[] =".to_owned(),
+                    left: self.get_type().to_owned(),
+                    right: Some(index.get_type().to_owned()),
+                });
+            }
+            Err(e) => Err(e.into()),
+            Ok(mut v) => v.set_at_dyn(index, new_value),
+        }
     }
     pub fn slice(
         &self,
@@ -1159,58 +1113,78 @@ impl Value {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        self.value_holder().slice(start, stop, stride)
+        self.value_holder().slice_dyn(start, stop, stride)
     }
-    pub fn iter<'a>(&'a self) -> Result<RefIterable<'a>, ValueError> {
-        self.value_holder().iter()
+    pub fn iter(&self) -> Result<RefIterable, ValueError> {
+        let borrowed: ObjectRef<dyn TypedValueDyn> = self.try_value_holder(true).unwrap();
+        let mut err = Ok(());
+        let typed_into_iter = ObjectRef::map(borrowed, |t| match t.iter_dyn() {
+            Ok(r) => r,
+            Err(e) => {
+                err = Err(e);
+                &FakeTypedIterable
+            }
+        });
+        err?;
+        Ok(RefIterable::new(typed_into_iter))
     }
     pub fn to_vec(&self) -> Result<Vec<Value>, ValueError> {
         Ok(self.iter()?.to_vec())
     }
     pub fn length(&self) -> Result<i64, ValueError> {
-        self.value_holder().length()
+        self.value_holder().length_dyn()
     }
     pub fn get_attr(&self, attribute: &str) -> ValueResult {
-        self.value_holder().get_attr(attribute)
+        self.value_holder().get_attr_dyn(attribute)
     }
     pub fn has_attr(&self, attribute: &str) -> Result<bool, ValueError> {
-        self.value_holder().has_attr(attribute)
+        self.value_holder().has_attr_dyn(attribute)
     }
     pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        self.value_holder().set_attr(attribute, new_value)
+        match self.try_value_holder_mut() {
+            Err(ObjectBorrowMutError::Immutable) => {
+                return Err(ValueError::OperationNotSupported {
+                    op: format!(".{} =", attribute),
+                    left: self.get_type().to_owned(),
+                    right: None,
+                });
+            }
+            Err(e) => Err(e.into()),
+            Ok(mut v) => v.set_attr_dyn(attribute, new_value),
+        }
     }
     pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
-        self.value_holder().dir_attr()
+        self.value_holder().dir_attr_dyn()
     }
     pub fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        self.value_holder().is_in(other)
+        self.value_holder().is_in_dyn(other)
     }
     pub fn plus(&self) -> ValueResult {
-        self.value_holder().plus()
+        self.value_holder().plus_dyn()
     }
     pub fn minus(&self) -> ValueResult {
-        self.value_holder().minus()
+        self.value_holder().minus_dyn()
     }
     pub fn add(&self, other: Value) -> ValueResult {
-        self.value_holder().add(other)
+        self.value_holder().add_dyn(other)
     }
     pub fn sub(&self, other: Value) -> ValueResult {
-        self.value_holder().sub(other)
+        self.value_holder().sub_dyn(other)
     }
     pub fn mul(&self, other: Value) -> ValueResult {
-        self.value_holder().mul(other)
+        self.value_holder().mul_dyn(other)
     }
     pub fn percent(&self, other: Value) -> ValueResult {
-        self.value_holder().percent(other)
+        self.value_holder().percent_dyn(other)
     }
     pub fn div(&self, other: Value) -> ValueResult {
-        self.value_holder().div(other)
+        self.value_holder().div_dyn(other)
     }
     pub fn floor_div(&self, other: Value) -> ValueResult {
-        self.value_holder().floor_div(other)
+        self.value_holder().floor_div_dyn(other)
     }
     pub fn pipe(&self, other: Value) -> ValueResult {
-        self.value_holder().pipe(other)
+        self.value_holder().pipe_dyn(other)
     }
 }
 
@@ -1227,7 +1201,7 @@ impl PartialEq for Value {
 }
 impl Eq for Value {}
 
-impl dyn ValueHolderDyn {
+impl dyn TypedValueDyn {
     // To be calleds by convert_slice_indices only
     fn convert_index_aux(
         len: i64,
@@ -1292,7 +1266,7 @@ impl dyn ValueHolderDyn {
     /// # );
     /// ```
     pub fn convert_index(&self, len: i64) -> Result<i64, ValueError> {
-        match self.to_int() {
+        match self.to_int_dyn() {
             Ok(x) => {
                 let i = if x < 0 {
                     len.checked_add(x).ok_or(ValueError::IntegerOverflow)?
@@ -1355,9 +1329,8 @@ impl Value {
                 let def_end = if stride < 0 { -1 } else { len };
                 let clamp = if stride < 0 { -1 } else { 0 };
                 let start =
-                    ValueHolderDyn::convert_index_aux(len, start, def_start, clamp, len + clamp);
-                let stop =
-                    ValueHolderDyn::convert_index_aux(len, stop, def_end, clamp, len + clamp);
+                    TypedValueDyn::convert_index_aux(len, start, def_start, clamp, len + clamp);
+                let stop = TypedValueDyn::convert_index_aux(len, stop, def_end, clamp, len + clamp);
                 match (start, stop) {
                     (Ok(s1), Ok(s2)) => Ok((s1, s2, stride)),
                     (Err(x), ..) => Err(x),
@@ -1374,10 +1347,11 @@ impl Value {
     /// if contained object has different type than requested.
     ///
     /// This function panics if the `Value` is borrowed mutably.
-    pub fn downcast_ref<T: TypedValue>(&self) -> Option<RefOrRef<'_, T>> {
-        let any = self.value_holder().as_any_ref();
+    pub fn downcast_ref<T: TypedValue>(&self) -> Option<ObjectRef<T>> {
+        let object_ref = self.value_holder();
+        let any = ObjectRef::map(object_ref, |o| o.as_any_ref());
         if any.is::<T>() {
-            Some(RefOrRef::map(any, |any| any.downcast_ref().unwrap()))
+            Some(ObjectRef::map(any, |any| any.downcast_ref().unwrap()))
         } else {
             None
         }
@@ -1391,13 +1365,16 @@ impl Value {
     /// Error is returned if the value is frozen or frozen for iteration.
     pub fn downcast_mut<T: TypedValue<Holder = Mutable<T>>>(
         &self,
-    ) -> Result<Option<RefMut<'_, T>>, ValueError> {
-        let any = match self.value_holder().as_any_mut()? {
-            Some(any) => any,
-            None => return Ok(None),
+    ) -> Result<Option<ObjectRefMut<'_, T>>, ValueError> {
+        let object_ref = match self.try_value_holder_mut() {
+            Err(e @ ObjectBorrowMutError::Frozen)
+            | Err(e @ ObjectBorrowMutError::FrozenForIteration) => return Err(e.into()),
+            Err(e) => panic!("already borrowed: {:?}", e),
+            Ok(v) => v,
         };
+        let any = ObjectRefMut::map(object_ref, |o| o.as_any_mut());
         Ok(if any.is::<T>() {
-            Some(RefMut::map(any, |any| any.downcast_mut().unwrap()))
+            Some(ObjectRefMut::map(any, |any| any.downcast_mut().unwrap()))
         } else {
             None
         })
@@ -1410,6 +1387,7 @@ impl Value {
 
 // Submodules
 pub mod boolean;
+mod cell;
 pub mod dict;
 pub mod error;
 pub mod function;
@@ -1417,17 +1395,18 @@ pub mod hashed_value;
 pub mod int;
 pub mod iter;
 pub mod list;
-pub mod mutability;
 pub mod none;
 pub mod range;
 pub mod string;
 pub mod tuple;
 
-use crate::values::mutability::{
-    ImmutableCell, ImmutableMutability, MutabilityCell, MutableMutability, RefCellOrImmutable,
-    RefOrRef,
-};
+use crate::values::cell::error::ObjectBorrowError;
+use crate::values::cell::error::ObjectBorrowMutError;
+use crate::values::cell::ObjectCell;
+use crate::values::cell::ObjectRef;
+use crate::values::cell::ObjectRefMut;
 use crate::values::none::NoneType;
+use std::any::Any;
 
 #[cfg(test)]
 mod tests {

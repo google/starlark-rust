@@ -14,7 +14,7 @@
 
 //! Iterable for Starlark objects.
 
-use crate::values::mutability::RefOrRef;
+use crate::values::cell::ObjectRef;
 use crate::values::Value;
 
 /// Type to be implemented by types which are iterable.
@@ -30,11 +30,11 @@ pub trait TypedIterable: 'static {
 
 /// Iterable which contains borrowed reference to a sequence.
 pub struct RefIterable<'a> {
-    r: RefOrRef<'a, dyn TypedIterable>,
+    r: ObjectRef<'a, dyn TypedIterable>,
 }
 
 impl<'a> RefIterable<'a> {
-    pub fn new(r: RefOrRef<'a, dyn TypedIterable>) -> RefIterable<'a> {
+    pub fn new(r: ObjectRef<'a, dyn TypedIterable>) -> RefIterable<'a> {
         RefIterable { r }
     }
 
