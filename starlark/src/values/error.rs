@@ -23,7 +23,7 @@ use codemap_diagnostic::{Diagnostic, SpanLabel, SpanStyle};
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
 pub const NOT_SUPPORTED_ERROR_CODE: &str = "CV00";
-pub const IMMUTABLE_ERROR_CODE: &str = "CV01";
+pub const BORROW_MUT_ERROR_CODE: &str = "CV01";
 pub const INCORRECT_PARAMETER_TYPE_ERROR_CODE: &str = "CV02";
 pub const OUT_OF_BOUND_ERROR_CODE: &str = "CV03";
 pub const NOT_HASHABLE_VALUE_ERROR_CODE: &str = "CV04";
@@ -35,7 +35,7 @@ pub const INTERPOLATION_NOT_ENOUGH_PARAMS_ERROR_CODE: &str = "CV10";
 pub const INTERPOLATION_VALUE_IS_NOT_CHAR_ERROR_CODE: &str = "CV12";
 pub const TOO_MANY_RECURSION_LEVEL_ERROR_CODE: &str = "CV13";
 pub const UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE: &str = "CV14";
-pub const CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE: &str = "CV15";
+const __RESERVED_CV15: &str = "CV15";
 pub const INTEGER_OVERFLOW_ERROR_CODE: &str = "CV16";
 pub const INTERPOLATION_UNEXPECTED_EOF_CLOSING_PAREN: &str = "CV17";
 pub const INTERPOLATION_UNEXPECTED_EOF_PERCENT: &str = "CV18";
@@ -56,8 +56,6 @@ pub enum ValueError {
     DivisionByZero,
     /// Arithmetic operation results in integer overflow.
     IntegerOverflow,
-    /// Trying to modify an immutable value.
-    CannotMutateImmutableValue,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
     IncorrectParameterType,
     /// Trying to apply incorrect parameter type, e.g. for slicing.
@@ -74,12 +72,12 @@ pub enum ValueError {
     DiagnosedError(Diagnostic),
     /// String interpolation errors
     StringInterpolation(StringInterpolationError),
+    /// Operation required mutable value
+    ObjectBorrowMutError(ObjectBorrowMutError),
     /// Too many recursion in internal operation
     TooManyRecursionLevel,
     /// Recursive data structure are not allowed because they would allow infinite loop.
     UnsupportedRecursiveDataStructure,
-    /// It is not allowed to mutate a structure during iteration.
-    MutationDuringIteration,
     /// A type was used which isn't supported with the current feature set. Wraps the type name.
     TypeNotSupported(String),
 }
@@ -110,6 +108,12 @@ impl From<StringInterpolationError> for ValueError {
     }
 }
 
+impl From<ObjectBorrowMutError> for ValueError {
+    fn from(e: ObjectBorrowMutError) -> Self {
+        ValueError::ObjectBorrowMutError(e)
+    }
+}
+
 impl SyntaxError for ValueError {
     fn to_diagnostic(self, file_span: Span) -> Diagnostic {
         match self {
@@ -137,7 +141,7 @@ impl SyntaxError for ValueError {
                         } => format!("The type '{}' is not {}", object_type, op),
                         ValueError::DivisionByZero => "Division by zero".to_owned(),
                         ValueError::IntegerOverflow => "Integer overflow".to_owned(),
-                        ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
+                        ValueError::ObjectBorrowMutError(_) => "Cannot mutate value".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
                         }
@@ -150,9 +154,6 @@ impl SyntaxError for ValueError {
                         ValueError::TooManyRecursionLevel => "Too many recursion".to_owned(),
                         ValueError::UnsupportedRecursiveDataStructure => {
                             "Unsupported recursive data structure".to_owned()
-                        }
-                        ValueError::MutationDuringIteration => {
-                            "Cannot mutate an iterable while iterating".to_owned()
                         }
                         ValueError::TypeNotSupported(ref t) => {
                             format!("Attempt to construct unsupported type ({})", t)
@@ -183,7 +184,6 @@ impl SyntaxError for ValueError {
                         } => format!("The type '{}' is not {}", object_type, op),
                         ValueError::DivisionByZero => "Cannot divide by zero".to_owned(),
                         ValueError::IntegerOverflow => "Integer overflow".to_owned(),
-                        ValueError::CannotMutateImmutableValue => "Immutable".to_owned(),
                         ValueError::IncorrectParameterType => {
                             "Type of parameters mismatch".to_owned()
                         }
@@ -200,14 +200,12 @@ impl SyntaxError for ValueError {
                             "This operation create a recursive data structure. Recursive data",
                             "structure are disallowed because infinite loops are disallowed in Starlark."
                         ).to_owned(),
-                        ValueError::MutationDuringIteration => {
-                            "This operation mutate an iterable for an iterator is borrowed.".to_owned()
-                        }
                         ValueError::TypeNotSupported(ref t) => {
                             format!("Type `{}` is not supported. Perhaps you need to enable some crate feature?", t)
                         }
                         // handled above
                         ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => unreachable!(),
+                        ValueError::ObjectBorrowMutError(ref e) => format!("{}", e),
                     },
                     code: Some(
                         match self {
@@ -215,7 +213,7 @@ impl SyntaxError for ValueError {
                             ValueError::TypeNotX { .. } => NOT_SUPPORTED_ERROR_CODE,
                             ValueError::DivisionByZero => DIVISION_BY_ZERO_ERROR_CODE,
                             ValueError::IntegerOverflow => INTEGER_OVERFLOW_ERROR_CODE,
-                            ValueError::CannotMutateImmutableValue => IMMUTABLE_ERROR_CODE,
+                            ValueError::ObjectBorrowMutError(_) => BORROW_MUT_ERROR_CODE,
                             ValueError::IncorrectParameterType | ValueError::IncorrectParameterTypeNamed(..) => {
                                 INCORRECT_PARAMETER_TYPE_ERROR_CODE
                             }
@@ -228,9 +226,6 @@ impl SyntaxError for ValueError {
                             }
                             ValueError::UnsupportedRecursiveDataStructure => {
                                 UNSUPPORTED_RECURSIVE_DATA_STRUCTURE_ERROR_CODE
-                            }
-                            ValueError::MutationDuringIteration => {
-                                CANNOT_MUTATE_DURING_ITERATION_ERROR_CODE
                             }
                             // handled above
                             ValueError::DiagnosedError(..) | ValueError::StringInterpolation(..) => unreachable!(),
@@ -246,8 +241,8 @@ impl SyntaxError for ValueError {
 impl PartialEq for ValueError {
     fn eq(&self, other: &ValueError) -> bool {
         match (self, other) {
-            (&ValueError::CannotMutateImmutableValue, &ValueError::CannotMutateImmutableValue)
-            | (&ValueError::IncorrectParameterType, &ValueError::IncorrectParameterType) => true,
+            (ValueError::ObjectBorrowMutError(l), ValueError::ObjectBorrowMutError(r)) => l == r,
+            (&ValueError::IncorrectParameterType, &ValueError::IncorrectParameterType) => true,
             (
                 &ValueError::OperationNotSupported { op: ref x, .. },
                 &ValueError::OperationNotSupported { op: ref y, .. },

@@ -21,7 +21,7 @@ use std::fmt;
 use std::iter;
 
 /// Define the NoneType type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum NoneType {
     None,
 }
@@ -32,7 +32,7 @@ impl TypedValue for NoneType {
     const TYPE: &'static str = "NoneType";
 
     fn new_value(self) -> Value {
-        Value(ValueInner::None(ValueHolder::new(self)))
+        Value(ValueInner::None(self))
     }
 
     fn equals(&self, _other: &NoneType) -> Result<bool, ValueError> {

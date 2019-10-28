@@ -38,15 +38,13 @@ pub(crate) fn eval_one_dimensional_comprehension<
                 eval_one_dimensional_comprehension(expr, tl, context)
             }
             ClauseCompiled::For(ref var, ref iter) => {
-                let mut iterable = eval_expr(iter, context)?;
-                iterable.freeze_for_iteration();
+                let iterable = eval_expr(iter, context)?;
                 for item in &t(iterable.iter(), iter)? {
                     set_expr(var, context, item)?;
 
                     eval_one_dimensional_comprehension(expr, tl, context)?;
                 }
 
-                iterable.unfreeze_for_iteration();
                 Ok(())
             }
         }
