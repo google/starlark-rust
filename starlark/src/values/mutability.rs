@@ -18,6 +18,7 @@ use crate::values::ValueError;
 use std::cell::{BorrowError, Cell, Ref, RefCell, RefMut};
 use std::fmt;
 use std::ops::Deref;
+use std::usize;
 
 /// A helper enum for defining the level of mutability of an iterable.
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
@@ -145,7 +146,7 @@ pub trait MutabilityCell: fmt::Debug {
 #[derive(Debug, Clone)]
 pub struct ImmutableMutability;
 #[derive(Debug)]
-pub struct MutableMutability(Cell<IterableMutability>);
+pub struct MutableMutability(Cell<usize>);
 
 impl MutabilityCell for ImmutableMutability {
     fn get(&self) -> IterableMutability {
@@ -165,38 +166,75 @@ impl MutabilityCell for ImmutableMutability {
     }
 }
 
+/// Mutable object state
+#[derive(Copy, Clone)]
+enum MutableStateDecoded {
+    /// Completely frozen
+    Frozen,
+    /// Iterator freeze depth, 0 means object is mutable
+    IteratorDepth(usize),
+}
+
+impl MutableStateDecoded {
+    fn encode(&self) -> usize {
+        match self {
+            MutableStateDecoded::Frozen => usize::max_value(),
+            MutableStateDecoded::IteratorDepth(depth) => {
+                assert!(*depth != usize::max_value());
+                *depth
+            }
+        }
+    }
+
+    fn decode(state: usize) -> MutableStateDecoded {
+        if state == usize::max_value() {
+            MutableStateDecoded::Frozen
+        } else {
+            MutableStateDecoded::IteratorDepth(state)
+        }
+    }
+}
+
 impl MutabilityCell for MutableMutability {
     fn get(&self) -> IterableMutability {
-        self.0.get()
+        match MutableStateDecoded::decode(self.0.get()) {
+            MutableStateDecoded::Frozen => IterableMutability::Immutable,
+            MutableStateDecoded::IteratorDepth(0) => IterableMutability::Mutable,
+            MutableStateDecoded::IteratorDepth(_) => IterableMutability::FrozenForIteration,
+        }
     }
 
     fn freeze(&self) {
-        match self.0.get() {
-            IterableMutability::FrozenForIteration => panic!("attempt to freeze during iteration"),
-            IterableMutability::Immutable => {}
-            IterableMutability::Mutable => self.0.set(IterableMutability::Immutable),
+        match MutableStateDecoded::decode(self.0.get()) {
+            MutableStateDecoded::Frozen => {}
+            MutableStateDecoded::IteratorDepth(0) => {
+                self.0.set(MutableStateDecoded::Frozen.encode())
+            }
+            MutableStateDecoded::IteratorDepth(_) => panic!("attempt to freeze during iteration"),
         }
     }
 
     /// Freezes the current value for iterating over.
     fn freeze_for_iteration(&self) {
-        match self.0.get() {
-            IterableMutability::Immutable => {}
-            IterableMutability::FrozenForIteration => panic!("already frozen"),
-            IterableMutability::Mutable => self.0.set(IterableMutability::FrozenForIteration),
+        match MutableStateDecoded::decode(self.0.get()) {
+            MutableStateDecoded::Frozen => {}
+            MutableStateDecoded::IteratorDepth(n) => self
+                .0
+                .set(MutableStateDecoded::IteratorDepth(n + 1).encode()),
         }
     }
 
     /// Unfreezes the current value for iterating over.
     fn unfreeze_for_iteration(&self) {
-        match self.0.get() {
-            IterableMutability::Immutable => {}
-            IterableMutability::FrozenForIteration => self.0.set(IterableMutability::Mutable),
-            IterableMutability::Mutable => panic!("not frozen"),
+        match MutableStateDecoded::decode(self.0.get()) {
+            MutableStateDecoded::Frozen => {}
+            MutableStateDecoded::IteratorDepth(n) => self
+                .0
+                .set(MutableStateDecoded::IteratorDepth(n.checked_sub(1).unwrap()).encode()),
         }
     }
 
     fn new() -> Self {
-        MutableMutability(Cell::new(IterableMutability::Mutable))
+        MutableMutability(Cell::new(MutableStateDecoded::IteratorDepth(0).encode()))
     }
 }
