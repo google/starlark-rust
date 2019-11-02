@@ -23,11 +23,11 @@ use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstAssignTargetExpr;
 use crate::syntax::ast::AstAugmentedAssignTargetExpr;
 use crate::syntax::ast::AstExpr;
-use crate::syntax::ast::AstInt;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::Expr;
+use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
 
@@ -85,9 +85,7 @@ pub(crate) enum ExprCompiled {
         Option<AstExprCompiled>,
     ),
     Name(AstGlobalOrSlot),
-    // local variable index
-    IntLiteral(AstInt),
-    StringLiteral(AstString),
+    Value(Value),
     Not(AstExprCompiled),
     Minus(AstExprCompiled),
     Plus(AstExprCompiled),
@@ -166,8 +164,8 @@ impl ExprCompiled {
                     b.map(|e| Self::compile(e, compiler)).transpose()?,
                     c.map(|e| Self::compile(e, compiler)).transpose()?,
                 ),
-                Expr::IntLiteral(i) => ExprCompiled::IntLiteral(i),
-                Expr::StringLiteral(s) => ExprCompiled::StringLiteral(s),
+                Expr::IntLiteral(i) => ExprCompiled::Value(Value::from(i.node)),
+                Expr::StringLiteral(s) => ExprCompiled::Value(Value::from(s.node)),
                 Expr::Not(e) => ExprCompiled::Not(Self::compile(e, compiler)?),
                 Expr::Plus(e) => ExprCompiled::Plus(Self::compile(e, compiler)?),
                 Expr::Minus(e) => ExprCompiled::Minus(Self::compile(e, compiler)?),
