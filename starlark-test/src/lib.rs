@@ -20,14 +20,22 @@
 extern crate test;
 
 use codemap::CodeMap;
-use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use codemap_diagnostic::ColorConfig;
+use codemap_diagnostic::Diagnostic;
+use codemap_diagnostic::Emitter;
+use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
+use starlark::environment::Environment;
 use starlark::environment::TypeValues;
 use starlark::eval::call_stack::CallStack;
-use starlark::eval::simple::eval;
+use starlark::eval::eval;
+use starlark::eval::noload;
+use starlark::eval::EvalException;
+use starlark::eval::FileLoader;
 use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::error::ValueError;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Write};
@@ -67,12 +75,74 @@ fn assert_diagnostic(
     }
 }
 
+#[derive(Default)]
+struct ParsedTest {
+    error: Option<(usize, String)>,
+    files: HashMap<String, String>,
+}
+
+fn parse_test(content: &str) -> ParsedTest {
+    let mut r = ParsedTest::default();
+    let mut current_file = "main.sky".to_owned();
+    for (i, line) in content.lines().enumerate() {
+        let file_prefix = "# file: ";
+        if line.starts_with(file_prefix) {
+            current_file = line[file_prefix.len()..].to_owned();
+        } else {
+            r.files
+                .entry(current_file.clone())
+                .or_default()
+                .push_str(&format!("{}\n", line));
+
+            if let Some(x) = line.find("###") {
+                assert!(r.error.is_none(), "test may contain at most one error");
+                r.error = Some((i + 1, line.get(x + 3..).unwrap().trim().to_owned()))
+            }
+        }
+    }
+    r
+}
+
+#[derive(Clone)]
+struct HashMapFileLoader {
+    parent: Environment,
+    files: HashMap<String, String>,
+    map: Arc<Mutex<CodeMap>>,
+}
+
+impl FileLoader for HashMapFileLoader {
+    fn load(&self, path: &str) -> Result<Environment, EvalException> {
+        let mut env = self.parent.child(path);
+        let content = match self.files.get(path) {
+            Some(content) => content,
+            None => {
+                return Err(EvalException::DiagnosedError(Diagnostic {
+                    level: Level::Bug,
+                    message: format!("file not found"),
+                    code: None,
+                    spans: Vec::new(),
+                }))
+            }
+        };
+        eval(
+            &self.map,
+            path,
+            content,
+            Dialect::Bzl,
+            &mut env,
+            TypeValues::new(self.parent.clone()),
+            self.clone(),
+        )?;
+        Ok(env)
+    }
+}
+
 pub fn do_conformance_test(path: &str, content: &str) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
     let global = global_environment_with_extensions();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
-    eval(
+    noload::eval(
         &map,
         "PRELUDE",
         r#"
@@ -86,42 +156,34 @@ def assert_(cond, msg="assertion failed"):
 "#,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
-        global.clone(),
+        TypeValues::new(global.clone()),
     )
     .unwrap();
     prelude.freeze();
 
-    let errors: Vec<_> = content
-        .lines()
-        .enumerate()
-        .filter_map(|(i, line)| {
-            if let Some(x) = line.find("###") {
-                Some((i + 1, line.get(x + 3..).unwrap().trim()))
-            } else {
-                None
-            }
-        })
-        .collect();
+    let test = parse_test(content);
 
-    assert!(errors.len() <= 1, "test may contain at most one error");
-
-    let err = if errors.is_empty() {
-        None
-    } else {
-        Some(errors[0])
-    };
+    let build = test.files.get("main.sky").expect(&format!(
+        "test must contain main.sky file: {:?}",
+        test.files.keys().collect::<Vec<_>>()
+    ));
 
     match eval(
         &map,
         path,
-        &content,
+        build,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude.child(path),
-        global.clone(),
+        TypeValues::new(global.clone()),
+        HashMapFileLoader {
+            parent: prelude.clone(),
+            files: test.files.clone(),
+            map: map.clone(),
+        },
     ) {
-        Err(p) => match err {
+        Err(p) => match &test.error {
             Some((offset, err)) => {
-                if !assert_diagnostic(p, err, "test", offset, &map) {
+                if !assert_diagnostic(p, err, "test", *offset, &map) {
                     panic!();
                 }
             }
@@ -131,7 +193,7 @@ def assert_(cond, msg="assertion failed"):
             }
         },
         _ => {
-            if let Some((offset, err)) = err {
+            if let Some((offset, err)) = test.error {
                 io::stderr()
                     .write_all(
                         &format!(
@@ -172,7 +234,7 @@ pub fn do_bench(bencher: &mut Bencher, path: &str) {
     let global = global_environment_with_extensions();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
-    eval(
+    noload::eval(
         &map,
         "PRELUDE",
         r#"
@@ -186,13 +248,20 @@ def assert_(cond, msg="assertion failed"):
 "#,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
-        global.clone(),
+        TypeValues::new(global.clone()),
     )
     .unwrap();
     prelude.freeze();
 
     let mut env = prelude.child("run");
-    match eval(&map, path, &content, Dialect::Bzl, &mut env, global) {
+    match noload::eval(
+        &map,
+        path,
+        &content,
+        Dialect::Bzl,
+        &mut env,
+        TypeValues::new(global),
+    ) {
         Ok(_) => (),
         Err(p) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
