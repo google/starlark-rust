@@ -277,13 +277,13 @@ IfTest: AstExpr = {
 // Binary operators
 OrTest: AstExpr = {
     <l:@L> <e1:AndTest> "or" <e2:OrTest> <r:@R>
-        => Expr::Op(BinOp::Or, e1, e2).to_ast(file_span.subspan(l, r)),
+        => Expr::Or(e1, e2).to_ast(file_span.subspan(l, r)),
     AndTest,
 };
 
 AndTest: AstExpr =  {
     <l:@L> <e1:NotTest> "and" <e2:AndTest> <r:@R>
-        => Expr::Op(BinOp::And, e1, e2).to_ast(file_span.subspan(l, r)),
+        => Expr::And(e1, e2).to_ast(file_span.subspan(l, r)),
     NotTest,
 };
 

@@ -36,6 +36,7 @@ use crate::eval::module::Module;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
+use crate::syntax::ast::BinOp;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -338,37 +339,44 @@ pub(crate) struct EvaluationContext<'a> {
     map: Arc<Mutex<CodeMap>>,
 }
 
-fn eval_compare<F>(
-    this: &AstExprCompiled,
-    left: &AstExprCompiled,
-    right: &AstExprCompiled,
-    cmp: F,
+fn eval_bin_op(
+    expr: &AstExprCompiled,
+    op: BinOp,
+    l: &AstExprCompiled,
+    r: &AstExprCompiled,
     context: &mut EvaluationContext,
-) -> EvalResult
-where
-    F: Fn(Ordering) -> bool,
-{
-    let l = eval_expr(left, context)?;
-    let r = eval_expr(right, context)?;
-    Ok(Value::new(cmp(t(l.compare(&r), this)?)))
-}
+) -> EvalResult {
+    let l = eval_expr(l, context)?;
+    let r = eval_expr(r, context)?;
 
-fn eval_equals<F>(
-    this: &AstExprCompiled,
-    left: &AstExprCompiled,
-    right: &AstExprCompiled,
-    cmp: F,
-    context: &mut EvaluationContext,
-) -> EvalResult
-where
-    F: Fn(bool) -> bool,
-{
-    let l = eval_expr(left, context)?;
-    let r = eval_expr(right, context)?;
-    Ok(Value::new(cmp(t(
-        l.equals(&r).map_err(Into::<ValueError>::into),
-        this,
-    )?)))
+    t(
+        match op {
+            BinOp::EqualsTo => l.equals(&r).map(Value::new),
+            BinOp::Different => l.equals(&r).map(|b| Value::new(!b)),
+            BinOp::LowerThan => l.compare(&r).map(|c| Value::new(c == Ordering::Less)),
+            BinOp::GreaterThan => l.compare(&r).map(|c| Value::new(c == Ordering::Greater)),
+            BinOp::LowerOrEqual => l.compare(&r).map(|c| Value::new(c != Ordering::Greater)),
+            BinOp::GreaterOrEqual => l.compare(&r).map(|c| Value::new(c != Ordering::Less)),
+            BinOp::In => r.is_in(&l).map(Value::new),
+            BinOp::NotIn => r.is_in(&l).map(|r| Value::new(!r)),
+            BinOp::Substraction => l.sub(r),
+            BinOp::Addition => l.add(r),
+            BinOp::Multiplication => l.mul(r),
+            BinOp::Percent => l.percent(r),
+            BinOp::Division => {
+                // No types currently support / so always error.
+                let err = ValueError::OperationNotSupported {
+                    op: "/".to_string(),
+                    left: l.get_type().to_string(),
+                    right: Some(r.get_type().to_string()),
+                };
+                return Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)));
+            }
+            BinOp::FloorDivision => l.floor_div(r),
+            BinOp::Pipe => l.pipe(r),
+        },
+        expr,
+    )
 }
 
 fn eval_slice<'a>(
@@ -588,7 +596,7 @@ fn eval_expr(expr: &AstExprCompiled, context: &mut EvaluationContext) -> EvalRes
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
         ExprCompiled::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
         ExprCompiled::Plus(ref s) => t(eval_expr(s, context)?.plus(), expr),
-        ExprCompiled::Op(BinOp::Or, ref l, ref r) => {
+        ExprCompiled::Or(ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if l.to_bool() {
                 l
@@ -596,7 +604,7 @@ fn eval_expr(expr: &AstExprCompiled, context: &mut EvaluationContext) -> EvalRes
                 eval_expr(r, context)?
             })
         }
-        ExprCompiled::Op(BinOp::And, ref l, ref r) => {
+        ExprCompiled::And(ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if !l.to_bool() {
                 l
@@ -604,64 +612,7 @@ fn eval_expr(expr: &AstExprCompiled, context: &mut EvaluationContext) -> EvalRes
                 eval_expr(r, context)?
             })
         }
-        ExprCompiled::Op(BinOp::EqualsTo, ref l, ref r) => eval_equals(expr, l, r, |x| x, context),
-        ExprCompiled::Op(BinOp::Different, ref l, ref r) => {
-            eval_equals(expr, l, r, |x| !x, context)
-        }
-        ExprCompiled::Op(BinOp::LowerThan, ref l, ref r) => {
-            eval_compare(expr, l, r, |x| x == Ordering::Less, context)
-        }
-        ExprCompiled::Op(BinOp::GreaterThan, ref l, ref r) => {
-            eval_compare(expr, l, r, |x| x == Ordering::Greater, context)
-        }
-        ExprCompiled::Op(BinOp::LowerOrEqual, ref l, ref r) => {
-            eval_compare(expr, l, r, |x| x != Ordering::Greater, context)
-        }
-        ExprCompiled::Op(BinOp::GreaterOrEqual, ref l, ref r) => {
-            eval_compare(expr, l, r, |x| x != Ordering::Less, context)
-        }
-        ExprCompiled::Op(BinOp::In, ref l, ref r) => t(
-            eval_expr(r, context)?
-                .is_in(&eval_expr(l, context)?)
-                .map(Value::new),
-            expr,
-        ),
-        ExprCompiled::Op(BinOp::NotIn, ref l, ref r) => t(
-            eval_expr(r, context)?
-                .is_in(&eval_expr(l, context)?)
-                .map(|r| Value::new(!r)),
-            expr,
-        ),
-        ExprCompiled::Op(BinOp::Substraction, ref l, ref r) => {
-            t(eval_expr(l, context)?.sub(eval_expr(r, context)?), expr)
-        }
-        ExprCompiled::Op(BinOp::Addition, ref l, ref r) => {
-            t(eval_expr(l, context)?.add(eval_expr(r, context)?), expr)
-        }
-        ExprCompiled::Op(BinOp::Multiplication, ref l, ref r) => {
-            t(eval_expr(l, context)?.mul(eval_expr(r, context)?), expr)
-        }
-        ExprCompiled::Op(BinOp::Percent, ref l, ref r) => {
-            t(eval_expr(l, context)?.percent(eval_expr(r, context)?), expr)
-        }
-        ExprCompiled::Op(BinOp::Division, ref l, ref r) => {
-            let l = eval_expr(l, context)?;
-            let r = eval_expr(r, context)?;
-            // No types currently support / so always error.
-            let err = ValueError::OperationNotSupported {
-                op: "/".to_string(),
-                left: l.get_type().to_string(),
-                right: Some(r.get_type().to_string()),
-            };
-            Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)))
-        }
-        ExprCompiled::Op(BinOp::FloorDivision, ref l, ref r) => t(
-            eval_expr(l, context)?.floor_div(eval_expr(r, context)?),
-            expr,
-        ),
-        ExprCompiled::Op(BinOp::Pipe, ref l, ref r) => {
-            t(eval_expr(l, context)?.pipe(eval_expr(r, context)?), expr)
-        }
+        ExprCompiled::Op(op, ref l, ref r) => eval_bin_op(expr, op, l, r, context),
         ExprCompiled::If(ref cond, ref v1, ref v2) => {
             if eval_expr(cond, context)?.to_bool() {
                 eval_expr(v1, context)
