@@ -135,6 +135,8 @@ pub enum Expr {
     Not(AstExpr),
     Minus(AstExpr),
     Plus(AstExpr),
+    And(AstExpr, AstExpr),
+    Or(AstExpr, AstExpr),
     Op(BinOp, AstExpr, AstExpr),
     If(AstExpr, AstExpr, AstExpr), // Order: condition, v1, v2 <=> v1 if condition else v2
     List(Vec<AstExpr>),
@@ -292,7 +294,9 @@ impl Expr {
             Expr::Not(ref expr) | Expr::Plus(ref expr) | Expr::Minus(ref expr) => {
                 Expr::collect_locals(expr, locals_builder);
             }
-            Expr::Op(_op, ref lhs, ref rhs) => {
+            Expr::Op(_, ref lhs, ref rhs)
+            | Expr::And(ref lhs, ref rhs)
+            | Expr::Or(ref lhs, ref rhs) => {
                 Expr::collect_locals(lhs, locals_builder);
                 Expr::collect_locals(rhs, locals_builder);
             }
@@ -451,8 +455,6 @@ to_ast_trait!(Clause, AstClause);
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub enum BinOp {
-    Or,
-    And,
     EqualsTo,
     Different,
     LowerThan,
@@ -692,8 +694,6 @@ impl Statement {
 impl Display for BinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
-            BinOp::Or => f.write_str(" or "),
-            BinOp::And => f.write_str(" and "),
             BinOp::EqualsTo => f.write_str(" == "),
             BinOp::Different => f.write_str(" != "),
             BinOp::LowerThan => f.write_str(" < "),
@@ -823,6 +823,8 @@ impl Display for Expr {
             Expr::Not(ref e) => write!(f, "(not {})", e.node),
             Expr::Minus(ref e) => write!(f, "-{}", e.node),
             Expr::Plus(ref e) => write!(f, "+{}", e.node),
+            Expr::And(ref l, ref r) => write!(f, "({} and {})", l.node, r.node),
+            Expr::Or(ref l, ref r) => write!(f, "({} or {})", l.node, r.node),
             Expr::Op(ref op, ref l, ref r) => write!(f, "({}{}{})", l.node, op, r.node),
             Expr::If(ref cond, ref v1, ref v2) => {
                 write!(f, "({} if {} else {})", v1.node, cond.node, v2.node)

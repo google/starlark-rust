@@ -89,6 +89,8 @@ pub(crate) enum ExprCompiled {
     Not(AstExprCompiled),
     Minus(AstExprCompiled),
     Plus(AstExprCompiled),
+    And(AstExprCompiled, AstExprCompiled),
+    Or(AstExprCompiled, AstExprCompiled),
     Op(BinOp, AstExprCompiled, AstExprCompiled),
     If(AstExprCompiled, AstExprCompiled, AstExprCompiled), // Order: condition, v1, v2 <=> v1 if condition else v2
     List(Vec<AstExprCompiled>),
@@ -169,6 +171,12 @@ impl ExprCompiled {
                 Expr::Not(e) => ExprCompiled::Not(Self::compile(e, compiler)?),
                 Expr::Plus(e) => ExprCompiled::Plus(Self::compile(e, compiler)?),
                 Expr::Minus(e) => ExprCompiled::Minus(Self::compile(e, compiler)?),
+                Expr::And(lhs, rhs) => {
+                    ExprCompiled::And(Self::compile(lhs, compiler)?, Self::compile(rhs, compiler)?)
+                }
+                Expr::Or(lhs, rhs) => {
+                    ExprCompiled::Or(Self::compile(lhs, compiler)?, Self::compile(rhs, compiler)?)
+                }
                 Expr::Op(op, lhs, rhs) => ExprCompiled::Op(
                     op,
                     Self::compile(lhs, compiler)?,
