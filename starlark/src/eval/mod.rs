@@ -329,30 +329,13 @@ impl<'a> EvaluationContextEnvironment<'a> {
 
 /// A structure holding all the data about the evaluation context
 /// (scope, load statement resolver, ...)
-pub struct EvaluationContext<'a> {
+pub(crate) struct EvaluationContext<'a> {
     // Locals and captured context.
     env: EvaluationContextEnvironment<'a>,
     // Globals used to resolve type values, provided by the caller.
     type_values: TypeValues,
     call_stack: &'a mut CallStack,
     map: Arc<Mutex<CodeMap>>,
-}
-
-impl<'a> EvaluationContext<'a> {
-    fn new<T: FileLoader>(
-        env: Environment,
-        type_values: TypeValues,
-        call_stack: &'a mut CallStack,
-        loader: T,
-        map: Arc<Mutex<CodeMap>>,
-    ) -> Self {
-        EvaluationContext {
-            call_stack,
-            env: EvaluationContextEnvironment::Module(env, Rc::new(loader)),
-            type_values,
-            map,
-        }
-    }
 }
 
 fn eval_compare<F>(
@@ -920,8 +903,21 @@ fn eval_block(block: &BlockCompiled, context: &mut EvaluationContext) -> EvalRes
     Ok(r)
 }
 
-fn eval_module(module: &Module, context: &mut EvaluationContext) -> EvalResult {
-    eval_block(&module.0, context)
+fn eval_module(
+    module: &Module,
+    env: &mut Environment,
+    type_values: TypeValues,
+    map: Arc<Mutex<CodeMap>>,
+    file_loader: Rc<dyn FileLoader>,
+) -> EvalResult {
+    let mut call_stack = CallStack::default();
+    let mut context = EvaluationContext {
+        env: EvaluationContextEnvironment::Module(env.clone(), file_loader),
+        type_values,
+        call_stack: &mut call_stack,
+        map,
+    };
+    eval_block(&module.0, &mut context)
 }
 
 /// Evaluate a content provided by a custom Lexer, mutate the environment accordingly and return
@@ -950,17 +946,12 @@ pub fn eval_lexer<
     type_values: TypeValues,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
-    let mut call_stack = CallStack::default();
-    let mut context = EvaluationContext::new(
-        env.clone(),
-        type_values,
-        &mut call_stack,
-        file_loader,
-        map.clone(),
-    );
     match eval_module(
         &parse_lexer(map, filename, content, dialect, lexer)?,
-        &mut context,
+        env,
+        type_values,
+        map.clone(),
+        Rc::new(file_loader),
     ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -988,15 +979,13 @@ pub fn eval<T: FileLoader + 'static>(
     type_values: TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut call_stack = CallStack::default();
-    let mut context = EvaluationContext::new(
-        env.clone(),
+    match eval_module(
+        &parse(map, path, content, build)?,
+        env,
         type_values,
-        &mut call_stack,
-        file_loader,
         map.clone(),
-    );
-    match eval_module(&parse(map, path, content, build)?, &mut context) {
+        Rc::new(file_loader),
+    ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
@@ -1021,15 +1010,13 @@ pub fn eval_file<T: FileLoader + 'static>(
     type_values: TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
-    let mut call_stack = CallStack::default();
-    let mut context = EvaluationContext::new(
-        env.clone(),
+    match eval_module(
+        &parse_file(map, path, build)?,
+        env,
         type_values,
-        &mut call_stack,
-        file_loader,
         map.clone(),
-    );
-    match eval_module(&parse_file(map, path, build)?, &mut context) {
+        Rc::new(file_loader),
+    ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
     }
