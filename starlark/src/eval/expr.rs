@@ -20,6 +20,7 @@ use crate::eval::compiler::LocalOrGlobalCompiler;
 use crate::eval::globals::Globals;
 use crate::eval::locals::Locals;
 use crate::eval::locals::LocalsQuery;
+use crate::stdlib::structs::StarlarkStruct;
 use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstAssignTargetExpr;
 use crate::syntax::ast::AstAugmentedAssignTargetExpr;
@@ -28,9 +29,11 @@ use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::Expr;
+use crate::values::inspect::Inspectable;
 use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
+use linked_hash_map::LinkedHashMap;
 
 /// After syntax check each variable is resolved to either global or slot
 #[derive(Debug, Clone)]
@@ -76,6 +79,16 @@ pub(crate) struct ExprLocal {
     pub globals: Globals,
 }
 
+impl Inspectable for ExprLocal {
+    fn inspect(&self) -> Value {
+        let mut fields = LinkedHashMap::<String, Value>::new();
+        fields.insert("expr".into(), self.expr.inspect());
+        fields.insert("locals".into(), self.locals.inspect());
+        fields.insert("globals".into(), self.globals.inspect());
+        Value::new(StarlarkStruct::new(fields))
+    }
+}
+
 /// Interperter-ready version of [`Expr`](crate::syntax::ast::Expr)
 #[derive(Debug, Clone)]
 pub(crate) enum ExprCompiled {
@@ -117,6 +130,13 @@ pub(crate) enum ExprCompiled {
 
 #[doc(hidden)]
 pub(crate) type AstExprCompiled = Box<Spanned<ExprCompiled>>;
+
+impl GlobalOrSlot {
+    pub fn inspect(&self) -> Value {
+        let GlobalOrSlot { name, local, slot } = self;
+        Value::from((name.clone(), if *local { "local" } else { "global" }, *slot))
+    }
+}
 
 impl ExprCompiled {
     pub(crate) fn compile<C: LocalOrGlobalCompiler>(
@@ -226,6 +246,48 @@ impl ExprCompiled {
     }
 }
 
+impl Inspectable for ExprCompiled {
+    fn inspect(&self) -> Value {
+        let (name, param): (&str, Value) = match &self {
+            ExprCompiled::Dot(object, field) => ("dot", (object.inspect(), field.inspect()).into()),
+            ExprCompiled::ArrayIndirection(array, index) => (
+                "array_indirection",
+                (array.inspect(), index.inspect()).into(),
+            ),
+            ExprCompiled::Call(expr, args, kwargs, star, star_star) => {
+                ("call", (expr, args, kwargs, star, star_star).inspect())
+            }
+            ExprCompiled::Slice(array, a, b, c) => ("slice", (array, a, b, c).inspect()),
+            ExprCompiled::Name(n) => ("name", n.node.inspect()),
+            ExprCompiled::Value(v) => ("value", v.clone()),
+            ExprCompiled::Not(e) => ("not", e.inspect()),
+            ExprCompiled::Minus(e) => ("minus", e.inspect()),
+            ExprCompiled::Plus(e) => ("plus", e.inspect()),
+            ExprCompiled::And(l, r) => ("and", (l, r).inspect()),
+            ExprCompiled::Or(l, r) => ("or", (l, r).inspect()),
+            ExprCompiled::Op(op, l, r) => ("op", (format!("{:?}", op), l, r).inspect()),
+            ExprCompiled::If(cond, then_expr, else_expr) => {
+                ("if", (cond, then_expr, else_expr).inspect())
+            }
+            ExprCompiled::List(e) => ("list", e.inspect()),
+            ExprCompiled::Tuple(e) => ("tuple", e.inspect()),
+            ExprCompiled::Set(e) => ("set", e.inspect()),
+            ExprCompiled::Dict(d) => ("dict", d.inspect()),
+            ExprCompiled::ListComprehension(expr, clauses) => {
+                ("list_comprehension", (expr, clauses).inspect())
+            }
+            ExprCompiled::DictComprehension(expr, clauses) => {
+                ("dict_comprehension", (expr, clauses).inspect())
+            }
+            ExprCompiled::SetComprehension(expr, clauses) => {
+                ("set_comprehension", (expr, clauses).inspect())
+            }
+            ExprCompiled::Local(e) => ("local", e.inspect()),
+        };
+        Value::from((Value::from(name), param))
+    }
+}
+
 impl AssignTargetExprCompiled {
     pub(crate) fn compile<C: LocalOrGlobalCompiler>(
         expr: AstAssignTargetExpr,
@@ -285,5 +347,44 @@ impl AugmentedAssignTargetExprCompiled {
                 }
             },
         })
+    }
+}
+
+impl Inspectable for AssignTargetExprCompiled {
+    fn inspect(&self) -> Value {
+        let (name, param): (&str, Value) = match self {
+            AssignTargetExprCompiled::Dot(object, field) => ("dot", (object, field).inspect()),
+            AssignTargetExprCompiled::ArrayIndirection(array, index) => {
+                ("array_indirection", (array, index).inspect())
+            }
+            AssignTargetExprCompiled::Name(name) => ("name", name.node.inspect()),
+            AssignTargetExprCompiled::Subtargets(st) => ("subtargets", st.inspect()),
+        };
+        Value::from((name, param))
+    }
+}
+
+impl Inspectable for AugmentedAssignTargetExprCompiled {
+    fn inspect(&self) -> Value {
+        let (name, param): (&str, Value) = match self {
+            AugmentedAssignTargetExprCompiled::Slot(slot, name) => ("slot", (slot, name).inspect()),
+            AugmentedAssignTargetExprCompiled::ArrayIndirection(array, index) => {
+                ("array_indirection", (array, index).inspect())
+            }
+            AugmentedAssignTargetExprCompiled::Dot(object, field) => {
+                ("dot", (object, field).inspect())
+            }
+        };
+        Value::from((name, param))
+    }
+}
+
+impl Inspectable for ClauseCompiled {
+    fn inspect(&self) -> Value {
+        let (name, param): (&str, Value) = match self {
+            ClauseCompiled::If(cond) => ("if", cond.inspect()),
+            ClauseCompiled::For(var, over) => ("for", (var, over).inspect()),
+        };
+        Value::from((name, param))
     }
 }

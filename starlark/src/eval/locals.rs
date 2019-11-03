@@ -15,6 +15,11 @@
 //! Utilities to work with scope local variables.
 
 use crate::eval::globals::Globals;
+use crate::stdlib::structs::StarlarkStruct;
+use crate::values::dict::Dictionary;
+use crate::values::inspect::Inspectable;
+use crate::values::Value;
+use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map;
 use std::collections::HashMap;
 
@@ -70,6 +75,22 @@ impl Scope {
     }
 }
 
+impl Inspectable for Scope {
+    fn inspect(&self) -> Value {
+        let mut fields = LinkedHashMap::<String, Value>::new();
+
+        let mut name_to_slot = Dictionary::new_typed();
+        for (n, s) in &self.name_to_slot {
+            name_to_slot.insert(n.as_str().into(), (*s).into()).unwrap();
+        }
+        fields.insert("name_to_slot".into(), Value::new(name_to_slot));
+
+        fields.insert("nested_scopes".into(), self.nested_scopes.inspect());
+
+        Value::new(StarlarkStruct::new(fields))
+    }
+}
+
 impl Locals {
     /// Return the number of local variable slots
     pub fn len(&self) -> usize {
@@ -78,6 +99,15 @@ impl Locals {
 
     pub fn top_level_name_to_slot(&self, name: &str) -> Option<usize> {
         self.locals.local_index(name, &[])
+    }
+}
+
+impl Inspectable for Locals {
+    fn inspect(&self) -> Value {
+        let mut fields = LinkedHashMap::<String, Value>::new();
+        fields.insert("count".into(), (self.local_count as i64).into());
+        fields.insert("locals".into(), self.locals.inspect());
+        Value::new(StarlarkStruct::new(fields))
     }
 }
 

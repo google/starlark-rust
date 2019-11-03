@@ -44,6 +44,7 @@ const USER_FAILURE_ERROR_CODE: &str = "CR99";
 #[macro_use]
 pub mod macros;
 pub mod dict;
+mod inspect;
 pub mod list;
 pub mod string;
 pub mod structs;
@@ -966,12 +967,20 @@ pub fn global_environment_with_extensions() -> (Environment, TypeValues) {
     (env, type_values)
 }
 
+/// Default global environment with functions usable in test and REPL.
+pub fn global_environment_for_repl_and_tests() -> (Environment, TypeValues) {
+    let (mut env, mut type_values) = global_environment_with_extensions();
+    // TODO: do not add to global context
+    inspect::global(&mut env, &mut type_values);
+    (env, type_values)
+}
+
 /// Execute a starlark snippet with the default environment for test and return the truth value
 /// of the last statement. Used for tests and documentation tests.
 #[doc(hidden)]
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    let (env, type_values) = global_environment_with_extensions();
+    let (env, type_values) = global_environment_for_repl_and_tests();
     let mut test_env = env.freeze().child("test");
     match eval(
         &map,

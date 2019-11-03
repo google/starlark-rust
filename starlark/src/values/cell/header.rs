@@ -138,6 +138,7 @@ static IMMUTABLE_FROZEN_OBJECT_HEADER: ObjectHeaderInStaticField =
         state: Cell::new(IMMUTABLE_FLAG | FROZEN_FLAG),
     });
 
+#[derive(Clone)]
 pub(crate) struct ObjectHeader {
     state: Cell<usize>,
 }
@@ -252,6 +253,12 @@ impl ObjectHeader {
                 self.set_decoded(ObjectState::Borrowed(0, false));
             }
         }
+    }
+}
+
+impl fmt::Debug for ObjectHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.get_decoded(), f)
     }
 }
 

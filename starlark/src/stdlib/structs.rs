@@ -25,6 +25,12 @@ pub struct StarlarkStruct {
     fields: LinkedHashMap<String, Value>,
 }
 
+impl StarlarkStruct {
+    pub(crate) fn new(fields: LinkedHashMap<String, Value>) -> StarlarkStruct {
+        StarlarkStruct { fields }
+    }
+}
+
 impl TypedValue for StarlarkStruct {
     type Holder = Immutable<StarlarkStruct>;
 
@@ -109,8 +115,6 @@ starlark_module! { global =>
     /// # )").unwrap());
     /// ```
     struct_(**kwargs) {
-        Ok(Value::new(StarlarkStruct {
-            fields: kwargs
-        }))
+        Ok(Value::new(StarlarkStruct::new(kwargs)))
     }
 }

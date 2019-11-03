@@ -20,7 +20,7 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use starlark::eval::interactive::{eval, eval_file, EvalError};
 use starlark::eval::module::Module;
-use starlark::stdlib::global_environment_with_extensions;
+use starlark::stdlib::global_environment_for_repl_and_tests;
 use starlark::syntax::dialect::Dialect;
 use starlark::syntax::parser::{parse, parse_file};
 use starlark::values::Value;
@@ -77,7 +77,7 @@ fn main() {
     let command = opt.command;
     let ast = opt.ast;
 
-    let (mut global, mut type_values) = global_environment_with_extensions();
+    let (mut global, mut type_values) = global_environment_for_repl_and_tests();
 
     print_function(&mut global, &mut type_values);
     global.freeze();

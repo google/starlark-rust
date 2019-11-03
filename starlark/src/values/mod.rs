@@ -90,6 +90,8 @@ use crate::values::error::ValueError;
 use crate::values::iter::{FakeTypedIterable, RefIterable, TypedIterable};
 use codemap_diagnostic::Level;
 use linked_hash_map::LinkedHashMap;
+use std::any::type_name;
+use std::any::Any;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Write as _;
@@ -194,6 +196,29 @@ impl Value {
     pub fn function_id(&self) -> FunctionId {
         self.value_holder().function_id_dyn()
     }
+
+    pub(crate) fn inspect(&self) -> StarlarkStruct {
+        let header = match &self.0 {
+            ValueInner::Bool(..) | ValueInner::Int(..) | ValueInner::None(..) => {
+                format!("{:?}", ObjectHeader::immutable_frozen_static())
+            }
+            ValueInner::Other(rc) => format!("{:?}", rc.value.get_header()),
+        };
+
+        let mut fields = LinkedHashMap::new();
+        fields.insert(
+            "data_ptr".to_owned(),
+            Value::from(self.data_ptr().0 as usize),
+        );
+        let Inspect {
+            rust_type_name,
+            custom,
+        } = self.value_holder().inspect_dyn();
+        fields.insert("rust_type_name".to_owned(), Value::from(rust_type_name));
+        fields.insert("header".to_owned(), Value::from(header));
+        fields.insert("custom".to_owned(), custom);
+        StarlarkStruct::new(fields)
+    }
 }
 
 pub trait Mutability {
@@ -220,7 +245,7 @@ impl<T: TypedValue> Mutability for Immutable<T> {
 
 /// Pointer to data, used for cycle checks.
 #[derive(Copy, Clone, Debug, Eq)]
-pub struct DataPtr(*const ());
+pub struct DataPtr(pub(crate) *const ());
 
 impl<T: TypedValue + ?Sized> From<*const T> for DataPtr {
     fn from(p: *const T) -> Self {
@@ -435,6 +460,19 @@ impl<T: TypedValue> TypedValueDyn for T {
     fn pipe_dyn(&self, other: Value) -> Result<Value, ValueError> {
         self.pipe(other)
     }
+
+    fn inspect_dyn(&self) -> Inspect {
+        Inspect {
+            rust_type_name: type_name::<T>(),
+            custom: self.inspect_custom(),
+        }
+    }
+}
+
+/// Used in `inspect` function implementation.
+pub(crate) struct Inspect {
+    rust_type_name: &'static str,
+    custom: Value,
 }
 
 struct ValueHolder<T: TypedValueDyn + ?Sized> {
@@ -527,6 +565,8 @@ pub(crate) trait TypedValueDyn: 'static {
     fn floor_div_dyn(&self, other: Value) -> ValueResult;
 
     fn pipe_dyn(&self, other: Value) -> ValueResult;
+
+    fn inspect_dyn(&self) -> Inspect;
 }
 
 /// A trait for a value with a type that all variable container
@@ -1026,6 +1066,12 @@ pub trait TypedValue: Sized + 'static {
             right: Some(other.get_type().to_owned()),
         })
     }
+
+    /// Provide custom fields for `inspect` function
+    #[doc(hidden)]
+    fn inspect_custom(&self) -> Value {
+        Value::new(NoneType::None)
+    }
 }
 
 impl fmt::Debug for Value {
@@ -1246,6 +1292,7 @@ pub mod dict;
 pub mod error;
 pub mod function;
 pub mod hashed_value;
+pub(crate) mod inspect;
 pub mod int;
 pub mod iter;
 pub mod list;
@@ -1255,13 +1302,14 @@ pub mod slice_indices;
 pub mod string;
 pub mod tuple;
 
+use crate::stdlib::structs::StarlarkStruct;
 use crate::values::cell::error::ObjectBorrowError;
 use crate::values::cell::error::ObjectBorrowMutError;
+use crate::values::cell::header::ObjectHeader;
 use crate::values::cell::ObjectCell;
 use crate::values::cell::ObjectRef;
 use crate::values::cell::ObjectRefMut;
 use crate::values::none::NoneType;
-use std::any::Any;
 
 #[cfg(test)]
 mod tests {

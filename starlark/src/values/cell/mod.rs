@@ -191,4 +191,9 @@ impl<T: ?Sized> ObjectCell<T> {
     pub fn freeze(&self) -> bool {
         self.header.freeze()
     }
+
+    /// Get a copy of object header.
+    pub fn get_header(&self) -> ObjectHeader {
+        self.header.clone()
+    }
 }

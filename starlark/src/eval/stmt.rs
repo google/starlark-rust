@@ -28,6 +28,9 @@ use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignOp;
 use crate::syntax::ast::Statement;
+use crate::values::inspect::Inspectable;
+use crate::values::none::NoneType;
+use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
 
@@ -188,5 +191,33 @@ impl BlockCompiled {
                 Statement::Return(None) => StatementCompiled::Return(None),
             },
         }]))
+    }
+}
+
+impl Inspectable for BlockCompiled {
+    fn inspect(&self) -> Value {
+        self.0.inspect()
+    }
+}
+
+impl Inspectable for StatementCompiled {
+    fn inspect(&self) -> Value {
+        let (name, param): (&str, Value) = match self {
+            StatementCompiled::Break => ("break", Value::from(NoneType::None)),
+            StatementCompiled::Continue => ("continue", Value::from(NoneType::None)),
+            StatementCompiled::Return(e) => ("return", e.inspect()),
+            StatementCompiled::Expression(e) => ("expression", e.inspect()),
+            StatementCompiled::Assign(t, e) => ("assign", (t, e).inspect()),
+            StatementCompiled::AugmentedAssign(t, op, e) => {
+                ("augmented_assign", (t, format!("{:?}", op), e).inspect())
+            }
+            StatementCompiled::IfElse(cond, then_block, else_block) => {
+                ("if_else", (cond, then_block, else_block).inspect())
+            }
+            StatementCompiled::For(var, over, block) => ("for", (var, over, block).inspect()),
+            StatementCompiled::Def(def) => ("def", def.name.inspect()),
+            StatementCompiled::Load(what, bindings) => ("load", (what, bindings).inspect()),
+        };
+        Value::from((Value::from(name), param))
     }
 }
