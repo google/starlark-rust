@@ -9,6 +9,8 @@ case "$1" in
   build)
     cargo build --all
     cargo test --all --all-targets
+    # https://github.com/rust-lang/cargo/issues/6669
+    cargo test --all --doc
     ;;
   doc)
     cargo doc --all
