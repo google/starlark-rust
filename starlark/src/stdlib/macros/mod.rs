@@ -15,6 +15,10 @@
 //! Define the `starlark_module!` macro to reduce written boilerplate when adding
 //! native functions to starlark.
 
+use crate::environment::TypeValues;
+use crate::eval::call_stack::CallStack;
+use crate::values::function::ParameterParser;
+
 pub mod param;
 pub mod signature;
 
@@ -92,45 +96,54 @@ macro_rules! starlark_parse_param_type {
     };
 }
 
+/// Structure used to simplify passing several arguments through
+/// `starlark_signature_extraction` macro.
+#[doc(hidden)]
+pub struct SignatureExtractionContext<'a> {
+    pub call_stack: &'a mut CallStack,
+    pub env: &'a TypeValues,
+    pub args: ParameterParser<'a>,
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signature_extraction {
-    ($args:ident $call_stack:ident $env:ident) => {};
-    ($args:ident $call_stack:ident $env:ident / $(,$($rest:tt)+)?) => {
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
+    ($ctx:ident) => {};
+    ($ctx:ident / $(,$($rest:tt)+)?) => {
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
     };
-    ($args:ident $call_stack:ident $env:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
-        let $e = $call_stack;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
+    ($ctx:ident call_stack $e:ident $(,$($rest:tt)+)?) => {
+        let $e = $ctx.call_stack;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident env $e:ident $(,$($rest:tt)+)?) => {
-        let $e = $env;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?;
+    ($ctx:ident env $e:ident $(,$($rest:tt)+)?) => {
+        let $e = $ctx.env;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?;
     };
-    ($args:ident $call_stack:ident $env:ident * $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+    ($ctx:ident * $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(* $(: $pt)?) =
-            $args.next_arg()?.into_args_array(stringify!($t))?;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
+            $ctx.args.next_arg()?.into_args_array(stringify!($t))?;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
     };
-    ($args:ident $call_stack:ident $env:ident ** $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+    ($ctx:ident ** $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(** $(: $pt)?) =
-            $args.next_arg()?.into_kw_args_dict(stringify!($t))?;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
+            $ctx.args.next_arg()?.into_kw_args_dict(stringify!($t))?;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
     };
 
-    ($args:ident $call_stack:ident $env:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
+    ($ctx:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(? $(: $pt)?) =
-            $args.next_arg()?.into_optional(stringify!($t))?;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
+            $ctx.args.next_arg()?.into_optional(stringify!($t))?;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
     };
-    ($args:ident $call_stack:ident $env:ident $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
+    ($ctx:ident $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
-            $args.next_arg()?.into_normal(stringify!($t))?;
-        $( starlark_signature_extraction!($args $call_stack $env $($rest)+) )?
+            $ctx.args.next_arg()?.into_normal(stringify!($t))?;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
     };
 }
 
@@ -140,12 +153,17 @@ macro_rules! starlark_fun {
     ($(#[$attr:meta])* $fn:ident ( $($signature:tt)* ) { $($content:tt)* } $($($rest:tt)+)?) => {
         $(#[$attr])*
         fn $fn(
-            __call_stack: &mut $crate::eval::call_stack::CallStack,
-            __env: &$crate::environment::TypeValues,
-            mut args: $crate::values::function::ParameterParser,
+            call_stack: &mut $crate::eval::call_stack::CallStack,
+            env: &$crate::environment::TypeValues,
+            args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
-            starlark_signature_extraction!(args __call_stack __env $($signature)*);
-            args.check_no_more_args()?;
+            let mut ctx = $crate::stdlib::macros::SignatureExtractionContext {
+                call_stack,
+                env,
+                args,
+            };
+            starlark_signature_extraction!(ctx $($signature)*);
+            ctx.args.check_no_more_args()?;
             $($content)*
         }
         $(starlark_fun! {
@@ -156,12 +174,17 @@ macro_rules! starlark_fun {
             $($($rest:tt)+)?) => {
         $(#[$attr])*
         fn $fn(
-            __call_stack: &mut $crate::eval::call_stack::CallStack,
-            __env: &$crate::environment::TypeValues,
-            mut args: $crate::values::function::ParameterParser,
+            call_stack: &mut $crate::eval::call_stack::CallStack,
+            env: &$crate::environment::TypeValues,
+            args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
-            starlark_signature_extraction!(args __call_stack __env $($signature)*);
-            args.check_no_more_args()?;
+            let mut ctx = $crate::stdlib::macros::SignatureExtractionContext {
+                call_stack,
+                env,
+                args,
+            };
+            starlark_signature_extraction!(ctx $($signature)*);
+            ctx.args.check_no_more_args()?;
             $($content)*
         }
         $(starlark_fun! {
