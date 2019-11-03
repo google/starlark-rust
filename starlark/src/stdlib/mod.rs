@@ -43,6 +43,7 @@ const USER_FAILURE_ERROR_CODE: &str = "CR99";
 #[macro_use]
 pub mod macros;
 pub mod dict;
+mod freeze;
 pub mod list;
 pub mod string;
 pub mod structs;
@@ -956,6 +957,7 @@ pub fn global_environment() -> Environment {
 pub fn global_environment_with_extensions() -> Environment {
     let env = global_environment();
     let env = structs::global(env);
+    let env = freeze::global(env);
     crate::linked_hash_set::global(env)
 }
 

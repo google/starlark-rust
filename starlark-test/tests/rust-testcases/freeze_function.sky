@@ -1,0 +1,7 @@
+a = []
+a.append(1)
+freeze(a)
+a.append(1)  ###  Immutable
+---
+a = ()
+freeze(a)
