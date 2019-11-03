@@ -141,7 +141,7 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         fn $fn(
             __call_stack: &mut $crate::eval::call_stack::CallStack,
-            __env: $crate::environment::TypeValues,
+            __env: &$crate::environment::TypeValues,
             mut args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
             starlark_signature_extraction!(args __call_stack __env $($signature)*);
@@ -157,7 +157,7 @@ macro_rules! starlark_fun {
         $(#[$attr])*
         fn $fn(
             __call_stack: &mut $crate::eval::call_stack::CallStack,
-            __env: $crate::environment::TypeValues,
+            __env: &$crate::environment::TypeValues,
             mut args: $crate::values::function::ParameterParser,
         ) -> $crate::values::ValueResult {
             starlark_signature_extraction!(args __call_stack __env $($signature)*);
@@ -173,7 +173,7 @@ macro_rules! starlark_fun {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signatures {
-    ($env:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }
+    ($env:expr, $type_values:expr, $(#[$attr:meta])* $name:ident ( $($signature:tt)* ) { $($content:tt)* }
             $($($rest:tt)+)?) => {
         {
             let name = stringify!($name).trim_matches('_');
@@ -182,20 +182,20 @@ macro_rules! starlark_signatures {
             starlark_signature!(signature $($signature)*);
             $env.set(name, $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature.build())).unwrap();
         }
-        $(starlark_signatures!{ $env,
+        $(starlark_signatures!{ $env, $type_values,
             $($rest)+
         })?
     };
-    ($env:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* ) { $($content:tt)* }
+    ($env:expr, $type_values:expr, $(#[$attr:meta])* $ty:ident . $name:ident ( $($signature:tt)* ) { $($content:tt)* }
             $($($rest:tt)+)?) => {
         {
             let name = stringify!($name).trim_matches('_');
             let mut signature = $crate::stdlib::macros::signature::SignatureBuilder::default();
             starlark_signature!(signature $($signature)*);
-            $env.add_type_value(stringify!($ty), name,
+            $type_values.add_type_value(stringify!($ty), name,
                 $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature.build()));
         }
-        $(starlark_signatures!{ $env,
+        $(starlark_signatures!{ $env, $type_values,
             $($rest)+
         })?
     }
@@ -219,6 +219,7 @@ macro_rules! starlark_signatures {
 /// # use starlark::values::*;
 /// # use starlark::values::none::NoneType;
 /// # use starlark::environment::Environment;
+/// # use starlark::environment::TypeValues;
 /// starlark_module!{ my_starlark_module =>
 ///     // Declare a 'str' function (_ are trimmed away and just here to avoid collision with
 ///     // reserved keyword)
@@ -257,7 +258,9 @@ macro_rules! starlark_signatures {
 /// }
 /// #
 /// # fn main() {
-/// #    let env = my_starlark_module(Environment::new("test"));
+/// #    let mut env = Environment::new("test");
+/// #    let mut type_values = TypeValues::default();
+/// #    my_starlark_module(&mut env, &mut type_values);
 /// #    assert_eq!(env.get("str").unwrap().get_type(), "function");
 /// #    assert_eq!(env.get("my_fun").unwrap().get_type(), "function");
 /// #    assert_eq!(env.get("sqr").unwrap().get_type(), "function");
@@ -271,14 +274,15 @@ macro_rules! starlark_signatures {
 /// # #[macro_use] extern crate starlark;
 /// # use starlark::values::*;
 /// # use starlark::environment::Environment;
+/// # use starlark::environment::TypeValues;
 /// # starlark_module!{ my_starlark_module =>
 /// #     __str__(a, /) { Ok(Value::new(a.to_str().to_owned())) }
 /// #     my_fun(a, /, b, c = 1, *args, **kwargs) { Ok(Value::new(true)) }
 /// # }
 /// # fn main() {
-/// #    let env =
-/// my_starlark_module(Environment::new("test"))
-/// # ;
+/// #    let mut env = Environment::new("test");
+/// #    let mut type_values = TypeValues::default();
+/// #    my_starlark_module(&mut env, &mut type_values);
 /// #    assert_eq!(env.get("str").unwrap().get_type(), "function");
 /// #    assert_eq!(env.get("my_fun").unwrap().get_type(), "function");
 /// # }
@@ -290,7 +294,8 @@ macro_rules! starlark_signatures {
 /// ```rust
 /// # #[macro_use] extern crate starlark;
 /// # use starlark::values::*;
-/// # use starlark::environment::{Environment, TypeValues};
+/// # use starlark::environment::Environment;
+/// # use starlark::environment::TypeValues;
 /// starlark_module!{ my_starlark_module =>
 ///     // The first argument is always self in that module but we use "this" because "self" is a
 ///     // a rust keyword.
@@ -302,8 +307,10 @@ macro_rules! starlark_signatures {
 /// }
 /// #
 /// # fn main() {
-/// #    let env = TypeValues::new(my_starlark_module(Environment::new("test")));
-/// #    assert_eq!(env.get_type_value(&Value::from(""), "hello").unwrap().get_type(), "function");
+/// #    let mut env = Environment::new("test");
+/// #    let mut type_values = TypeValues::default();
+/// #    my_starlark_module(&mut env, &mut type_values);
+/// #    assert_eq!(type_values.get_type_value(&Value::from(""), "hello").unwrap().get_type(), "function");
 /// # }
 /// ```
 #[macro_export]
@@ -314,11 +321,11 @@ macro_rules! starlark_module {
         }
 
         #[doc(hidden)]
-        pub fn $name(env: $crate::environment::Environment) -> $crate::environment::Environment {
-            starlark_signatures!{ env,
+        pub fn $name(env: &mut $crate::environment::Environment, type_values: &mut $crate::environment::TypeValues) {
+            starlark_signatures!{ env, type_values,
                 $($t)*
             }
-            env
+            let _ = (env, type_values);
         }
     )
 }
@@ -438,6 +445,7 @@ macro_rules! convert_indices {
 #[cfg(test)]
 mod tests {
     use crate::environment::Environment;
+    use crate::environment::TypeValues;
     use crate::values::none::NoneType;
     use crate::values::Value;
 
@@ -449,7 +457,8 @@ mod tests {
             }
         }
 
-        let env = global(Environment::new("root"));
+        let mut env = Environment::new("root");
+        global(&mut env, &mut TypeValues::default());
         env.get("nop").unwrap();
     }
 }

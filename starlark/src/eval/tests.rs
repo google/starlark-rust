@@ -101,12 +101,8 @@ def rec6(): rec2()
 
 #[test]
 fn sets_disabled() {
-    let err = starlark_no_diagnostic(
-        &mut crate::stdlib::global_environment(),
-        "s = {1, 2, 3}",
-        TypeValues::new(crate::stdlib::global_environment()),
-    )
-    .unwrap_err();
+    let (mut env, type_values) = crate::stdlib::global_environment();
+    let err = starlark_no_diagnostic(&mut env, "s = {1, 2, 3}", &type_values).unwrap_err();
     assert_eq!(
         err.message,
         "Type `set` is not supported. Perhaps you need to enable some crate feature?".to_string()
@@ -120,18 +116,15 @@ fn sets_disabled() {
 
 #[test]
 fn sets() {
-    fn env_with_set() -> Environment {
-        let env = crate::stdlib::global_environment();
-        crate::linked_hash_set::global(env)
+    fn env_with_set() -> (Environment, TypeValues) {
+        let (mut env, mut type_values) = crate::stdlib::global_environment();
+        crate::linked_hash_set::global(&mut env, &mut type_values);
+        (env, type_values)
     }
 
     fn starlark_ok_with_global_env(snippet: &str) {
-        assert!(starlark_no_diagnostic(
-            &mut env_with_set(),
-            snippet,
-            TypeValues::new(crate::stdlib::global_environment())
-        )
-        .unwrap());
+        let (mut env, type_values) = env_with_set();
+        assert!(starlark_no_diagnostic(&mut env, snippet, &type_values,).unwrap());
     }
 
     starlark_ok_with_global_env(
@@ -141,11 +134,11 @@ fn sets() {
     starlark_ok_with_global_env("list(set()) == []");
     starlark_ok_with_global_env("not set()");
 
-    let parent_env = env_with_set();
+    let (parent_env, type_values) = env_with_set();
     assert!(starlark_no_diagnostic(
         &mut parent_env.child("child"),
         "len({1, 2}) == 2",
-        TypeValues::new(parent_env.clone())
+        &type_values,
     )
     .unwrap());
 }
@@ -156,7 +149,7 @@ fn test_context_captured() {
     struct TestContextCapturedFileLoader {}
 
     impl FileLoader for TestContextCapturedFileLoader {
-        fn load(&self, path: &str) -> Result<Environment, EvalException> {
+        fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
             assert_eq!("f.bzl", path);
             let mut env = Environment::new("new");
             // Check that `x` is captured with the function
@@ -170,7 +163,7 @@ def f(): return x
                 f_bzl,
                 Dialect::Bzl,
                 &mut env,
-                TypeValues::new(Environment::new("empty")),
+                type_values,
             )
             .unwrap();
             env.freeze();
@@ -189,7 +182,7 @@ def f(): return x
             program,
             Dialect::Build,
             &mut env,
-            TypeValues::new(Environment::new("empty")),
+            &TypeValues::default(),
             TestContextCapturedFileLoader {}
         )
         .unwrap()
@@ -216,7 +209,7 @@ fn test_type_values_are_imported_from_caller() {
     struct MyFileLoader {}
 
     impl FileLoader for MyFileLoader {
-        fn load(&self, path: &str) -> Result<Environment, EvalException> {
+        fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
             assert_eq!("utils.bzl", path);
 
             let mut env = Environment::new("utils.bzl");
@@ -226,7 +219,7 @@ fn test_type_values_are_imported_from_caller() {
                 "def truncate_strings(strings, len): return [s.truncate(len) for s in strings]",
                 Dialect::Bzl,
                 &mut env,
-                TypeValues::new(Environment::new("empty")),
+                type_values,
             )?;
             Ok(env)
         }
@@ -234,8 +227,8 @@ fn test_type_values_are_imported_from_caller() {
 
     let mut env = Environment::new("my.bzl");
 
-    let type_values = Environment::new("string.truncate");
-    let type_values = string_truncate(type_values);
+    let mut type_values = TypeValues::default();
+    string_truncate(&mut Environment::new("ignore"), &mut type_values);
 
     // Note `string.truncate` is not available in either `utils.bzl` or `my.bzl`,
     // but this code works.
@@ -245,7 +238,7 @@ fn test_type_values_are_imported_from_caller() {
         "load('utils.bzl', 'truncate_strings'); truncate_strings(['abc', 'de'], 2)",
         Dialect::Bzl,
         &mut env,
-        TypeValues::new(type_values),
+        &type_values,
         MyFileLoader {},
     )
     .unwrap();

@@ -32,7 +32,7 @@ pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
         snippet,
         Dialect::Bzl,
         &mut env,
-        environment::TypeValues::new(environment::Environment::new("empty")),
+        &TypeValues::default(),
     ) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
@@ -47,7 +47,7 @@ pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
     starlark_no_diagnostic(
         &mut environment::Environment::new("test"),
         snippet,
-        TypeValues::new(environment::Environment::new("no-type-values")),
+        &TypeValues::default(),
     )
 }
 
@@ -55,7 +55,7 @@ pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
 pub fn starlark_no_diagnostic(
     env: &mut environment::Environment,
     snippet: &str,
-    type_values: environment::TypeValues,
+    type_values: &TypeValues,
 ) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     Ok(eval::noload::eval(&map, "<test>", snippet, Dialect::Bzl, env, type_values)?.to_bool())

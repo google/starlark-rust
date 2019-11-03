@@ -130,7 +130,6 @@ mod test {
     use crate::starlark_signature_extraction;
     use crate::starlark_signatures;
 
-    use crate::environment::TypeValues;
     use crate::eval::noload::eval;
     use crate::stdlib::global_environment;
     use crate::syntax::dialect::Dialect;
@@ -147,8 +146,8 @@ mod test {
 
     #[test]
     fn test_simple() {
-        let env = global_environment();
-        let env = global(env);
+        let (mut env, mut type_values) = global_environment();
+        global(&mut env, &mut type_values);
         env.freeze();
 
         let mut child = env.child("my");
@@ -159,7 +158,7 @@ mod test {
             "cc_binary(name='star', srcs=['a.cc', 'b.cc'])",
             Dialect::Build,
             &mut child,
-            TypeValues::new(env),
+            &type_values,
         )
         .unwrap();
 

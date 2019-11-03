@@ -41,7 +41,7 @@ impl SimpleFileLoader {
 }
 
 impl FileLoader for SimpleFileLoader {
-    fn load(&self, path: &str) -> Result<Environment, EvalException> {
+    fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
         {
             let lock = self.map.lock().unwrap();
             if lock.contains_key(path) {
@@ -54,7 +54,7 @@ impl FileLoader for SimpleFileLoader {
             path,
             Dialect::Bzl,
             &mut env,
-            TypeValues::new(self.parent_env.clone()),
+            type_values,
             self.clone(),
         ) {
             return Err(EvalException::DiagnosedError(d));
@@ -86,6 +86,7 @@ pub fn eval(
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
+    type_values: &TypeValues,
     file_loader_env: Environment,
 ) -> Result<Value, Diagnostic> {
     super::eval(
@@ -94,7 +95,7 @@ pub fn eval(
         content,
         dialect,
         env,
-        TypeValues::new(file_loader_env.clone()),
+        type_values,
         SimpleFileLoader::new(map, file_loader_env),
     )
 }
@@ -115,6 +116,7 @@ pub fn eval_file(
     path: &str,
     build: Dialect,
     env: &mut Environment,
+    type_values: &TypeValues,
     file_loader_env: Environment,
 ) -> Result<Value, Diagnostic> {
     super::eval_file(
@@ -122,7 +124,7 @@ pub fn eval_file(
         path,
         build,
         env,
-        TypeValues::new(file_loader_env.clone()),
+        type_values,
         SimpleFileLoader::new(map, file_loader_env),
     )
 }

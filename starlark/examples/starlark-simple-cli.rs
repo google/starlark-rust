@@ -33,7 +33,7 @@ use starlark::syntax::dialect::Dialect;
 
 pub fn simple_evaluation(starlark_input: &String) -> Result<String, String> {
     // Create a new global environment populated with the stdlib.
-    let global_env = global_environment();
+    let (global_env, type_values) = global_environment();
     // Extra symbols can be added to the global environment before freezing if desired.
     global_env.freeze();
     // Create our own local copy of the global environment.
@@ -50,6 +50,7 @@ pub fn simple_evaluation(starlark_input: &String) -> Result<String, String> {
         &starlark_input,
         Dialect::Bzl,
         &mut env,
+        &type_values,
         global_env.clone(),
     );
 

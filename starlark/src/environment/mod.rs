@@ -105,8 +105,6 @@ struct EnvironmentContent {
     ///
     /// These bindings include methods for native types, e.g. `string.isalnum`.
     variables: HashMap<String, Value>,
-    /// List of static values of an object per type
-    type_objs: HashMap<String, HashMap<String, Value>>,
     /// Optional function which can be used to construct set literals (i.e. `{foo, bar}`).
     /// If not set, attempts to use set literals will raise an error.
     set_constructor: SetConstructor,
@@ -134,26 +132,9 @@ impl Environment {
                 frozen: false,
                 parent: None,
                 variables: HashMap::new(),
-                type_objs: HashMap::new(),
                 set_constructor: SetConstructor(None),
             })),
         }
-    }
-
-    /// Get the object of type `obj_type`, and create it if none exists
-    /// Get the object of type `obj_type`, and create it if none exists
-    pub fn add_type_value(&self, obj: &str, attr: &str, value: Value) {
-        self.env.borrow_mut().add_type_value(obj, attr, value)
-    }
-
-    /// Get a type value if it exists (e.g. list.index).
-    fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
-        self.env.borrow().get_type_value(obj, id)
-    }
-
-    /// List the attribute of a type
-    fn list_type_value(&self, obj: &Value) -> Vec<String> {
-        self.env.borrow().list_type_value(obj)
     }
 
     /// Create a new child environment for this environment
@@ -165,7 +146,6 @@ impl Environment {
                 frozen: false,
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
-                type_objs: HashMap::new(),
                 set_constructor: SetConstructor(None),
             })),
         }
@@ -276,51 +256,6 @@ impl EnvironmentContent {
         }
     }
 
-    /// Get the object of type `obj_type`, and create it if none exists
-    pub fn add_type_value(&mut self, obj: &str, attr: &str, value: Value) {
-        if let Some(ref mut v) = self.type_objs.get_mut(obj) {
-            v.insert(attr.to_owned(), value);
-            // Do not use a else case for the borrow checker to realize that type_objs is no
-            // longer borrowed when inserting.
-            return;
-        }
-        let mut dict = HashMap::new();
-        dict.insert(attr.to_owned(), value);
-        self.type_objs.insert(obj.to_owned(), dict);
-    }
-
-    /// Get a type value if it exists (e.g. list.index).
-    fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
-        match self.type_objs.get(obj.get_type()) {
-            Some(ref d) => match d.get(id) {
-                Some(v) => Some(v.clone()),
-                None => match self.parent {
-                    Some(ref p) => p.get_type_value(obj, id),
-                    None => None,
-                },
-            },
-            None => match self.parent {
-                Some(ref p) => p.get_type_value(obj, id),
-                None => None,
-            },
-        }
-    }
-
-    /// List the attribute of a type
-    pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
-        if let Some(ref d) = self.type_objs.get(obj.get_type()) {
-            let mut r = Vec::new();
-            for k in d.keys() {
-                r.push(k.clone());
-            }
-            r
-        } else if let Some(ref p) = self.parent {
-            p.list_type_value(obj)
-        } else {
-            Vec::new()
-        }
-    }
-
     /// Return the parent environment (or `None` if there is no parent).
     pub fn get_parent(&self) -> Option<Environment> {
         self.parent.clone()
@@ -332,29 +267,38 @@ impl EnvironmentContent {
 /// Function implementations are only allowed to access
 /// type values from "type values" from the caller context,
 /// so this struct is passed instead of full `Environment`.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TypeValues {
-    env: Environment,
+    /// List of static values of an object per type
+    type_objs: HashMap<String, HashMap<String, Value>>,
 }
 
 impl TypeValues {
-    /// Wrap environment.
-    pub fn new(env: Environment) -> TypeValues {
-        TypeValues { env }
-    }
-
-    /// Return the underlying `Environment` name.
-    pub fn name(&self) -> String {
-        self.env.name()
-    }
-
     /// Get a type value if it exists (e.g. list.index).
     pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
-        self.env.get_type_value(obj, id)
+        self.type_objs
+            .get(obj.get_type())
+            .and_then(|o| o.get(id))
+            .cloned()
     }
 
     /// List the attribute of a type
     pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
-        self.env.list_type_value(obj)
+        self.type_objs
+            .get(obj.get_type())
+            .into_iter()
+            .flat_map(|o| o.keys().cloned())
+            .collect()
+    }
+
+    /// Get the object of type `obj_type`, and create it if none exists
+    pub fn add_type_value(&mut self, obj: &str, attr: &str, value: Value) {
+        if let Some(ref mut v) = self.type_objs.get_mut(obj) {
+            v.insert(attr.to_owned(), value);
+        } else {
+            let mut dict = HashMap::new();
+            dict.insert(attr.to_owned(), value);
+            self.type_objs.insert(obj.to_owned(), dict);
+        }
     }
 }

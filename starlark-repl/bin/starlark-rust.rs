@@ -77,7 +77,9 @@ fn main() {
     let command = opt.command;
     let ast = opt.ast;
 
-    let global = print_function(global_environment_with_extensions());
+    let (mut global, mut type_values) = global_environment_with_extensions();
+
+    print_function(&mut global, &mut type_values);
     global.freeze();
 
     let dialect = if opt.build_file {
@@ -95,13 +97,14 @@ fn main() {
                 &i,
                 dialect,
                 &mut global.child(&i),
+                &type_values,
                 global.clone(),
             ));
         }
     }
     if opt.repl || (free_args_empty && command.is_none()) {
         println!("Welcome to Starlark REPL, press Ctrl+D to exit.");
-        repl(&global, dialect, ast);
+        repl(&mut global, &type_values, dialect, ast);
     }
     if let Some(command) = command {
         let path = "[command flag]";
@@ -114,6 +117,7 @@ fn main() {
                 &command,
                 dialect,
                 &mut global.child("[command flag]"),
+                &type_values,
                 global.clone(),
             ));
         }

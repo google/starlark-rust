@@ -24,6 +24,7 @@ use std::sync;
 
 use crate::environment::{Environment, TypeValues};
 use crate::eval::noload::eval;
+use crate::linked_hash_set;
 use crate::syntax::dialect::Dialect;
 use crate::values::dict::Dictionary;
 use crate::values::function::WrappedMethod;
@@ -565,9 +566,9 @@ starlark_module! {global_functions =>
                 }
             }
             Some(key) => {
-                let mut cached = key.call(cs, e.clone(), vec![max.clone()], LinkedHashMap::new(), None, None)?;
+                let mut cached = key.call(cs, e, vec![max.clone()], LinkedHashMap::new(), None, None)?;
                 for i in it {
-                    let keyi = key.call(cs, e.clone(), vec![i.clone()], LinkedHashMap::new(), None, None)?;
+                    let keyi = key.call(cs, e, vec![i.clone()], LinkedHashMap::new(), None, None)?;
                     if cached.compare(&keyi)? == Ordering::Less {
                         max = i;
                         cached = keyi;
@@ -622,9 +623,9 @@ starlark_module! {global_functions =>
                 }
             }
             Some(key) => {
-                let mut cached = key.call(cs, e.clone(), vec![min.clone()], LinkedHashMap::new(), None, None)?;
+                let mut cached = key.call(cs, e, vec![min.clone()], LinkedHashMap::new(), None, None)?;
                 for i in it {
-                    let keyi = key.call(cs, e.clone(), vec![i.clone()], LinkedHashMap::new(), None, None)?;
+                    let keyi = key.call(cs, e, vec![i.clone()], LinkedHashMap::new(), None, None)?;
                     if cached.compare(&keyi)? == Ordering::Greater {
                         min = i;
                         cached = keyi;
@@ -815,7 +816,7 @@ starlark_module! {global_functions =>
                 for el in x {
                     v.push((
                         el.clone(),
-                        key.call(cs, e.clone(), vec![el], LinkedHashMap::new(), None, None)?
+                        key.call(cs, e, vec![el], LinkedHashMap::new(), None, None)?
                     ));
                 }
                 v
@@ -944,19 +945,25 @@ starlark_module! {global_functions =>
 ///
 /// For example `stdlib::global_environment().freeze().child("test")` create a child environment
 /// of this global environment that have been frozen.
-pub fn global_environment() -> Environment {
-    let env = Environment::new("global");
+pub fn global_environment() -> (Environment, TypeValues) {
+    let mut env = Environment::new("global");
+    let mut type_values = TypeValues::default();
     env.set("None", Value::new(NoneType::None)).unwrap();
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
-    dict::global(list::global(string::global(global_functions(env))))
+    global_functions(&mut env, &mut type_values);
+    string::global(&mut env, &mut type_values);
+    list::global(&mut env, &mut type_values);
+    dict::global(&mut env, &mut type_values);
+    (env, type_values)
 }
 
 /// Default global environment with added non-standard `struct` and `set` extensions.
-pub fn global_environment_with_extensions() -> Environment {
-    let env = global_environment();
-    let env = structs::global(env);
-    crate::linked_hash_set::global(env)
+pub fn global_environment_with_extensions() -> (Environment, TypeValues) {
+    let (mut env, mut type_values) = global_environment();
+    structs::global(&mut env, &mut type_values);
+    linked_hash_set::global(&mut env, &mut type_values);
+    (env, type_values)
 }
 
 /// Execute a starlark snippet with the default environment for test and return the truth value
@@ -964,7 +971,7 @@ pub fn global_environment_with_extensions() -> Environment {
 #[doc(hidden)]
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    let env = global_environment_with_extensions();
+    let (env, type_values) = global_environment_with_extensions();
     let mut test_env = env.freeze().child("test");
     match eval(
         &map,
@@ -972,7 +979,7 @@ pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
         snippet,
         Dialect::Bzl,
         &mut test_env,
-        TypeValues::new(env),
+        &type_values,
     ) {
         Ok(v) => Ok(v.to_bool()),
         Err(d) => {
@@ -987,7 +994,6 @@ pub mod tests {
     use super::global_environment;
     use super::starlark_default;
     use super::Dialect;
-    use crate::environment::TypeValues;
     use crate::eval::noload::eval;
     use codemap::CodeMap;
     use codemap_diagnostic::Diagnostic;
@@ -995,14 +1001,15 @@ pub mod tests {
 
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
         let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-        let mut env = global_environment().freeze().child("test");
+        let (env, type_values) = global_environment();
+        let mut env = env.freeze().child("test");
         match eval(
             &map,
             "<test>",
             snippet,
             Dialect::Bzl,
             &mut env,
-            TypeValues::new(global_environment()),
+            &type_values,
         ) {
             Ok(v) => Ok(v.to_bool()),
             Err(d) => Err(d),

@@ -166,7 +166,7 @@ pub struct NativeFunction {
     /// Pointer to a native function.
     /// Note it is a function pointer, not `Box<Fn(...)>`
     /// to avoid generic instantiation and allocation for each native function.
-    function: fn(&mut CallStack, TypeValues, ParameterParser) -> ValueResult,
+    function: fn(&mut CallStack, &TypeValues, ParameterParser) -> ValueResult,
     signature: FunctionSignature,
     function_type: FunctionType,
 }
@@ -254,7 +254,7 @@ impl From<FunctionError> for ValueError {
 impl NativeFunction {
     pub fn new(
         name: String,
-        function: fn(&mut CallStack, TypeValues, ParameterParser) -> ValueResult,
+        function: fn(&mut CallStack, &TypeValues, ParameterParser) -> ValueResult,
         signature: FunctionSignature,
     ) -> Value {
         Value::new(NativeFunction {
@@ -511,7 +511,7 @@ impl TypedValue for NativeFunction {
     fn call(
         &self,
         call_stack: &mut CallStack,
-        type_values: TypeValues,
+        type_values: &TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
@@ -554,7 +554,7 @@ impl TypedValue for WrappedMethod {
     fn call(
         &self,
         call_stack: &mut CallStack,
-        type_values: TypeValues,
+        type_values: &TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,
