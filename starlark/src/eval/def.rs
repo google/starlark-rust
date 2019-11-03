@@ -30,6 +30,7 @@ use crate::eval::EvaluationContext;
 use crate::eval::EvaluationContextEnvironment;
 use crate::eval::IndexedGlobals;
 use crate::eval::IndexedLocals;
+use crate::stdlib::structs::StarlarkStruct;
 use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstParameter;
 use crate::syntax::ast::AstStatement;
@@ -44,6 +45,7 @@ use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
 use crate::values::function::FunctionType;
 use crate::values::function::StrOrRepr;
+use crate::values::inspect::Inspectable;
 use crate::values::none::NoneType;
 use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
 use codemap::{CodeMap, Spanned};
@@ -177,6 +179,16 @@ impl DefCompiled {
     }
 }
 
+impl Inspectable for DefCompiled {
+    fn inspect(&self) -> Value {
+        let mut fields = LinkedHashMap::<String, Value>::new();
+        fields.insert("name".into(), self.name.node.clone().into());
+        fields.insert("locals".into(), self.locals.inspect());
+        fields.insert("suite".into(), self.suite.inspect());
+        Value::new(StarlarkStruct::new(fields))
+    }
+}
+
 /// Starlark function internal representation and implementation of [`TypedValue`].
 pub(crate) struct Def {
     signature: FunctionSignature,
@@ -295,5 +307,12 @@ impl TypedValue for Def {
             Err(x) => Err(ValueError::DiagnosedError(x.into())),
             Ok(..) => Ok(Value::new(NoneType::None)),
         }
+    }
+
+    fn inspect_custom(&self) -> Value {
+        let mut fields = LinkedHashMap::<String, Value>::new();
+        fields.insert("captured_env".into(), self.captured_env.name().into());
+        fields.insert("stmt".into(), self.stmt.inspect());
+        Value::new(StarlarkStruct::new(fields))
     }
 }

@@ -32,7 +32,7 @@ use starlark::eval::eval;
 use starlark::eval::noload;
 use starlark::eval::EvalException;
 use starlark::eval::FileLoader;
-use starlark::stdlib::global_environment_with_extensions;
+use starlark::stdlib::global_environment_for_repl_and_tests;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::error::ValueError;
 use std::collections::HashMap;
@@ -139,7 +139,7 @@ impl FileLoader for HashMapFileLoader {
 
 pub fn do_conformance_test(path: &str, content: &str) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    let (global, type_values) = global_environment_with_extensions();
+    let (global, type_values) = global_environment_for_repl_and_tests();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
     noload::eval(
@@ -231,7 +231,7 @@ pub fn do_bench(bencher: &mut Bencher, path: &str) {
     drop(file);
 
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    let (global, type_values) = global_environment_with_extensions();
+    let (global, type_values) = global_environment_for_repl_and_tests();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
     noload::eval(

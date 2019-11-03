@@ -1,0 +1,2 @@
+a = ""
+assert_("String" in inspect(a).rust_type_name)

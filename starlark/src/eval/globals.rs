@@ -14,6 +14,10 @@
 
 //! Utilities to work with scope global variables.
 
+use crate::stdlib::structs::StarlarkStruct;
+use crate::values::inspect::Inspectable;
+use crate::values::Value;
+use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone)]
@@ -33,5 +37,13 @@ impl Globals {
     /// Return the number of global variable slots
     pub fn len(&self) -> usize {
         self.name_to_index.len()
+    }
+}
+
+impl Inspectable for Globals {
+    fn inspect(&self) -> Value {
+        let mut fields = LinkedHashMap::<String, Value>::new();
+        fields.insert("name_to_index".into(), self.name_to_index.inspect());
+        Value::new(StarlarkStruct::new(fields))
     }
 }
