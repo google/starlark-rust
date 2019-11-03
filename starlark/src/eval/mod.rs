@@ -212,7 +212,7 @@ impl Into<Diagnostic> for EvalException {
 /// A trait for loading file using the load statement path.
 pub trait FileLoader: 'static {
     /// Open the file given by the load statement `path`.
-    fn load(&self, path: &str) -> Result<Environment, EvalException>;
+    fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException>;
 }
 
 /// Starlark `def` or comprehension local variables
@@ -334,7 +334,7 @@ pub(crate) struct EvaluationContext<'a> {
     // Locals and captured context.
     env: EvaluationContextEnvironment<'a>,
     // Globals used to resolve type values, provided by the caller.
-    type_values: TypeValues,
+    type_values: &'a TypeValues,
     call_stack: &'a mut CallStack,
     map: Arc<Mutex<CodeMap>>,
 }
@@ -439,7 +439,7 @@ fn eval_call<'a>(
         let r = t(
             eval_expr(e, context)?.call(
                 context.call_stack,
-                context.type_values.clone(),
+                context.type_values,
                 npos,
                 nnamed,
                 nargs,
@@ -564,7 +564,7 @@ fn eval_expr_local(
             context.env.assert_module_env().clone(),
             IndexedLocals::new(locals),
         ),
-        type_values: context.type_values.clone(),
+        type_values: context.type_values,
         map: context.map.clone(),
     };
     eval_expr(expr, &mut ctx)
@@ -830,7 +830,7 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> Ev
             Ok(f)
         }
         StatementCompiled::Load(ref name, ref v) => {
-            let loadenv = context.env.loader().load(name)?;
+            let loadenv = context.env.loader().load(name, context.type_values)?;
             for &(ref new_name, ref orig_name) in v.iter() {
                 t(
                     context.env.assert_module_env().import_symbol(
@@ -857,7 +857,7 @@ fn eval_block(block: &BlockCompiled, context: &mut EvaluationContext) -> EvalRes
 fn eval_module(
     module: &Module,
     env: &mut Environment,
-    type_values: TypeValues,
+    type_values: &TypeValues,
     map: Arc<Mutex<CodeMap>>,
     file_loader: Rc<dyn FileLoader>,
 ) -> EvalResult {
@@ -894,7 +894,7 @@ pub fn eval_lexer<
     dialect: Dialect,
     lexer: T2,
     env: &mut Environment,
-    type_values: TypeValues,
+    type_values: &TypeValues,
     file_loader: T3,
 ) -> Result<Value, Diagnostic> {
     match eval_module(
@@ -927,7 +927,7 @@ pub fn eval<T: FileLoader + 'static>(
     content: &str,
     build: Dialect,
     env: &mut Environment,
-    type_values: TypeValues,
+    type_values: &TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     match eval_module(
@@ -958,7 +958,7 @@ pub fn eval_file<T: FileLoader + 'static>(
     path: &str,
     build: Dialect,
     env: &mut Environment,
-    type_values: TypeValues,
+    type_values: &TypeValues,
     file_loader: T,
 ) -> Result<Value, Diagnostic> {
     match eval_module(

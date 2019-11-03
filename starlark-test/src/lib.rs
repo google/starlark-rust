@@ -111,7 +111,7 @@ struct HashMapFileLoader {
 }
 
 impl FileLoader for HashMapFileLoader {
-    fn load(&self, path: &str) -> Result<Environment, EvalException> {
+    fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
         let mut env = self.parent.child(path);
         let content = match self.files.get(path) {
             Some(content) => content,
@@ -130,7 +130,7 @@ impl FileLoader for HashMapFileLoader {
             content,
             Dialect::Bzl,
             &mut env,
-            TypeValues::new(self.parent.clone()),
+            type_values,
             self.clone(),
         )?;
         Ok(env)
@@ -139,7 +139,7 @@ impl FileLoader for HashMapFileLoader {
 
 pub fn do_conformance_test(path: &str, content: &str) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    let global = global_environment_with_extensions();
+    let (global, type_values) = global_environment_with_extensions();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
     noload::eval(
@@ -156,7 +156,7 @@ def assert_(cond, msg="assertion failed"):
 "#,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
-        TypeValues::new(global.clone()),
+        &type_values,
     )
     .unwrap();
     prelude.freeze();
@@ -174,7 +174,7 @@ def assert_(cond, msg="assertion failed"):
         build,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude.child(path),
-        TypeValues::new(global.clone()),
+        &type_values,
         HashMapFileLoader {
             parent: prelude.clone(),
             files: test.files.clone(),
@@ -231,7 +231,7 @@ pub fn do_bench(bencher: &mut Bencher, path: &str) {
     drop(file);
 
     let map = Arc::new(Mutex::new(CodeMap::new()));
-    let global = global_environment_with_extensions();
+    let (global, type_values) = global_environment_with_extensions();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
     noload::eval(
@@ -248,20 +248,13 @@ def assert_(cond, msg="assertion failed"):
 "#,
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude,
-        TypeValues::new(global.clone()),
+        &type_values,
     )
     .unwrap();
     prelude.freeze();
 
     let mut env = prelude.child("run");
-    match noload::eval(
-        &map,
-        path,
-        &content,
-        Dialect::Bzl,
-        &mut env,
-        TypeValues::new(global),
-    ) {
+    match noload::eval(&map, path, &content, Dialect::Bzl, &mut env, &type_values) {
         Ok(_) => (),
         Err(p) => {
             Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[p]);
@@ -274,10 +267,9 @@ def assert_(cond, msg="assertion failed"):
     let bench_func = env.get("bench").expect("bench function is not found");
 
     bencher.iter(|| {
-        let env = env.child("bench");
         match bench_func.call(
             &mut CallStack::default(),
-            TypeValues::new(env),
+            &type_values,
             Vec::new(),
             LinkedHashMap::new(),
             None,

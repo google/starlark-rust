@@ -62,6 +62,7 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     lexer: T2,
     dialect: Dialect,
     env: &mut Environment,
+    type_values: &TypeValues,
     file_loader_env: Environment,
     ast: bool,
 ) {
@@ -80,7 +81,7 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             dialect,
             lexer,
             env,
-            TypeValues::new(file_loader_env.clone()),
+            type_values,
             SimpleFileLoader::new(&map.clone(), file_loader_env),
         ) {
             Ok(v) => {
@@ -125,7 +126,12 @@ starlark_module! {print_function =>
 /// * global_environment: the parent enviroment for the loop.
 /// * dialect: Starlark language dialect.
 /// * ast: print AST instead of evaluating.
-pub fn repl(global_environment: &Environment, dialect: Dialect, ast: bool) {
+pub fn repl(
+    global_environment: &mut Environment,
+    type_values: &TypeValues,
+    dialect: Dialect,
+    ast: bool,
+) {
     let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
     let reader = Interface::new("Starlark").unwrap();
     let mut env = global_environment.child("repl");
@@ -173,6 +179,7 @@ pub fn repl(global_environment: &Environment, dialect: Dialect, ast: bool) {
                 lexer,
                 dialect,
                 &mut env,
+                type_values,
                 global_environment.clone(),
                 ast,
             )

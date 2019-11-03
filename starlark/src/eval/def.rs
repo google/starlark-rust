@@ -216,7 +216,7 @@ impl TypedValue for Def {
     fn call(
         &self,
         call_stack: &mut CallStack,
-        type_values: TypeValues,
+        type_values: &TypeValues,
         positional: Vec<Value>,
         named: LinkedHashMap<String, Value>,
         args: Option<Value>,

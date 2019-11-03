@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 pub struct NoLoadFileLoader;
 
 impl FileLoader for NoLoadFileLoader {
-    fn load(&self, _path: &str) -> Result<Environment, EvalException> {
+    fn load(&self, _path: &str, _: &TypeValues) -> Result<Environment, EvalException> {
         Err(EvalException::DiagnosedError(Diagnostic {
             level: Level::Error,
             message: "ErrorFileLoader does not support loading".to_owned(),
@@ -56,7 +56,7 @@ pub fn eval(
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
-    type_values: TypeValues,
+    type_values: &TypeValues,
 ) -> Result<Value, Diagnostic> {
     super::eval(
         map,
