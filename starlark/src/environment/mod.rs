@@ -113,7 +113,7 @@ struct EnvironmentContent {
 }
 
 // Newtype so that EnvironmentContent can derive Debug.
-struct SetConstructor((Option<Box<dyn Fn(Vec<Value>) -> ValueResult>>));
+struct SetConstructor(Option<Box<dyn Fn(Vec<Value>) -> ValueResult>>);
 
 impl std::fmt::Debug for SetConstructor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
