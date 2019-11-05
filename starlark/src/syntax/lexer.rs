@@ -818,7 +818,8 @@ impl Lexer {
                 x if x == quote => {
                     self.pop();
                     if triple {
-                        if self.next_char() == quote {
+                        let n = self.next_char();
+                        if n == quote {
                             if self.next_char() == quote {
                                 break;
                             } else {
@@ -827,6 +828,7 @@ impl Lexer {
                             }
                         } else {
                             res.push(quote);
+                            res.push(n);
                         }
                     } else {
                         break;
@@ -1346,6 +1348,27 @@ mod tests {
                 Token::StringLiteral("\\n".to_owned()),
                 Token::Newline,
             ],
+            &r[..]
+        );
+
+        let r = collect_result(r#""""foo"bar""""#);
+        assert_eq!(
+            &[Token::StringLiteral("foo\"bar".to_owned()), Token::Newline],
+            &r[..]
+        );
+        let r = collect_result(r#""""foo'bar""""#);
+        assert_eq!(
+            &[Token::StringLiteral("foo\'bar".to_owned()), Token::Newline],
+            &r[..]
+        );
+        let r = collect_result(r#"'''foo'bar'''"#);
+        assert_eq!(
+            &[Token::StringLiteral("foo\'bar".to_owned()), Token::Newline],
+            &r[..]
+        );
+        let r = collect_result(r#"'''foo\"bar'''"#);
+        assert_eq!(
+            &[Token::StringLiteral("foo\"bar".to_owned()), Token::Newline],
             &r[..]
         );
     }
