@@ -42,11 +42,11 @@ impl<'b, T: ?Sized + 'b> ObjectRef<'b, T> {
         }
     }
 
-    /// A reference to immutable value
-    pub fn immutable(value: &T) -> ObjectRef<T> {
+    /// A reference to immutable frozen value
+    pub fn immutable_frozen(value: &T) -> ObjectRef<T> {
         ObjectRef {
             value,
-            borrow: ObjectBorrowRef::immutable(),
+            borrow: ObjectBorrowRef::immutable_frozen(),
         }
     }
 
@@ -164,10 +164,12 @@ impl<T: ?Sized> ObjectCell<T> {
 
     /// Mark value as frozen.
     ///
+    /// Return `true` if the object was not frozen before.
+    ///
     /// # Panics
     ///
     /// If value is borrowed.
-    pub fn freeze(&self) {
-        self.header.freeze();
+    pub fn freeze(&self) -> bool {
+        self.header.freeze()
     }
 }
