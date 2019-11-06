@@ -126,9 +126,9 @@ impl Value {
         for_iter: bool,
     ) -> Result<ObjectRef<dyn TypedValueDyn>, ObjectBorrowError> {
         match &self.0 {
-            ValueInner::None(n) => Ok(ObjectRef::immutable(n)),
-            ValueInner::Int(i) => Ok(ObjectRef::immutable(i)),
-            ValueInner::Bool(b) => Ok(ObjectRef::immutable(b)),
+            ValueInner::None(n) => Ok(ObjectRef::immutable_frozen(n)),
+            ValueInner::Int(i) => Ok(ObjectRef::immutable_frozen(i)),
+            ValueInner::Bool(b) => Ok(ObjectRef::immutable_frozen(b)),
             ValueInner::Other(rc) => rc.value.try_borrow(for_iter),
         }
     }
@@ -1037,10 +1037,16 @@ impl fmt::Debug for Value {
 impl Value {
     pub fn freeze(&mut self) {
         match &self.0 {
-            ValueInner::Other(rc) => rc.value.freeze(),
-            _ => {}
+            ValueInner::Other(rc) => {
+                if rc.value.freeze() {
+                    // Only freeze content if the object was not frozen earlier
+                    self.value_holder().freeze_dyn();
+                }
+            }
+            _ => {
+                // `None`, `bool`, `int` are frozen at construction
+            }
         }
-        self.value_holder().freeze_dyn();
     }
     pub fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
         self.value_holder().to_str_impl_dyn(buf)
