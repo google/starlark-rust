@@ -29,7 +29,8 @@ impl fmt::Debug for Frame {
     }
 }
 
-/// Starlark call stack.
+/// Starlark call stack. Used internally, opague for the public API.
+// TODO: unimplement `Clone`, `Default`, users do not need to be able to create stacks
 #[derive(Clone, Debug, Default)]
 pub struct CallStack {
     stack: Vec<Frame>,
@@ -37,17 +38,17 @@ pub struct CallStack {
 
 impl CallStack {
     /// Push an element to the stack
-    pub fn push(&mut self, function: Value, code_map: Arc<Mutex<CodeMap>>, pos: Pos) {
+    pub(crate) fn push(&mut self, function: Value, code_map: Arc<Mutex<CodeMap>>, pos: Pos) {
         self.stack.push(Frame(function, code_map, pos));
     }
 
     /// Pop an element from the stack, panic if stack is already empty.
-    pub fn pop(&mut self) {
+    pub(crate) fn pop(&mut self) {
         self.stack.pop().unwrap();
     }
 
     /// Test if call stack contains a function with given id.
-    pub fn contains(&self, function_id: FunctionId) -> bool {
+    pub(crate) fn contains(&self, function_id: FunctionId) -> bool {
         self.stack
             .iter()
             .any(|&Frame(ref f, _, _)| f.function_id() == function_id)
@@ -55,7 +56,7 @@ impl CallStack {
 
     /// Print call stack as multiline string
     /// with each line beginning with newline.
-    pub fn print_with_newline_before<'a>(&'a self) -> impl fmt::Display + 'a {
+    pub(crate) fn print_with_newline_before<'a>(&'a self) -> impl fmt::Display + 'a {
         DisplayWithNewlineBefore { call_stack: self }
     }
 }

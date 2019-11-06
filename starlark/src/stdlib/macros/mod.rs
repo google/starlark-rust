@@ -268,15 +268,10 @@ macro_rules! starlark_signatures {
 ///         Ok(Value::new(x * x))
 ///     }
 ///
-///     // It is also possible to capture the call stack with
-///     // `call_stack name` (type `Vec<String>`). For example a `dbg` function that print the
-///     // the call stack:
-///     dbg(call_stack cs) {
-///        println!(
-///            "In:{}",
-///            cs.print_with_newline_before()
-///        );
-///        Ok(Value::from(NoneType::None))
+///     // It is also possible to capture the call stack with `call_stack name`.
+///     // It is an opaque object which can only be used to call other functions:
+///     call(call_stack cs, env e, value) {
+///        value.call(cs, e, Default::default(), Default::default(), None, None)
 ///     }
 /// }
 /// #
