@@ -1,0 +1,8 @@
+def bench():
+    x = list(range(1000))
+    r = []
+    for i in range(1000):
+        # This is `O(len(x))` if we do descendants checking
+        # and constant if we do GC
+        r.append(x)
+    return r
