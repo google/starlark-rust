@@ -21,6 +21,7 @@ use crate::values::cell::header::ObjectBorrowRef;
 use crate::values::cell::header::ObjectBorrowRefMut;
 use crate::values::cell::header::ObjectHeader;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -177,8 +178,23 @@ impl<T: ?Sized> ObjectCell<T> {
         Ok(unsafe { ObjectRefMut::new(&self.value, borrow) })
     }
 
+    pub fn borrow(&self) -> ObjectRef<T> {
+        self.try_borrow(false).unwrap()
+    }
+
+    pub fn borrow_mut(&self) -> ObjectRefMut<T> {
+        self.try_borrow_mut().unwrap()
+    }
+
     pub fn get_ptr(&self) -> *const T {
         self.value.get() as *const T
+    }
+
+    /// Get a copy of object header.
+    ///
+    /// Cannot return the header reference because it's not safe.
+    pub fn get_header_copy(&self) -> ObjectHeader {
+        self.header.clone()
     }
 
     /// Mark value as frozen.
@@ -190,5 +206,29 @@ impl<T: ?Sized> ObjectCell<T> {
     /// If value is borrowed.
     pub fn freeze(&self) -> bool {
         self.header.freeze()
+    }
+}
+
+impl<T: fmt::Debug + ?Sized> fmt::Debug for ObjectRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.value, f)
+    }
+}
+
+impl<T: fmt::Debug + ?Sized> fmt::Debug for ObjectRefMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.value, f)
+    }
+}
+
+impl<T: fmt::Debug + ?Sized> fmt::Debug for ObjectCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.try_borrow(false) {
+            Ok(v) => f.debug_struct("ObjectCell").field("value", &v).finish(),
+            Err(e) => f
+                .debug_struct("ObjectCell")
+                .field("borrow_error", &e)
+                .finish(),
+        }
     }
 }

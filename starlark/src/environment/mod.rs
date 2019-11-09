@@ -17,47 +17,51 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::values::cell::error::ObjectBorrowMutError;
+use crate::values::cell::ObjectCell;
 use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module
-const FROZEN_ENV_ERROR_CODE: &str = "CM00";
+const __RESERVED_CM00: &str = "CM00";
 const NOT_FOUND_ERROR_CODE: &str = "CM01";
 const LOCAL_VARIABLE_REFERENCED_BEFORE_ASSIGNMENT: &str = "CM03";
 pub(crate) const LOAD_NOT_SUPPORTED_ERROR_CODE: &str = "CM02";
 const CANNOT_IMPORT_ERROR_CODE: &str = "CE02";
+const BORROW_ERROR_CODE: &str = "CE03";
 
 #[derive(Debug)]
 #[doc(hidden)]
 pub enum EnvironmentError {
-    /// Raised when trying to change a variable on a frozen environment.
-    TryingToMutateFrozenEnvironment,
     /// Variables was no found.
     VariableNotFound(String),
     LocalVariableReferencedBeforeAssignment(String),
     /// Cannot import private symbol, i.e. underscore prefixed
     CannotImportPrivateSymbol(String),
+    BorrowMut(ObjectBorrowMutError),
+}
+
+impl From<ObjectBorrowMutError> for EnvironmentError {
+    fn from(e: ObjectBorrowMutError) -> EnvironmentError {
+        EnvironmentError::BorrowMut(e)
+    }
 }
 
 impl Into<RuntimeError> for EnvironmentError {
     fn into(self) -> RuntimeError {
         RuntimeError {
             code: match self {
-                EnvironmentError::TryingToMutateFrozenEnvironment => FROZEN_ENV_ERROR_CODE,
                 EnvironmentError::VariableNotFound(..) => NOT_FOUND_ERROR_CODE,
                 EnvironmentError::CannotImportPrivateSymbol(..) => CANNOT_IMPORT_ERROR_CODE,
                 EnvironmentError::LocalVariableReferencedBeforeAssignment(..) => {
                     LOCAL_VARIABLE_REFERENCED_BEFORE_ASSIGNMENT
                 }
+                EnvironmentError::BorrowMut(..) => BORROW_ERROR_CODE,
             },
             label: match self {
-                EnvironmentError::TryingToMutateFrozenEnvironment => {
-                    "This value belong to a frozen environment".to_owned()
-                }
                 EnvironmentError::VariableNotFound(..) => "Variable was not found".to_owned(),
                 EnvironmentError::LocalVariableReferencedBeforeAssignment(..) => {
                     "Local variable referenced before assignment".to_owned()
@@ -65,17 +69,18 @@ impl Into<RuntimeError> for EnvironmentError {
                 EnvironmentError::CannotImportPrivateSymbol(ref s) => {
                     format!("Symbol '{}' is private", s)
                 }
+                EnvironmentError::BorrowMut(ref e) => format!("{}", e),
             },
             message: match self {
-                EnvironmentError::TryingToMutateFrozenEnvironment => {
-                    "Cannot mutate a frozen environment".to_owned()
-                }
                 EnvironmentError::VariableNotFound(s) => format!("Variable '{}' not found", s),
                 EnvironmentError::LocalVariableReferencedBeforeAssignment(ref s) => {
                     format!("Local variable '{}' referenced before assignment", s)
                 }
                 EnvironmentError::CannotImportPrivateSymbol(s) => {
                     format!("Cannot import private symbol '{}'", s)
+                }
+                EnvironmentError::BorrowMut(ref e) => {
+                    format!("Cannot borrow environment mutably: {}", e)
                 }
             },
         }
@@ -90,15 +95,13 @@ impl From<EnvironmentError> for ValueError {
 
 #[derive(Clone, Debug)]
 pub struct Environment {
-    env: Rc<RefCell<EnvironmentContent>>,
+    env: Rc<ObjectCell<EnvironmentContent>>,
 }
 
 #[derive(Debug)]
 struct EnvironmentContent {
     /// A name for this environment, used mainly for debugging.
     name_: String,
-    /// Whether the environment is frozen or not.
-    frozen: bool,
     /// Super environment that represent a higher scope than the current one
     parent: Option<Environment>,
     /// List of variable bindings
@@ -127,9 +130,8 @@ impl Environment {
     /// Create a new environment
     pub fn new(name: &str) -> Environment {
         Environment {
-            env: Rc::new(RefCell::new(EnvironmentContent {
+            env: Rc::new(ObjectCell::new_mutable(EnvironmentContent {
                 name_: name.to_owned(),
-                frozen: false,
                 parent: None,
                 variables: HashMap::new(),
                 set_constructor: SetConstructor(None),
@@ -141,9 +143,8 @@ impl Environment {
     pub fn child(&self, name: &str) -> Environment {
         self.freeze();
         Environment {
-            env: Rc::new(RefCell::new(EnvironmentContent {
+            env: Rc::new(ObjectCell::new_mutable(EnvironmentContent {
                 name_: name.to_owned(),
-                frozen: false,
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
                 set_constructor: SetConstructor(None),
@@ -154,7 +155,10 @@ impl Environment {
     /// Create a new child environment
     /// Freeze the environment, all its value will become immutable after that
     pub fn freeze(&self) -> &Self {
-        self.env.borrow_mut().freeze();
+        if !self.env.get_header_copy().is_mutable_frozen() {
+            self.env.borrow_mut().freeze();
+            self.env.freeze();
+        }
         self
     }
 
@@ -165,7 +169,7 @@ impl Environment {
 
     /// Set the value of a variable in that environment.
     pub fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
-        self.env.borrow_mut().set(name, value)
+        self.env.try_borrow_mut()?.set(name, value)
     }
 
     /// Get the value of the variable `name`
@@ -226,22 +230,15 @@ impl EnvironmentContent {
     /// Create a new child environment
     /// Freeze the environment, all its value will become immutable after that
     pub fn freeze(&mut self) {
-        if !self.frozen {
-            self.frozen = true;
-            for v in self.variables.values_mut() {
-                v.freeze();
-            }
+        for v in self.variables.values_mut() {
+            v.freeze();
         }
     }
 
     /// Set the value of a variable in that environment.
     pub fn set(&mut self, name: &str, value: Value) -> Result<(), EnvironmentError> {
-        if self.frozen {
-            Err(EnvironmentError::TryingToMutateFrozenEnvironment)
-        } else {
-            self.variables.insert(name.to_string(), value);
-            Ok(())
-        }
+        self.variables.insert(name.to_string(), value);
+        Ok(())
     }
 
     /// Get the value of the variable `name`

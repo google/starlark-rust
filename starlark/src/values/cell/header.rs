@@ -138,6 +138,7 @@ static IMMUTABLE_FROZEN_OBJECT_HEADER: ObjectHeaderInStaticField =
         state: Cell::new(IMMUTABLE_FLAG | FROZEN_FLAG),
     });
 
+#[derive(Clone)]
 pub(crate) struct ObjectHeader {
     state: Cell<usize>,
 }
@@ -149,6 +150,15 @@ impl ObjectHeader {
 
     fn set_decoded(&self, state: ObjectState) {
         self.state.set(state.encode());
+    }
+
+    /// True iff object was mutable and now is frozen.
+    /// (Return `false` for immutable).
+    pub fn is_mutable_frozen(&self) -> bool {
+        match self.get_decoded() {
+            ObjectState::MutableFrozen => true,
+            _ => false,
+        }
     }
 
     /// Create new object header for mutable object
