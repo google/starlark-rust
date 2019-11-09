@@ -1240,7 +1240,7 @@ impl Value {
 
 // Submodules
 pub mod boolean;
-mod cell;
+pub(crate) mod cell;
 pub mod context;
 pub mod dict;
 pub mod error;
