@@ -94,6 +94,10 @@ impl<'b, T: ?Sized + 'b> ObjectRefMut<'b, T> {
             borrow,
         }
     }
+
+    pub fn set_collected(self) {
+        self.borrow.set_collected()
+    }
 }
 
 impl<'b, T: ?Sized + 'b> ObjectRefMut<'b, T> {
@@ -145,6 +149,13 @@ impl<T> ObjectCell<T> {
             value: UnsafeCell::new(value),
         }
     }
+
+    pub fn new_immutable_frozen(value: T) -> ObjectCell<T> {
+        ObjectCell {
+            header: ObjectHeader::immutable_frozen(),
+            value: UnsafeCell::new(value),
+        }
+    }
 }
 
 impl<T: ?Sized> ObjectCell<T> {
@@ -153,9 +164,20 @@ impl<T: ?Sized> ObjectCell<T> {
         Ok(unsafe { ObjectRef::new(&self.value, borrow) })
     }
 
-    pub fn try_borrow_mut(&self) -> Result<ObjectRefMut<T>, ObjectBorrowMutError> {
-        let borrow = self.header.try_borrow_mut()?;
+    pub fn borrow(&self, for_iter: bool) -> ObjectRef<T> {
+        self.try_borrow(for_iter).unwrap()
+    }
+
+    pub fn try_borrow_mut(
+        &self,
+        allow_frozen: bool,
+    ) -> Result<ObjectRefMut<T>, ObjectBorrowMutError> {
+        let borrow = self.header.try_borrow_mut(allow_frozen)?;
         Ok(unsafe { ObjectRefMut::new(&self.value, borrow) })
+    }
+
+    pub fn borrow_mut(&self, allow_frozen: bool) -> ObjectRefMut<T> {
+        self.try_borrow_mut(allow_frozen).unwrap()
     }
 
     pub fn get_ptr(&self) -> *const T {
@@ -171,5 +193,16 @@ impl<T: ?Sized> ObjectCell<T> {
     /// If value is borrowed.
     pub fn freeze(&self) -> bool {
         self.header.freeze()
+    }
+
+    /// Value is immutable (but not frozen mutable).
+    pub fn is_immutable(&self) -> bool {
+        self.header.is_immutable()
+    }
+
+    /// Get a mutable reference to the value.
+    /// This is a safe operation because of `&mut self`.
+    pub fn _get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.value.get() }
     }
 }

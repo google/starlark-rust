@@ -972,7 +972,7 @@ pub fn global_environment_with_extensions() -> (Environment, TypeValues) {
 pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
     let (env, type_values) = global_environment_with_extensions();
-    let mut test_env = env.freeze().child("test");
+    let mut test_env = env.child("test");
     match eval(
         &map,
         "<test>",
@@ -1002,7 +1002,7 @@ pub mod tests {
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
         let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
         let (env, type_values) = global_environment();
-        let mut env = env.freeze().child("test");
+        let mut env = env.child("test");
         match eval(
             &map,
             "<test>",

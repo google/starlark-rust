@@ -34,7 +34,10 @@
 //! For example the `NoneType` trait implementation is the following:
 //!
 //! ```rust
-//! # use starlark::values::{TypedValue, Value, Immutable};
+//! # use starlark::values::Immutable;
+//! # use starlark::values::Value;
+//! # use starlark::values::TypedValue;
+//! # use starlark::values::ImmutableNoValues;
 //! # use starlark::values::error::ValueError;
 //! # use std::cmp::Ordering;
 //! # use std::iter;
@@ -47,7 +50,7 @@
 //! }
 //!
 //! impl TypedValue for NoneType {
-//!     type Holder = Immutable<Self>;
+//!     type Holder = ImmutableNoValues<Self>;
 //!     const TYPE: &'static str = "NoneType";
 //!
 //!     fn compare(&self, _other: &NoneType) -> Result<Ordering, ValueError> {
@@ -55,9 +58,6 @@
 //!     }
 //!     fn equals(&self, _other: &NoneType) -> Result<bool, ValueError> {
 //!         Ok(true)
-//!     }
-//!     fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item=Value> + 'a> {
-//!         Box::new(iter::empty())
 //!     }
 //!     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
 //!         write!(buf, "None")
@@ -95,6 +95,7 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::marker;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::usize;
 
 /// ValueInner wraps the actual value or a memory pointer
@@ -121,6 +122,16 @@ impl Value {
         t.new_value()
     }
 
+    pub(crate) fn to_gc_strong(&self) -> Option<ValueGcStrong> {
+        match &self.0 {
+            ValueInner::Other(other) => Some(ValueGcStrong(other.clone())),
+            _ => {
+                // GC doesn't need to work with copy objects
+                None
+            }
+        }
+    }
+
     fn try_value_holder(
         &self,
         for_iter: bool,
@@ -139,44 +150,11 @@ impl Value {
 
     fn try_value_holder_mut(
         &self,
+        allow_frozen: bool,
     ) -> Result<ObjectRefMut<dyn TypedValueDyn>, ObjectBorrowMutError> {
         match &self.0 {
-            ValueInner::Other(rc) => rc.value.try_borrow_mut(),
+            ValueInner::Other(rc) => rc.value.try_borrow_mut(allow_frozen),
             _ => Err(ObjectBorrowMutError::Immutable),
-        }
-    }
-
-    /// Clone for inserting into the other container, using weak reference if we do a
-    /// recursive insertion.
-    pub fn clone_for_container<T: TypedValue>(&self, container: &T) -> Result<Value, ValueError> {
-        if self.is_descendant(DataPtr::from(container)) {
-            Err(ValueError::UnsupportedRecursiveDataStructure)
-        } else {
-            Ok(self.clone())
-        }
-    }
-
-    pub fn clone_for_container_value(&self, other: &Value) -> Result<Value, ValueError> {
-        if self.is_descendant_value(other) {
-            Err(ValueError::UnsupportedRecursiveDataStructure)
-        } else {
-            Ok(self.clone())
-        }
-    }
-
-    /// Determine if the value pointed by other is a descendant of self
-    pub fn is_descendant_value(&self, other: &Value) -> bool {
-        self.is_descendant(other.data_ptr())
-    }
-
-    pub fn is_descendant(&self, other: DataPtr) -> bool {
-        match self.try_value_holder(false) {
-            Ok(v) => v.is_descendant_dyn(other),
-            Err(..) => {
-                // We have already borrowed mutably this value,
-                // which means we are trying to mutate it, assigning other to it.
-                true
-            }
         }
     }
 
@@ -201,25 +179,40 @@ pub trait Mutability {
 
     /// This type is mutable or immutable.
     const MUTABLE: bool;
+    /// Value references other values.
+    const HAS_LINKS: bool;
 }
 
 /// Type parameter for immutable types.
 pub struct Immutable<T>(marker::PhantomData<T>);
+
+/// Type parameter for immutable types which has no references
+/// to other Starlark values (e. g. string).
+pub struct ImmutableNoValues<T>(marker::PhantomData<T>);
+
 /// Type parameter for mutable types.
 pub struct Mutable<T>(marker::PhantomData<T>);
 
 impl<T: TypedValue> Mutability for Mutable<T> {
     type Content = T;
     const MUTABLE: bool = true;
+    const HAS_LINKS: bool = true;
 }
 
 impl<T: TypedValue> Mutability for Immutable<T> {
     type Content = T;
     const MUTABLE: bool = false;
+    const HAS_LINKS: bool = true;
+}
+
+impl<T: TypedValue> Mutability for ImmutableNoValues<T> {
+    type Content = T;
+    const MUTABLE: bool = false;
+    const HAS_LINKS: bool = false;
 }
 
 /// Pointer to data, used for cycle checks.
-#[derive(Copy, Clone, Debug, Eq)]
+#[derive(Copy, Clone, Debug, Eq, Hash)]
 pub struct DataPtr(*const ());
 
 impl<T: TypedValue + ?Sized> From<*const T> for DataPtr {
@@ -278,9 +271,15 @@ impl<T: TypedValue> TypedValueDyn for T {
 
     /// Freezes the current value.
     fn freeze_dyn(&self) {
-        for mut value in self.values_for_descendant_check_and_freeze() {
-            value.freeze();
-        }
+        self.visit_links(&mut |v| v.freeze());
+    }
+
+    fn gc_dyn(&mut self) {
+        self.gc();
+    }
+
+    fn visit_links_dyn(&self, visitor: &mut dyn FnMut(&Value)) {
+        self.visit_links(visitor);
     }
 
     fn to_str_impl_dyn(&self, buf: &mut String) -> fmt::Result {
@@ -305,14 +304,6 @@ impl<T: TypedValue> TypedValueDyn for T {
 
     fn get_hash_dyn(&self) -> Result<u64, ValueError> {
         self.get_hash()
-    }
-
-    fn is_descendant_dyn(&self, other: DataPtr) -> bool {
-        if DataPtr::from(self) == other {
-            return true;
-        }
-        self.values_for_descendant_check_and_freeze()
-            .any(|x| x.is_descendant(other))
     }
 
     fn equals_dyn(&self, other: &Value) -> Result<bool, ValueError> {
@@ -443,8 +434,8 @@ struct ValueHolder<T: TypedValueDyn + ?Sized> {
 
 impl ValueHolder<dyn TypedValueDyn> {
     /// Pointer to `TypedValue` object, used for cycle checks.
-    fn data_ptr(&self) -> DataPtr {
-        DataPtr(self.value.get_ptr() as *const ())
+    pub fn data_ptr(&self) -> DataPtr {
+        DataPtr(self.value.get_ptr() as *const dyn TypedValueDyn as *const ())
     }
 }
 
@@ -459,6 +450,10 @@ pub(crate) trait TypedValueDyn: 'static {
 
     fn freeze_dyn(&self);
 
+    fn gc_dyn(&mut self);
+
+    fn visit_links_dyn(&self, visitor: &mut dyn FnMut(&Value));
+
     fn to_str_impl_dyn(&self, buf: &mut String) -> fmt::Result;
 
     fn to_repr_impl_dyn(&self, buf: &mut String) -> fmt::Result;
@@ -470,8 +465,6 @@ pub(crate) trait TypedValueDyn: 'static {
     fn to_int_dyn(&self) -> Result<i64, ValueError>;
 
     fn get_hash_dyn(&self) -> Result<u64, ValueError>;
-
-    fn is_descendant_dyn(&self, other: DataPtr) -> bool;
 
     fn equals_dyn(&self, other: &Value) -> Result<bool, ValueError>;
     fn compare_dyn(&self, other: &Value) -> Result<Ordering, ValueError>;
@@ -532,9 +525,8 @@ pub(crate) trait TypedValueDyn: 'static {
 /// A trait for a value with a type that all variable container
 /// will implement.
 pub trait TypedValue: Sized + 'static {
-    /// Must be either `MutableHolder<Self>` or `ImmutableHolder<Self>`
+    /// Must be either `Mutable<Self>`, `Immutable<Self>` or `ImmutableNoValues<Self>`.
     type Holder: Mutability<Content = Self>;
-
     /// Return a string describing the type of self, as returned by the type() function.
     const TYPE: &'static str;
 
@@ -543,37 +535,21 @@ pub trait TypedValue: Sized + 'static {
     /// This function should be overridden only by builtin types.
     #[doc(hidden)]
     fn new_value(self) -> Value {
-        Value(ValueInner::Other(Rc::new(ValueHolder {
-            value: if Self::Holder::MUTABLE {
-                ObjectCell::new_mutable(self)
+        let (value, register_gc) = if Self::Holder::MUTABLE {
+            (ObjectCell::new_mutable(self), true)
+        } else {
+            if Self::Holder::HAS_LINKS {
+                (ObjectCell::new_immutable(self), true)
             } else {
-                ObjectCell::new_immutable(self)
-            },
-        })))
+                (ObjectCell::new_immutable_frozen(self), false)
+            }
+        };
+        let rc: Rc<ValueHolder<dyn TypedValueDyn>> = Rc::new(ValueHolder { value });
+        if register_gc {
+            gc::register(ValueGcWeak(Rc::downgrade(&rc)));
+        }
+        Value(ValueInner::Other(rc))
     }
-
-    /// Return a list of values to be used in freeze or descendant check operations.
-    ///
-    /// Objects which do not contain references to other Starlark objects typically
-    /// implement it by returning an empty iterator:
-    ///
-    /// ```
-    /// # use starlark::values::*;
-    /// # use std::iter;
-    /// # struct MyType;
-    ///
-    /// # impl TypedValue for MyType {
-    /// #    type Holder = Immutable<MyType>;
-    /// #    const TYPE: &'static str = "MyType";
-    /// #
-    /// fn values_for_descendant_check_and_freeze<'a>(&'a self) -> Box<Iterator<Item=Value> + 'a> {
-    ///     Box::new(iter::empty())
-    /// }
-    /// #
-    /// # }
-    /// ```
-    fn values_for_descendant_check_and_freeze<'a>(&'a self)
-        -> Box<dyn Iterator<Item = Value> + 'a>;
 
     /// Return function id to detect recursion.
     ///
@@ -1026,6 +1002,65 @@ pub trait TypedValue: Sized + 'static {
             right: Some(other.get_type().to_owned()),
         })
     }
+
+    /// Clean the references to other objects to break references cycles.
+    /// This operation is invoked in garbage collection.
+    ///
+    /// Only mutable objects which may contain references to other objects
+    /// need to implement this operation.
+    ///
+    /// ```rust
+    /// # use starlark::values::*;
+    /// struct MyList {
+    ///     content: Vec<Value>,
+    /// }
+    ///
+    /// impl TypedValue for MyList {
+    ///     type Holder = Mutable<Self>;
+    ///     const TYPE: &'static str = "MyList";
+    ///
+    ///     fn gc(&mut self) {
+    ///         self.content.clear();
+    ///     }
+    /// }
+    /// ```
+    fn gc(&mut self) {
+        if Self::Holder::HAS_LINKS && Self::Holder::MUTABLE {
+            panic!("gc() must be implemented for {}", Self::TYPE);
+        } else {
+            unreachable!("gc() is not meant to be called for {}", Self::TYPE);
+        }
+    }
+
+    /// Pass list of values to be used in freeze or GC.
+    ///
+    /// Objects which do not contain references to other Starlark objects
+    /// do not need to implement this operation.
+    ///
+    /// ```rust
+    /// # use starlark::values::*;
+    /// struct MyList {
+    ///     content: Vec<Value>,
+    /// }
+    ///
+    /// impl TypedValue for MyList {
+    ///     type Holder = Mutable<Self>;
+    ///     const TYPE: &'static str = "MyList";
+    ///
+    ///     fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+    ///         for value in &self.content {
+    ///             visitor(value);
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    fn visit_links(&self, _visitor: &mut dyn FnMut(&Value)) {
+        if Self::Holder::HAS_LINKS {
+            panic!("visit_links() must be implemented for {}", Self::TYPE);
+        } else {
+            // no-op
+        }
+    }
 }
 
 impl fmt::Debug for Value {
@@ -1035,7 +1070,7 @@ impl fmt::Debug for Value {
 }
 
 impl Value {
-    pub fn freeze(&mut self) {
+    pub fn freeze(&self) {
         match &self.0 {
             ValueInner::Other(rc) => {
                 if rc.value.freeze() {
@@ -1101,7 +1136,7 @@ impl Value {
     }
 
     pub fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
-        match self.try_value_holder_mut() {
+        match self.try_value_holder_mut(false) {
             Err(ObjectBorrowMutError::Immutable) => {
                 return Err(ValueError::OperationNotSupported {
                     op: "[] =".to_owned(),
@@ -1147,7 +1182,7 @@ impl Value {
         self.value_holder().has_attr_dyn(attribute)
     }
     pub fn set_attr(&mut self, attribute: &str, new_value: Value) -> Result<(), ValueError> {
-        match self.try_value_holder_mut() {
+        match self.try_value_holder_mut(false) {
             Err(ObjectBorrowMutError::Immutable) => {
                 return Err(ValueError::OperationNotSupported {
                     op: format!(".{} =", attribute),
@@ -1372,7 +1407,7 @@ impl Value {
     pub fn downcast_mut<T: TypedValue<Holder = Mutable<T>>>(
         &self,
     ) -> Result<Option<ObjectRefMut<'_, T>>, ValueError> {
-        let object_ref = match self.try_value_holder_mut() {
+        let object_ref = match self.try_value_holder_mut(false) {
             Err(e @ ObjectBorrowMutError::Frozen)
             | Err(e @ ObjectBorrowMutError::FrozenForIteration) => return Err(e.into()),
             Err(e) => panic!("already borrowed: {:?}", e),
@@ -1391,6 +1426,64 @@ impl Value {
     }
 }
 
+/// Weak reference to garbage-collectable object
+#[derive(Clone)]
+pub(crate) struct ValueGcWeak(Weak<ValueHolder<dyn TypedValueDyn>>);
+
+/// Strong reference to garbage-collectable object.
+/// E. g. strings are not here, although they are heap-allocated.
+#[derive(Clone)]
+pub(crate) struct ValueGcStrong(Rc<ValueHolder<dyn TypedValueDyn>>);
+
+impl ValueGcWeak {
+    pub fn upgrade(&self) -> Option<ValueGcStrong> {
+        self.0.upgrade().map(ValueGcStrong)
+    }
+
+    pub fn is_alive(&self) -> bool {
+        // Could use this: https://github.com/rust-lang/rust/issues/57977
+        self.upgrade().is_some()
+    }
+}
+
+impl ValueGcStrong {
+    pub fn data_ptr(&self) -> DataPtr {
+        self.0.data_ptr()
+    }
+
+    fn value_holder(&self) -> ObjectRef<dyn TypedValueDyn> {
+        self.0.value.borrow(false)
+    }
+
+    pub fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        self.value_holder().visit_links_dyn(visitor)
+    }
+
+    pub fn gc(&self) {
+        if !self.0.value.is_immutable() {
+            let mut r = self.0.value.borrow_mut(true);
+            r.gc_dyn();
+            r.set_collected();
+        }
+    }
+
+    pub fn downgrade(&self) -> ValueGcWeak {
+        ValueGcWeak(Rc::downgrade(&self.0))
+    }
+}
+
+impl fmt::Debug for ValueGcWeak {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0.upgrade() {
+            Some(rc) => match rc.value.try_borrow(false) {
+                Ok(v) => write!(f, "ValueGcWeak({})", v.get_type_dyn()),
+                Err(e) => write!(f, "ValueGcWeak({:?})", e),
+            },
+            None => write!(f, "ValueGcWeak(dropped)"),
+        }
+    }
+}
+
 // Submodules
 pub mod boolean;
 mod cell;
@@ -1406,6 +1499,7 @@ pub mod range;
 pub mod string;
 pub mod tuple;
 
+use crate::gc;
 use crate::values::cell::error::ObjectBorrowError;
 use crate::values::cell::error::ObjectBorrowMutError;
 use crate::values::cell::ObjectCell;
@@ -1417,7 +1511,6 @@ use std::any::Any;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::iter;
 
     #[test]
     fn test_convert_index() {
@@ -1471,13 +1564,7 @@ mod tests {
                 Ok(std::cmp::Ord::cmp(self, other))
             }
 
-            type Holder = Immutable<WrappedNumber>;
-
-            fn values_for_descendant_check_and_freeze<'a>(
-                &'a self,
-            ) -> Box<dyn Iterator<Item = Value> + 'a> {
-                Box::new(iter::empty())
-            }
+            type Holder = ImmutableNoValues<WrappedNumber>;
         }
 
         let one = Value::new(WrappedNumber(1));

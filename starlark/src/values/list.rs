@@ -46,18 +46,12 @@ impl List {
         })
     }
 
-    pub fn push(&mut self, value: Value) -> Result<(), ValueError> {
-        let value = value.clone_for_container(self)?;
+    pub fn push(&mut self, value: Value) {
         self.content.push(value);
-        Ok(())
     }
 
     pub fn extend(&mut self, other: Value) -> Result<(), ValueError> {
-        let other: Vec<Value> = other
-            .iter()?
-            .iter()
-            .map(|v| v.clone_for_container(self))
-            .collect::<Result<_, _>>()?;
+        let other: Vec<Value> = other.iter()?.iter().collect();
         self.content.extend(other);
         Ok(())
     }
@@ -67,7 +61,6 @@ impl List {
     }
 
     pub fn insert(&mut self, index: usize, value: Value) -> Result<(), ValueError> {
-        let value = value.clone_for_container(self)?;
         self.content.insert(index, value);
         Ok(())
     }
@@ -103,24 +96,17 @@ impl List {
 impl TypedValue for List {
     type Holder = Mutable<List>;
 
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(self.content.iter().cloned())
+    fn gc(&mut self) {
+        self.content.clear();
+    }
+
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for v in &self.content {
+            visitor(v);
+        }
     }
 
     /// Returns a string representation for the list
-    ///
-    /// # Examples:
-    /// ```
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// assert_eq!("[1, 2, 3]", Value::from(vec![1, 2, 3]).to_str());
-    /// assert_eq!("[1, [2, 3]]",
-    ///            Value::from(vec![Value::from(1), Value::from(vec![2, 3])]).to_str());
-    /// assert_eq!("[1]", Value::from(vec![1]).to_str());
-    /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
-    /// ```
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
         write!(buf, "[")?;
         for (i, v) in self.content.iter().enumerate() {
@@ -218,20 +204,6 @@ impl TypedValue for List {
     }
 
     /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a list.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// # assert!(
-    /// // [1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]
-    /// Value::from(vec![1,2,3]).add(Value::from(vec![2,3])).unwrap()
-    ///     == Value::from(vec![1, 2, 3, 2, 3])
-    /// # );
-    /// ```
     fn add(&self, other: &List) -> Result<List, ValueError> {
         let mut result = List {
             content: Vec::new(),
@@ -246,20 +218,6 @@ impl TypedValue for List {
     }
 
     /// Repeat `other` times this tuple.
-    ///
-    /// `other` has to be an int or a boolean.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// # assert!(
-    /// // [1, 2, 3] * 3 == [1, 2, 3, 1, 2, 3, 1, 2, 3]
-    /// Value::from(vec![1,2,3]).mul(Value::from(3)).unwrap()
-    ///              == Value::from(vec![1, 2, 3, 1, 2, 3, 1, 2, 3])
-    /// # );
-    /// ```
     fn mul(&self, other: Value) -> ValueResult {
         match other.downcast_ref::<i64>() {
             Some(l) => {
@@ -276,19 +234,9 @@ impl TypedValue for List {
     }
 
     /// Set the value at `index` to `new_value`
-    ///
-    /// # Example
-    /// ```
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// let mut v = Value::from(vec![1, 2, 3]);
-    /// v.set_at(Value::from(1), Value::from(1)).unwrap();
-    /// v.set_at(Value::from(2), Value::from(vec![2, 3])).unwrap();
-    /// assert_eq!(&v.to_repr(), "[1, 1, [2, 3]]");
-    /// ```
     fn set_at(&mut self, index: Value, new_value: Value) -> Result<(), ValueError> {
         let i = index.convert_index(self.length()?)? as usize;
-        self.content[i] = new_value.clone_for_container(self)?;
+        self.content[i] = new_value;
         Ok(())
     }
 }
@@ -306,9 +254,14 @@ impl TypedIterable for List {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::environment::Environment;
+    use crate::gc;
 
     #[test]
     fn test_to_str() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         assert_eq!("[1, 2, 3]", Value::from(vec![1, 2, 3]).to_str());
         assert_eq!(
             "[1, [2, 3]]",
@@ -320,6 +273,9 @@ mod tests {
 
     #[test]
     fn test_mutate_list() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         let mut v = Value::from(vec![1, 2, 3]);
         v.set_at(Value::from(1), Value::from(1)).unwrap();
         v.set_at(Value::from(2), Value::from(vec![2, 3])).unwrap();
@@ -328,6 +284,9 @@ mod tests {
 
     #[test]
     fn test_arithmetic_on_list() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         // [1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]
         assert_eq!(
             Value::from(vec![1, 2, 3])
@@ -344,28 +303,13 @@ mod tests {
 
     #[test]
     fn test_value_alias() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         let v1 = Value::from(vec![1, 2, 3]);
         let mut v2 = v1.clone();
         v2.set_at(Value::from(2), Value::from(4)).unwrap();
         assert_eq!(v2.to_str(), "[1, 2, 4]");
         assert_eq!(v1.to_str(), "[1, 2, 4]");
-    }
-
-    #[test]
-    fn test_is_descendant() {
-        let v1 = Value::from(vec![1, 2, 3]);
-        let v2 = Value::from(vec![Value::new(1), Value::new(2), v1.clone()]);
-        let v3 = Value::from(vec![Value::new(1), Value::new(2), v2.clone()]);
-        assert!(v3.is_descendant_value(&v2));
-        assert!(v3.is_descendant_value(&v1));
-        assert!(v3.is_descendant_value(&v3));
-
-        assert!(v2.is_descendant_value(&v1));
-        assert!(v2.is_descendant_value(&v2));
-        assert!(!v2.is_descendant_value(&v3));
-
-        assert!(v1.is_descendant_value(&v1));
-        assert!(!v1.is_descendant_value(&v2));
-        assert!(!v1.is_descendant_value(&v3));
     }
 }

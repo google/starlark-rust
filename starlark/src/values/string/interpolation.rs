@@ -346,12 +346,17 @@ impl ArgsFormat {
 
 #[cfg(test)]
 mod test {
+    use crate::environment::Environment;
+    use crate::gc;
     use crate::values::Value;
     use std::collections::HashMap;
     use std::convert::TryFrom;
 
     #[test]
     fn test_string_interpolation() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
         assert_eq!(
             Value::from("Hello %s, your score is %d")

@@ -1336,6 +1336,8 @@ mod tests {
     use super::super::starlark_default;
     use super::super::tests::starlark_default_fail;
     use super::*;
+    use crate::environment::Environment;
+    use crate::gc;
     use crate::values::dict;
 
     macro_rules! starlark_ok {
@@ -1348,6 +1350,9 @@ mod tests {
 
     #[test]
     fn test_format_capture() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         let args = Value::from(vec!["1", "2", "3"]);
         let mut kwargs = dict::Dictionary::new();
         let it = args.iter().unwrap();

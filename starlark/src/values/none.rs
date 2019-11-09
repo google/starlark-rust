@@ -18,7 +18,6 @@ use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::fmt;
-use std::iter;
 
 /// Define the NoneType type
 #[derive(Debug, Clone, Copy)]
@@ -28,7 +27,7 @@ pub enum NoneType {
 
 /// Define the NoneType type
 impl TypedValue for NoneType {
-    type Holder = Immutable<Self>;
+    type Holder = ImmutableNoValues<Self>;
     const TYPE: &'static str = "NoneType";
 
     fn new_value(self) -> Value {
@@ -40,12 +39,6 @@ impl TypedValue for NoneType {
     }
     fn compare(&self, _other: &NoneType) -> Result<Ordering, ValueError> {
         Ok(Ordering::Equal)
-    }
-
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
     }
 
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {

@@ -41,7 +41,6 @@ impl Set {
     }
 
     pub fn insert_if_absent(&mut self, v: Value) -> Result<(), ValueError> {
-        let v = v.clone_for_container(self)?;
         self.content.insert_if_absent(HashedValue::new(v.clone())?);
         Ok(())
     }
@@ -84,7 +83,6 @@ impl Set {
     }
 
     pub fn insert(&mut self, value: Value) -> Result<(), ValueError> {
-        let value = value.clone_for_container(self)?;
         let value = HashedValue::new(value)?;
         self.content.insert(value);
         Ok(())
@@ -120,24 +118,17 @@ impl From<Set> for Value {
 impl TypedValue for Set {
     type Holder = Mutable<Set>;
 
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(self.content.iter().map(|v| v.get_value().clone()))
+    fn gc(&mut self) {
+        self.content.clear();
+    }
+
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for v in &self.content {
+            visitor(v.get_value());
+        }
     }
 
     /// Returns a string representation for the set
-    ///
-    /// # Examples:
-    /// ```
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// assert_eq!("[1, 2, 3]", Value::from(vec![1, 2, 3]).to_str());
-    /// assert_eq!("[1, [2, 3]]",
-    ///            Value::from(vec![Value::from(1), Value::from(vec![2, 3])]).to_str());
-    /// assert_eq!("[1]", Value::from(vec![1]).to_str());
-    /// assert_eq!("[]", Value::from(Vec::<i64>::new()).to_str());
-    /// ```
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
         write!(buf, "{{")?;
         for (i, v) in self.content.iter().enumerate() {
@@ -209,21 +200,6 @@ impl TypedValue for Set {
         Ok(self)
     }
 
-    /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a set.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// # assert!(
-    /// // {1, 2, 3} + {2, 3, 4} == {1, 2, 3, 4}
-    /// Value::from(vec![1,2,3]).add(Value::from(vec![2,3])).unwrap()
-    ///     == Value::from(vec![1, 2, 3, 2, 3])
-    /// # );
-    /// ```
     fn add(&self, other: &Set) -> Result<Self, ValueError> {
         let mut result = Set {
             content: LinkedHashSet::new(),
@@ -261,9 +237,14 @@ impl TypedIterable for Set {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::environment::Environment;
+    use crate::gc;
 
     #[test]
     fn test_to_str() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         assert_eq!("{1, 2, 3}", Set::from(vec![1, 2, 3]).unwrap().to_str());
         assert_eq!(
             "{1, {2, 3}}",
@@ -277,6 +258,9 @@ mod tests {
 
     #[test]
     fn equality_ignores_order() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         assert_eq!(
             Set::from(vec![1, 2, 3]).unwrap(),
             Set::from(vec![3, 2, 1]).unwrap(),
@@ -285,6 +269,9 @@ mod tests {
 
     #[test]
     fn test_value_alias() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         let v1 = Set::from(vec![1, 2]).unwrap();
         let v2 = v1.clone();
         v2.downcast_mut::<Set>()
@@ -294,23 +281,5 @@ mod tests {
             .unwrap();
         assert_eq!(v2.to_str(), "{1, 2, 3}");
         assert_eq!(v1.to_str(), "{1, 2, 3}");
-    }
-
-    #[test]
-    fn test_is_descendant() {
-        let v1 = Set::from(vec![1, 2, 3]).unwrap();
-        let v2 = Set::from(vec![Value::new(1), Value::new(2), v1.clone()]).unwrap();
-        let v3 = Set::from(vec![Value::new(1), Value::new(2), v2.clone()]).unwrap();
-        assert!(v3.is_descendant_value(&v2));
-        assert!(v3.is_descendant_value(&v1));
-        assert!(v3.is_descendant_value(&v3));
-
-        assert!(v2.is_descendant_value(&v1));
-        assert!(v2.is_descendant_value(&v2));
-        assert!(!v2.is_descendant_value(&v3));
-
-        assert!(v1.is_descendant_value(&v1));
-        assert!(!v1.is_descendant_value(&v2));
-        assert!(!v1.is_descendant_value(&v3));
     }
 }

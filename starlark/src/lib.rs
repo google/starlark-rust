@@ -82,4 +82,5 @@ pub mod values;
 pub mod eval;
 #[macro_use]
 pub mod stdlib;
+pub mod gc;
 pub mod linked_hash_set;

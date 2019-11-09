@@ -28,10 +28,10 @@ pub struct StarlarkStruct {
 impl TypedValue for StarlarkStruct {
     type Holder = Immutable<StarlarkStruct>;
 
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(self.fields.values().cloned())
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for v in self.fields.values() {
+            visitor(v);
+        }
     }
 
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {

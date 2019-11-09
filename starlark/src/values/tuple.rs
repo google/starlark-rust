@@ -256,11 +256,10 @@ impl<
 impl TypedValue for Tuple {
     type Holder = Immutable<Tuple>;
 
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        // Tuple are weird, immutable but with potentially mutable
-        Box::new(self.content.iter().cloned())
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for value in &self.content {
+            visitor(value);
+        }
     }
 
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
@@ -369,19 +368,6 @@ impl TypedValue for Tuple {
     }
 
     /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a tuple.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::tuple::Tuple;
-    /// # assert!(
-    /// // (1, 2, 3) + (2, 3) == (1, 2, 3, 2, 3)
-    /// Value::from((1,2,3)).add(Value::from((2,3))).unwrap() == Value::from((1, 2, 3, 2, 3))
-    /// # );
-    /// ```
     fn add(&self, other: &Tuple) -> Result<Tuple, ValueError> {
         let mut result = Tuple {
             content: Vec::with_capacity(self.content.len() + other.content.len()),
@@ -396,20 +382,6 @@ impl TypedValue for Tuple {
     }
 
     /// Repeat `other` times this tuple.
-    ///
-    /// `other` has to be an int or a boolean.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::tuple::Tuple;
-    /// # assert!(
-    /// // (1, 2, 3) * 3 == (1, 2, 3, 1, 2, 3, 1, 2, 3)
-    /// Value::from((1,2,3)).mul(Value::from(3)).unwrap()
-    ///              == Value::from((1, 2, 3, 1, 2, 3, 1, 2, 3))
-    /// # );
-    /// ```
     fn mul(&self, other: Value) -> ValueResult {
         match other.downcast_ref::<i64>() {
             Some(l) => {
@@ -488,9 +460,13 @@ from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::environment::Environment;
+    use crate::gc;
 
     #[test]
     fn test_to_str() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
         assert_eq!("(1, 2, 3)", Value::from((1, 2, 3)).to_str());
         assert_eq!("(1, (2, 3))", Value::from((1, (2, 3))).to_str());
         assert_eq!("(1,)", Value::from((1,)).to_str());
@@ -499,6 +475,9 @@ mod tests {
 
     #[test]
     fn test_arithmetic_on_tuple() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+
         // (1, 2, 3) + (2, 3) == (1, 2, 3, 2, 3)
         assert_eq!(
             Value::from((1, 2, 3)).add(Value::from((2, 3))).unwrap(),
@@ -509,23 +488,5 @@ mod tests {
             Value::from((1, 2, 3)).mul(Value::from(3)).unwrap(),
             Value::from((1, 2, 3, 1, 2, 3, 1, 2, 3))
         );
-    }
-
-    #[test]
-    fn test_is_descendant() {
-        let v1 = Value::from((1, 2, 3));
-        let v2 = Value::from((1, 2, v1.clone()));
-        let v3 = Value::from((1, 2, v2.clone()));
-        assert!(v3.is_descendant_value(&v2));
-        assert!(v3.is_descendant_value(&v1));
-        assert!(v3.is_descendant_value(&v3));
-
-        assert!(v2.is_descendant_value(&v1));
-        assert!(v2.is_descendant_value(&v2));
-        assert!(!v2.is_descendant_value(&v3));
-
-        assert!(v1.is_descendant_value(&v1));
-        assert!(!v1.is_descendant_value(&v2));
-        assert!(!v1.is_descendant_value(&v3));
     }
 }

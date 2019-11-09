@@ -18,7 +18,6 @@ use crate::stdlib::macros::param::TryParamConvertFromValue;
 use crate::values::error::RuntimeError;
 use crate::values::none::NoneType;
 use std::convert::TryInto;
-use std::iter;
 use std::mem;
 use std::vec;
 
@@ -491,12 +490,14 @@ impl<'a> ParameterParser<'a> {
 
 /// Define the function type
 impl TypedValue for NativeFunction {
-    type Holder = Immutable<NativeFunction>;
+    type Holder = Immutable<Self>;
 
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        for p in &self.signature.params {
+            if let FunctionParameter::WithDefaultValue(_, v) = p {
+                visitor(v);
+            }
+        }
     }
 
     fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
@@ -533,10 +534,9 @@ impl TypedValue for NativeFunction {
 impl TypedValue for WrappedMethod {
     type Holder = Immutable<WrappedMethod>;
 
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(vec![self.method.clone(), self.self_obj.clone()].into_iter())
+    fn visit_links(&self, visitor: &mut dyn FnMut(&Value)) {
+        visitor(&self.method);
+        visitor(&self.self_obj);
     }
 
     fn function_id(&self) -> Option<FunctionId> {

@@ -78,9 +78,8 @@ fn main() {
     let ast = opt.ast;
 
     let (mut global, mut type_values) = global_environment_with_extensions();
-
     print_function(&mut global, &mut type_values);
-    global.freeze();
+    global.freeze(true);
 
     let dialect = if opt.build_file {
         Dialect::Build

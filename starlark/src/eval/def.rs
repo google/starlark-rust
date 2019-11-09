@@ -37,19 +37,23 @@ use crate::syntax::ast::Expr;
 use crate::syntax::ast::Parameter;
 use crate::syntax::ast::Statement;
 use crate::values::error::ValueError;
+use crate::values::function;
 use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
 use crate::values::function::FunctionType;
 use crate::values::function::StrOrRepr;
 use crate::values::none::NoneType;
-use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
+use crate::values::ImmutableNoValues;
+use crate::values::TypedValue;
+use crate::values::Value;
+use crate::values::ValueResult;
 use codemap::{CodeMap, Spanned};
 use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
 use std::convert::TryInto;
 use std::fmt;
-use std::iter;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub(crate) enum ParameterCompiled {
@@ -58,6 +62,7 @@ pub(crate) enum ParameterCompiled {
     Args(AstString),
     KWArgs(AstString),
 }
+
 pub(crate) type AstParameterCompiled = Spanned<ParameterCompiled>;
 
 impl ParameterCompiled {
@@ -195,15 +200,9 @@ impl Def {
 }
 
 impl TypedValue for Def {
-    type Holder = Immutable<Def>;
+    type Holder = ImmutableNoValues<Def>;
 
     const TYPE: &'static str = "function";
-
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
-    }
 
     fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
         function::str_impl(buf, &self.function_type, &self.signature, StrOrRepr::Str)

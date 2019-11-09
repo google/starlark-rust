@@ -15,10 +15,12 @@
 //! `range()` builtin implementation
 
 use crate::values::iter::TypedIterable;
-use crate::values::{Immutable, TypedValue, Value, ValueError};
+use crate::values::ImmutableNoValues;
+use crate::values::TypedValue;
+use crate::values::Value;
+use crate::values::ValueError;
 use std::fmt;
 use std::fmt::Write as _;
-use std::iter;
 use std::mem;
 use std::num::NonZeroI64;
 
@@ -197,11 +199,7 @@ impl TypedValue for Range {
         }
     }
 
-    type Holder = Immutable<Range>;
-
-    fn values_for_descendant_check_and_freeze(&self) -> Box<dyn Iterator<Item = Value>> {
-        Box::new(iter::empty())
-    }
+    type Holder = ImmutableNoValues<Range>;
 }
 
 /// For tests

@@ -24,16 +24,9 @@ use std::hash::{Hash, Hasher};
 pub mod interpolation;
 
 use std::fmt;
-use std::iter;
 
 impl TypedValue for String {
-    type Holder = Immutable<String>;
-
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
-    }
+    type Holder = ImmutableNoValues<String>;
 
     fn to_str_impl(&self, buf: &mut String) -> fmt::Result {
         buf.push_str(&self);
@@ -183,33 +176,6 @@ impl TypedValue for String {
     /// Cf. [String interpolation on the Starlark spec](
     /// https://github.com/google/skylark/blob/a0e5de7e63b47e716cca7226662a4c95d47bf873/doc/spec.md#string-interpolation
     /// )
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::string;
-    /// # use std::collections::HashMap;
-    /// # use std::convert::TryFrom;
-    /// # assert!(
-    /// // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
-    /// Value::from("Hello %s, your score is %d").percent(Value::from(("Bob", 75))).unwrap()
-    ///     == Value::from("Hello Bob, your score is 75")
-    /// # );
-    /// # assert!(
-    /// // "%d %o %x %c" % (65, 65, 65, 65) == "65 101 41 A"
-    /// Value::from("%d %o %x %c").percent(Value::from((65, 65, 65, 65))).unwrap()
-    ///     == Value::from("65 101 41 A")
-    /// # );
-    /// // "%(greeting)s, %(audience)s" % {"greeting": "Hello", "audience": "world"} ==
-    /// //      "Hello, world"
-    /// let mut d = Value::try_from(HashMap::<String, Value>::new()).unwrap();
-    /// d.set_at(Value::from("greeting"), Value::from("Hello"));
-    /// d.set_at(Value::from("audience"), Value::from("world"));
-    /// # assert!(
-    /// Value::from("%(greeting)s, %(audience)s").percent(d).unwrap() == Value::from("Hello, world")
-    /// # );
-    /// ```
     fn percent(&self, other: Value) -> ValueResult {
         Ok(Value::new(ArgsFormat::parse(&self)?.format(other)?))
     }
@@ -230,6 +196,10 @@ impl<'a> From<&'a str> for Value {
 #[cfg(test)]
 mod tests {
     use super::super::Value;
+    use crate::environment::Environment;
+    use crate::gc;
+    use std::collections::HashMap;
+    use std::convert::TryFrom;
 
     #[test]
     fn test_to_repr() {
@@ -304,5 +274,34 @@ mod tests {
         assert!(Value::from("abc").is_in(&Value::from("b")).unwrap());
         // "z" in "abc" == False
         assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap());
+    }
+
+    #[test]
+    fn test_example() {
+        let env = Environment::new("test");
+        let _g = gc::push_env(&env);
+        assert!(
+            Value::from("Hello %s, your score is %d")
+                .percent(Value::from(("Bob", 75)))
+                .unwrap()
+                == Value::from("Hello Bob, your score is 75")
+        );
+        assert!(
+            Value::from("%d %o %x %c")
+                .percent(Value::from((65, 65, 65, 65)))
+                .unwrap()
+                == Value::from("65 101 41 A")
+        );
+        let mut d = Value::try_from(HashMap::<String, Value>::new()).unwrap();
+        d.set_at(Value::from("greeting"), Value::from("Hello"))
+            .unwrap();
+        d.set_at(Value::from("audience"), Value::from("world"))
+            .unwrap();
+        assert!(
+            Value::from("%(greeting)s, %(audience)s")
+                .percent(d)
+                .unwrap()
+                == Value::from("Hello, world")
+        );
     }
 }

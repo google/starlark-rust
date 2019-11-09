@@ -18,7 +18,6 @@ use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::fmt;
-use std::iter;
 
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
@@ -28,7 +27,7 @@ impl From<bool> for Value {
 
 /// Define the bool type
 impl TypedValue for bool {
-    type Holder = Immutable<Self>;
+    type Holder = ImmutableNoValues<Self>;
     const TYPE: &'static str = "bool";
 
     fn new_value(self) -> Value {
@@ -46,12 +45,6 @@ impl TypedValue for bool {
     }
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(self.to_int().unwrap() as u64)
-    }
-
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
     }
 
     fn equals(&self, other: &bool) -> Result<bool, ValueError> {

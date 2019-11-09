@@ -32,6 +32,7 @@ use starlark::eval::eval;
 use starlark::eval::noload;
 use starlark::eval::EvalException;
 use starlark::eval::FileLoader;
+use starlark::gc;
 use starlark::stdlib::global_environment_with_extensions;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::error::ValueError;
@@ -140,7 +141,6 @@ impl FileLoader for HashMapFileLoader {
 pub fn do_conformance_test(path: &str, content: &str) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
     let (global, type_values) = global_environment_with_extensions();
-    global.freeze();
     let mut prelude = global.child("PRELUDE");
     noload::eval(
         &map,
@@ -159,7 +159,7 @@ def assert_(cond, msg="assertion failed"):
         &type_values,
     )
     .unwrap();
-    prelude.freeze();
+    prelude.freeze(true);
 
     let test = parse_test(content);
 
@@ -232,7 +232,7 @@ pub fn do_bench(bencher: &mut Bencher, path: &str) {
 
     let map = Arc::new(Mutex::new(CodeMap::new()));
     let (global, type_values) = global_environment_with_extensions();
-    global.freeze();
+    global.freeze(true);
     let mut prelude = global.child("PRELUDE");
     noload::eval(
         &map,
@@ -251,7 +251,6 @@ def assert_(cond, msg="assertion failed"):
         &type_values,
     )
     .unwrap();
-    prelude.freeze();
 
     let mut env = prelude.child("run");
     match noload::eval(&map, path, &content, Dialect::Bzl, &mut env, &type_values) {
@@ -262,11 +261,13 @@ def assert_(cond, msg="assertion failed"):
         }
     }
 
-    env.freeze();
+    env.freeze(true);
 
     let bench_func = env.get("bench").expect("bench function is not found");
 
     bencher.iter(|| {
+        let env = env.child("bench");
+        let _g = gc::push_env(&env);
         match bench_func.call(
             &mut CallStack::default(),
             &type_values,

@@ -18,7 +18,6 @@ use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::fmt;
-use std::iter;
 
 // A convenient macro for testing and documentation.
 #[macro_export]
@@ -81,7 +80,7 @@ where
 
 /// Define the int type
 impl TypedValue for i64 {
-    type Holder = Immutable<Self>;
+    type Holder = ImmutableNoValues<Self>;
     const TYPE: &'static str = "int";
 
     fn new_value(self) -> Value {
@@ -159,12 +158,6 @@ impl TypedValue for i64 {
                 None => Err(ValueError::IntegerOverflow),
             }
         })
-    }
-
-    fn values_for_descendant_check_and_freeze<'a>(
-        &'a self,
-    ) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new(iter::empty())
     }
 
     fn compare(&self, other: &i64) -> Result<Ordering, ValueError> {

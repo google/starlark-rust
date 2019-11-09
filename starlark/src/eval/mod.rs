@@ -36,6 +36,7 @@ use crate::eval::module::Module;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
+use crate::gc;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
@@ -859,6 +860,7 @@ fn eval_module(
     map: Arc<Mutex<CodeMap>>,
     file_loader: Rc<dyn FileLoader>,
 ) -> EvalResult {
+    let _g = gc::push_env(&env);
     let mut call_stack = CallStack::default();
     let mut context = EvaluationContext {
         env: EvaluationContextEnvironment::Module(env.clone(), file_loader),

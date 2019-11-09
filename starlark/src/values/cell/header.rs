@@ -18,65 +18,90 @@ use crate::values::cell::error::ObjectBorrowError;
 use crate::values::cell::error::ObjectBorrowMutError;
 use std::cell::Cell;
 use std::fmt;
+use std::mem;
+
+/// Something is frozen or not frozen.
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum FrozenState {
+    Yes,
+    No,
+}
+
+impl FrozenState {
+    fn flag(&self) -> usize {
+        match self {
+            FrozenState::Yes => FROZEN_FLAG,
+            FrozenState::No => 0,
+        }
+    }
+}
 
 /// Object mutability state.
 #[derive(PartialEq, Debug)]
 enum ObjectState {
-    /// Object type is immutable, not yet frozen (e. g. just constructed tuple)
-    Immutable,
-    /// Object type is immutable, and object is frozen
-    ImmutableFrozen,
-    /// Object type is mutable, but object is frozen
-    MutableFrozen,
+    /// Object type is immutable
+    Immutable(FrozenState),
     /// Borrowed mutably
-    BorrowedMut,
+    // frozen
+    BorrowedMut(FrozenState),
     /// Borrowed
-    // borrowed count, borrowed for iteration
-    Borrowed(usize, bool),
+    // frozen, borrowed count, borrowed for iteration
+    Mutable(FrozenState, usize, bool),
+    /// Object is garbage-collected
+    Collected,
 }
 
 const LARGEST_PO2: usize = (usize::max_value() >> 1) + 1;
 const IMMUTABLE_FLAG: usize = LARGEST_PO2 >> 0;
 const FROZEN_FLAG: usize = LARGEST_PO2 >> 1;
 const FOR_ITER_FLAG: usize = LARGEST_PO2 >> 2;
-const BORROWED_MUT: usize = FOR_ITER_FLAG - 1;
+const BORROWED_MUT_FLAG: usize = LARGEST_PO2 >> 3;
+const COLLECTED: usize = FOR_ITER_FLAG - 1;
+const MAX_BORROW_COUNT: usize = COLLECTED - 1;
 
 impl ObjectState {
     fn encode(&self) -> usize {
         match self {
-            ObjectState::Immutable => IMMUTABLE_FLAG,
-            ObjectState::ImmutableFrozen => IMMUTABLE_FLAG | FROZEN_FLAG,
-            ObjectState::MutableFrozen => FROZEN_FLAG,
-            ObjectState::BorrowedMut => BORROWED_MUT,
-            ObjectState::Borrowed(count, for_iter) => {
-                assert!(*count < BORROWED_MUT);
+            ObjectState::Immutable(frozen) => IMMUTABLE_FLAG | frozen.flag(),
+            ObjectState::BorrowedMut(frozen) => BORROWED_MUT_FLAG | frozen.flag(),
+            ObjectState::Mutable(frozen, count, for_iter) => {
+                assert!(*count <= MAX_BORROW_COUNT);
                 let mut r = *count;
                 if *for_iter {
                     debug_assert!(*count != 0);
                     r = r | FOR_ITER_FLAG;
                 }
+                r = r | frozen.flag();
                 r
             }
+            ObjectState::Collected => COLLECTED,
         }
     }
 
     fn decode(state: usize) -> ObjectState {
         if state == IMMUTABLE_FLAG {
-            ObjectState::Immutable
-        } else if state == FROZEN_FLAG {
-            ObjectState::MutableFrozen
+            ObjectState::Immutable(FrozenState::No)
         } else if state == FROZEN_FLAG | IMMUTABLE_FLAG {
-            ObjectState::ImmutableFrozen
-        } else if state == BORROWED_MUT {
-            ObjectState::BorrowedMut
+            ObjectState::Immutable(FrozenState::Yes)
+        } else if state == BORROWED_MUT_FLAG {
+            ObjectState::BorrowedMut(FrozenState::No)
+        } else if state == BORROWED_MUT_FLAG | FROZEN_FLAG {
+            ObjectState::BorrowedMut(FrozenState::Yes)
+        } else if state == COLLECTED {
+            ObjectState::Collected
         } else {
             let for_iter = (state & FOR_ITER_FLAG) != 0;
-            let count = state & !FOR_ITER_FLAG;
-            debug_assert!(count < BORROWED_MUT);
+            let frozen = if (state & FROZEN_FLAG) != 0 {
+                FrozenState::Yes
+            } else {
+                FrozenState::No
+            };
+            let count = state & !FOR_ITER_FLAG & !FROZEN_FLAG;
             if for_iter {
                 debug_assert!(count != 0);
             }
-            ObjectState::Borrowed(count, for_iter)
+            debug_assert!(count <= MAX_BORROW_COUNT);
+            ObjectState::Mutable(frozen, count, for_iter)
         }
     }
 }
@@ -100,6 +125,15 @@ impl ObjectBorrowRef<'_> {
 
 pub(crate) struct ObjectBorrowRefMut<'b> {
     header: &'b ObjectHeader,
+    // Self-assertion
+    frozen: FrozenState,
+}
+
+impl ObjectBorrowRefMut<'_> {
+    pub fn set_collected(self) {
+        self.header.set_collected_from_borrowed_mut();
+        mem::forget(self);
+    }
 }
 
 impl Drop for ObjectBorrowRef<'_> {
@@ -112,7 +146,7 @@ impl Drop for ObjectBorrowRef<'_> {
 
 impl Drop for ObjectBorrowRefMut<'_> {
     fn drop(&mut self) {
-        self.header.unborrow_mut();
+        self.header.unborrow_mut(self.frozen);
     }
 }
 
@@ -138,6 +172,7 @@ static IMMUTABLE_FROZEN_OBJECT_HEADER: ObjectHeaderInStaticField =
         state: Cell::new(IMMUTABLE_FLAG | FROZEN_FLAG),
     });
 
+#[derive(Clone, PartialEq)]
 pub(crate) struct ObjectHeader {
     state: Cell<usize>,
 }
@@ -154,14 +189,21 @@ impl ObjectHeader {
     /// Create new object header for mutable object
     pub fn mutable() -> ObjectHeader {
         ObjectHeader {
-            state: Cell::new(ObjectState::Borrowed(0, false).encode()),
+            state: Cell::new(ObjectState::Mutable(FrozenState::No, 0, false).encode()),
         }
     }
 
     /// Create new object header for immutable object
     pub fn immutable() -> ObjectHeader {
         ObjectHeader {
-            state: Cell::new(ObjectState::Immutable.encode()),
+            state: Cell::new(ObjectState::Immutable(FrozenState::No).encode()),
+        }
+    }
+
+    /// Create new object header for immutable object
+    pub fn immutable_frozen() -> ObjectHeader {
+        ObjectHeader {
+            state: Cell::new(ObjectState::Immutable(FrozenState::Yes).encode()),
         }
     }
 
@@ -172,86 +214,141 @@ impl ObjectHeader {
         &IMMUTABLE_FROZEN_OBJECT_HEADER.0
     }
 
+    /// Immutable (but not mutable frozen).
+    pub fn is_immutable(&self) -> bool {
+        match self.get_decoded() {
+            ObjectState::Immutable(..) => true,
+            _ => false,
+        }
+    }
+
     /// Freeze the object.
     pub fn freeze(&self) -> bool {
         match self.get_decoded() {
-            ObjectState::ImmutableFrozen => false,
-            ObjectState::MutableFrozen => false,
-            ObjectState::Immutable => {
-                self.set_decoded(ObjectState::ImmutableFrozen);
+            ObjectState::Immutable(FrozenState::No) => false,
+            ObjectState::Immutable(FrozenState::Yes) => {
+                self.set_decoded(ObjectState::Immutable(FrozenState::Yes));
                 true
             }
-            ObjectState::Borrowed(0, _) => {
-                self.set_decoded(ObjectState::MutableFrozen);
+            ObjectState::Mutable(_, 0, for_iter) => {
+                debug_assert!(!for_iter);
+                self.set_decoded(ObjectState::Mutable(FrozenState::Yes, 0, false));
                 true
             }
-            ObjectState::Borrowed(..) => panic!("cannot freeze, because it is borrowed"),
-            ObjectState::BorrowedMut => panic!("cannot freeze, because it is borrowed mutably"),
+            ObjectState::Mutable(..) => panic!("cannot freeze, because it is borrowed"),
+            ObjectState::BorrowedMut(FrozenState::No) => {
+                panic!("cannot freeze, because it is borrowed mutably")
+            }
+            ObjectState::BorrowedMut(FrozenState::Yes) => {
+                panic!("cannot freeze, because it is frozen and borrowed mutably")
+            }
+            ObjectState::Collected => panic!("cannot freeze, because it is collected"),
         }
     }
 
     pub fn try_borrow(&self, for_iter: bool) -> Result<ObjectBorrowRef, ObjectBorrowError> {
         Ok(match self.get_decoded() {
-            ObjectState::ImmutableFrozen | ObjectState::MutableFrozen | ObjectState::Immutable => {
-                ObjectBorrowRef {
-                    header: self,
-                    was_for_iter: false,
-                }
-            }
-            ObjectState::Borrowed(count, was_for_iter) => {
-                self.set_decoded(ObjectState::Borrowed(count + 1, for_iter || was_for_iter));
+            ObjectState::Immutable(..) => ObjectBorrowRef {
+                header: self,
+                was_for_iter: false,
+            },
+            ObjectState::Mutable(frozen, count, was_for_iter) => {
+                self.set_decoded(ObjectState::Mutable(
+                    frozen,
+                    count + 1,
+                    for_iter || was_for_iter,
+                ));
                 ObjectBorrowRef {
                     header: self,
                     was_for_iter,
                 }
             }
-            ObjectState::BorrowedMut => {
-                return Err(ObjectBorrowError::BorrowedMut);
+            ObjectState::BorrowedMut(frozen) => {
+                return Err(ObjectBorrowError::BorrowedMut(frozen));
+            }
+            ObjectState::Collected => {
+                return Err(ObjectBorrowError::Collected);
             }
         })
     }
 
     fn unborrow(&self, was_for_iter: bool) {
         match self.get_decoded() {
-            ObjectState::Immutable => {}
-            ObjectState::ImmutableFrozen => {}
-            ObjectState::MutableFrozen => {}
-            ObjectState::Borrowed(count, _) => {
+            ObjectState::Immutable(..) => {}
+            ObjectState::Mutable(frozen, count, _) => {
                 assert!(count > 0);
-                self.set_decoded(ObjectState::Borrowed(count - 1, was_for_iter));
+                self.set_decoded(ObjectState::Mutable(frozen, count - 1, was_for_iter));
             }
-            ObjectState::BorrowedMut => {
+            ObjectState::BorrowedMut(FrozenState::No) => {
                 panic!("unborrow when borrowed mutably");
+            }
+            ObjectState::BorrowedMut(FrozenState::Yes) => {
+                panic!("unborrow when borrowed mutably and frozen");
+            }
+            ObjectState::Collected => {
+                panic!("unborrow when garbage collected");
             }
         }
     }
 
-    pub fn try_borrow_mut(&self) -> Result<ObjectBorrowRefMut, ObjectBorrowMutError> {
+    pub fn try_borrow_mut(
+        &self,
+        allow_frozen: bool,
+    ) -> Result<ObjectBorrowRefMut, ObjectBorrowMutError> {
         Err(match self.get_decoded() {
-            ObjectState::Immutable | ObjectState::ImmutableFrozen => {
-                ObjectBorrowMutError::Immutable
+            ObjectState::Immutable(..) => ObjectBorrowMutError::Immutable,
+            ObjectState::BorrowedMut(frozen) => ObjectBorrowMutError::BorrowedMut(frozen),
+            ObjectState::Mutable(frozen, 0, _) => {
+                if frozen == FrozenState::Yes && !allow_frozen {
+                    return Err(ObjectBorrowMutError::Frozen);
+                }
+                self.set_decoded(ObjectState::BorrowedMut(frozen));
+                return Ok(ObjectBorrowRefMut {
+                    header: self,
+                    frozen,
+                });
             }
-            ObjectState::MutableFrozen => ObjectBorrowMutError::Frozen,
-            ObjectState::BorrowedMut => ObjectBorrowMutError::BorrowedMut,
-            ObjectState::Borrowed(0, _) => {
-                self.set_decoded(ObjectState::BorrowedMut);
-                return Ok(ObjectBorrowRefMut { header: self });
-            }
-            ObjectState::Borrowed(_, true) => ObjectBorrowMutError::FrozenForIteration,
-            ObjectState::Borrowed(_, false) => ObjectBorrowMutError::Borrowed,
+            ObjectState::Mutable(_, _, true) => ObjectBorrowMutError::FrozenForIteration,
+            ObjectState::Mutable(frozen, _, false) => ObjectBorrowMutError::Borrowed(frozen),
+            ObjectState::Collected => ObjectBorrowMutError::Collected,
         })
     }
 
-    fn unborrow_mut(&self) {
+    fn unborrow_mut(&self, _frozen: FrozenState) {
         match self.get_decoded() {
-            ObjectState::Immutable => unreachable!(),
-            ObjectState::ImmutableFrozen => unreachable!(),
-            ObjectState::MutableFrozen => unreachable!(),
-            ObjectState::Borrowed(..) => unreachable!(),
-            ObjectState::BorrowedMut => {
-                self.set_decoded(ObjectState::Borrowed(0, false));
+            ObjectState::Immutable(..) => unreachable!(),
+            ObjectState::BorrowedMut(frozen) => {
+                self.set_decoded(ObjectState::Mutable(frozen, 0, false));
             }
+            ObjectState::Collected => unreachable!(),
+            ObjectState::Mutable(..) => unreachable!(),
         }
+    }
+
+    pub fn set_collected_from_borrowed_mut(&self) {
+        match self.get_decoded() {
+            ObjectState::BorrowedMut(..) => self.set_decoded(ObjectState::Collected),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn _set_collected(&self) {
+        match self.get_decoded() {
+            ObjectState::Collected => {}
+            ObjectState::Immutable(..) => {
+                // not setting to collected because objects like ints
+                // are not collected
+            }
+            ObjectState::BorrowedMut(..) => panic!("borrowed mutably"),
+            ObjectState::Mutable(_, 0, _) => self.set_decoded(ObjectState::Collected),
+            ObjectState::Mutable(..) => panic!("borrowed"),
+        }
+    }
+}
+
+impl fmt::Debug for ObjectHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.get_decoded(), f)
     }
 }
 
@@ -269,7 +366,7 @@ mod test {
         h.freeze();
         assert_eq!(
             ObjectBorrowMutError::Immutable,
-            h.try_borrow_mut().unwrap_err()
+            h.try_borrow_mut(false).unwrap_err()
         );
     }
 
@@ -279,14 +376,14 @@ mod test {
         h.freeze();
         let b = h.try_borrow(false).unwrap();
         assert_eq!(
-            ObjectBorrowMutError::Frozen,
-            h.try_borrow_mut().unwrap_err()
+            ObjectBorrowMutError::Borrowed(FrozenState::Yes),
+            h.try_borrow_mut(false).unwrap_err()
         );
         assert_eq!(false, h.try_borrow(true).unwrap().was_for_iter);
         drop(b);
         assert_eq!(
             ObjectBorrowMutError::Frozen,
-            h.try_borrow_mut().unwrap_err()
+            h.try_borrow_mut(false).unwrap_err()
         );
     }
 
@@ -297,19 +394,70 @@ mod test {
         let b2 = h.try_borrow(false).unwrap();
         assert_eq!(
             ObjectBorrowMutError::FrozenForIteration,
-            h.try_borrow_mut().unwrap_err()
+            h.try_borrow_mut(false).unwrap_err()
         );
         drop(b2);
         assert_eq!(
             ObjectBorrowMutError::FrozenForIteration,
-            h.try_borrow_mut().unwrap_err()
+            h.try_borrow_mut(false).unwrap_err()
         );
         drop(b1);
-        let bm = h.try_borrow_mut().unwrap();
+        let bm = h.try_borrow_mut(false).unwrap();
         assert_eq!(
-            ObjectBorrowError::BorrowedMut,
+            ObjectBorrowError::BorrowedMut(FrozenState::No),
             h.try_borrow(true).unwrap_err()
         );
         drop(bm);
+    }
+
+    fn states_for_test() -> Vec<ObjectHeader> {
+        vec![
+            ObjectState::Immutable(FrozenState::No),
+            ObjectState::Immutable(FrozenState::Yes),
+            ObjectState::BorrowedMut(FrozenState::No),
+            ObjectState::BorrowedMut(FrozenState::Yes),
+            ObjectState::Mutable(FrozenState::No, 0, false),
+            ObjectState::Mutable(FrozenState::No, 1, false),
+            ObjectState::Mutable(FrozenState::No, 3, false),
+            ObjectState::Mutable(FrozenState::Yes, 0, false),
+            ObjectState::Mutable(FrozenState::Yes, 1, false),
+            ObjectState::Mutable(FrozenState::Yes, 3, false),
+            ObjectState::Mutable(FrozenState::No, 1, true),
+            ObjectState::Mutable(FrozenState::No, 3, true),
+            ObjectState::Mutable(FrozenState::Yes, 1, true),
+            ObjectState::Mutable(FrozenState::Yes, 3, true),
+            ObjectState::Collected,
+        ]
+        .into_iter()
+        .map(|s| ObjectHeader {
+            state: Cell::new(s.encode()),
+        })
+        .collect()
+    }
+
+    #[test]
+    fn borrow() {
+        for h in states_for_test() {
+            for &for_iter in &[true, false] {
+                let h1 = h.clone();
+                // Borrow may be successful or not,
+                // but after unborrow state must be restored
+                drop(h1.try_borrow(for_iter));
+                assert_eq!(h, h1);
+            }
+        }
+    }
+
+    #[test]
+    fn borrow_mut() {
+        for h in states_for_test() {
+            for &allow_frozen in &[true, false] {
+                let h1 = h.clone();
+                // Borrow may be successful or not,
+                // but after unborrow state must be restored
+                drop(h1.try_borrow_mut(allow_frozen));
+                assert_eq!(h, h1);
+            }
+        }
     }
 }

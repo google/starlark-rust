@@ -345,6 +345,8 @@ macro_rules! starlark_module {
 
         #[doc(hidden)]
         pub fn $name(env: &mut $crate::environment::Environment, type_values: &mut $crate::environment::TypeValues) {
+            // Thread-local env is needed to register default value objects
+            let _g = $crate::gc::push_type_values(type_values);
             starlark_signatures!{ env, type_values,
                 $($t)*
             }

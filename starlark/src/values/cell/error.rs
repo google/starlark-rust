@@ -14,13 +14,16 @@
 
 //! Cell-related errors.
 
+use crate::values::cell::header::FrozenState;
 use std::fmt;
 
 /// Error when borrow failed.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ObjectBorrowError {
-    /// Can only fail if object is mutably borrowed
-    BorrowedMut,
+    /// Borrowed mutably
+    BorrowedMut(FrozenState),
+    /// Object is garbage-collected
+    Collected,
 }
 
 /// Object cannot be mutably borrowed.
@@ -33,9 +36,11 @@ pub enum ObjectBorrowMutError {
     /// Object is frozen for iteration
     FrozenForIteration,
     /// Object is already mutably borrowed
-    BorrowedMut,
+    BorrowedMut(FrozenState),
     /// Object is borrowed
-    Borrowed,
+    Borrowed(FrozenState),
+    /// Object is garbage-collected
+    Collected,
 }
 
 impl fmt::Display for ObjectBorrowMutError {
@@ -46,8 +51,12 @@ impl fmt::Display for ObjectBorrowMutError {
             ObjectBorrowMutError::FrozenForIteration => {
                 write!(f, "Cannot mutate an iterable while iterating")
             }
-            ObjectBorrowMutError::BorrowedMut => write!(f, "Borrowed mutably"),
-            ObjectBorrowMutError::Borrowed => write!(f, "Borrowed"),
+            ObjectBorrowMutError::BorrowedMut(FrozenState::No) => write!(f, "Borrowed mutably"),
+            ObjectBorrowMutError::BorrowedMut(FrozenState::Yes) => {
+                write!(f, "Frozen and borrowed mutably")
+            }
+            ObjectBorrowMutError::Borrowed(..) => write!(f, "Borrowed"),
+            ObjectBorrowMutError::Collected => write!(f, "Garbage-collected"),
         }
     }
 }

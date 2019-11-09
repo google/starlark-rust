@@ -49,7 +49,7 @@ starlark_module! {global =>
     /// ```
     list.append(this, el, /) {
         let mut this = this.downcast_mut::<List>()?.unwrap();
-        this.push(el)?;
+        this.push(el);
         Ok(Value::new(NoneType::None))
     }
 

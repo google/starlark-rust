@@ -55,23 +55,23 @@ list < {}     ###  compare not supported for types function and dict
 # cyclic data structures
 
 cyclic = [1, 2, 3] # list cycle
-cyclic[1] = cyclic  ### Unsupported recursive data structure
+cyclic[1] = cyclic
 ---
 cyclic2 = [1, 2, 3]
-cyclic2[1] = cyclic2  ### Unsupported recursive data structure
+cyclic2[1] = cyclic2
 ---
 
 cyclic3 = [1, [2, 3]] # list-list cycle
-cyclic3[1][0] = cyclic3  ### Unsupported recursive data structure
+cyclic3[1][0] = cyclic3
 ---
 cyclic4 = {"x": 1}
-cyclic4["x"] = cyclic4  ### Unsupported recursive data structure
+cyclic4["x"] = cyclic4
 ---
 cyclic5 = [0, {"x": 1}] # list-dict cycle
-cyclic5[1]["x"] = cyclic5  ### Unsupported recursive data structure
+cyclic5[1]["x"] = cyclic5
 ---
 cyclic6 = [0, {"x": 1}]
-cyclic6[1]["x"] = cyclic6  ### Unsupported recursive data structure
+cyclic6[1]["x"] = cyclic6
 ---
 # was a parse error:
 assert_eq(("ababab"[2:]).replace("b", "c"), "acac")

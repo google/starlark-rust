@@ -17,6 +17,7 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::gc::Heap;
 use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
 use std::cell::RefCell;
@@ -101,10 +102,15 @@ struct EnvironmentContent {
     frozen: bool,
     /// Super environment that represent a higher scope than the current one
     parent: Option<Environment>,
+    /// Symbols imported from these environments.
+    /// Explicitly keep references to prevent running GC on these.
+    deps: HashMap<*const (), Environment>,
+    /// Where objects are garbage collected
+    heap: Heap,
     /// List of variable bindings
     ///
-    /// These bindings include methods for native types, e.g. `string.isalnum`.
-    variables: HashMap<String, Value>,
+    /// `bool` indicates whether value belongs to this environment (`true`) or imported (`false`)
+    variables: HashMap<String, (Value, bool)>,
     /// Optional function which can be used to construct set literals (i.e. `{foo, bar}`).
     /// If not set, attempts to use set literals will raise an error.
     set_constructor: SetConstructor,
@@ -131,6 +137,8 @@ impl Environment {
                 name_: name.to_owned(),
                 frozen: false,
                 parent: None,
+                deps: HashMap::new(),
+                heap: Heap::new(name),
                 variables: HashMap::new(),
                 set_constructor: SetConstructor(None),
             })),
@@ -139,22 +147,38 @@ impl Environment {
 
     /// Create a new child environment for this environment
     pub fn child(&self, name: &str) -> Environment {
-        self.freeze();
+        self.freeze(true);
         Environment {
             env: Rc::new(RefCell::new(EnvironmentContent {
                 name_: name.to_owned(),
                 frozen: false,
                 parent: Some(self.clone()),
+                deps: HashMap::new(),
+                heap: Heap::new(name),
                 variables: HashMap::new(),
                 set_constructor: SetConstructor(None),
             })),
         }
     }
 
+    /// Get a heap which stores known objects for this environment.
+    pub(crate) fn heap(&self) -> Heap {
+        self.env.borrow().heap.clone()
+    }
+
     /// Create a new child environment
     /// Freeze the environment, all its value will become immutable after that
-    pub fn freeze(&self) -> &Self {
-        self.env.borrow_mut().freeze();
+    pub fn freeze(&self, gc: bool) -> &Self {
+        if self.env.borrow_mut().freeze() {
+            let heap = self.env.borrow().heap.clone();
+            if gc {
+                // Note GC on freeze is optional: if it is not called, objects will be dropped
+                // during the heap drop without graph traversal (much faster).
+                heap.gc(self, "freeze");
+            } else {
+                heap.gc_weak("freeze");
+            }
+        }
         self
     }
 
@@ -165,12 +189,20 @@ impl Environment {
 
     /// Set the value of a variable in that environment.
     pub fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
-        self.env.borrow_mut().set(name, value)
+        self.env.borrow_mut().set(name, value, false)
     }
 
     /// Get the value of the variable `name`
     pub fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         self.env.borrow().get(name)
+    }
+
+    /// Add environment as a dependency
+    fn add_env_dep(&self, dep: &Environment) {
+        self.env
+            .borrow_mut()
+            .deps
+            .insert(dep.env.as_ptr() as *const (), dep.clone());
     }
 
     pub fn import_symbol(
@@ -184,7 +216,10 @@ impl Environment {
             Some('_') | None => Err(EnvironmentError::CannotImportPrivateSymbol(
                 symbol.to_owned(),
             )),
-            _ => self.set(new_name, env.get(symbol)?),
+            _ => {
+                self.add_env_dep(env);
+                self.env.borrow_mut().set(new_name, env.get(symbol)?, true)
+            }
         }
     }
 
@@ -220,26 +255,45 @@ impl Environment {
             }
         }
     }
+
+    /** GC roots */
+    pub(crate) fn roots(&self) -> Vec<ValueGcStrong> {
+        let content = self.env.borrow();
+        content
+            .variables
+            .values()
+            .flat_map(|(v, imported)| if !imported { Some(v) } else { None })
+            .flat_map(Value::to_gc_strong)
+            .collect()
+    }
 }
 
 impl EnvironmentContent {
     /// Create a new child environment
     /// Freeze the environment, all its value will become immutable after that
-    pub fn freeze(&mut self) {
+    pub fn freeze(&mut self) -> bool {
         if !self.frozen {
             self.frozen = true;
             for v in self.variables.values_mut() {
-                v.freeze();
+                v.0.freeze();
             }
+            true
+        } else {
+            false
         }
     }
 
     /// Set the value of a variable in that environment.
-    pub fn set(&mut self, name: &str, value: Value) -> Result<(), EnvironmentError> {
+    pub fn set(
+        &mut self,
+        name: &str,
+        value: Value,
+        imported: bool,
+    ) -> Result<(), EnvironmentError> {
         if self.frozen {
             Err(EnvironmentError::TryingToMutateFrozenEnvironment)
         } else {
-            self.variables.insert(name.to_string(), value);
+            self.variables.insert(name.to_string(), (value, imported));
             Ok(())
         }
     }
@@ -247,7 +301,7 @@ impl EnvironmentContent {
     /// Get the value of the variable `name`
     pub fn get(&self, name: &str) -> Result<Value, EnvironmentError> {
         if self.variables.contains_key(name) {
-            Ok(self.variables[name].clone())
+            Ok(self.variables[name].0.clone())
         } else {
             match self.parent {
                 Some(ref p) => p.get(name),
@@ -267,10 +321,21 @@ impl EnvironmentContent {
 /// Function implementations are only allowed to access
 /// type values from "type values" from the caller context,
 /// so this struct is passed instead of full `Environment`.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct TypeValues {
+    /// Type values live here
+    heap: Heap,
     /// List of static values of an object per type
     type_objs: HashMap<String, HashMap<String, Value>>,
+}
+
+impl Default for TypeValues {
+    fn default() -> TypeValues {
+        TypeValues {
+            heap: Heap::new("type_values"),
+            type_objs: Default::default(),
+        }
+    }
 }
 
 impl TypeValues {
@@ -300,5 +365,9 @@ impl TypeValues {
             dict.insert(attr.to_owned(), value);
             self.type_objs.insert(obj.to_owned(), dict);
         }
+    }
+
+    pub(crate) fn heap(&self) -> Heap {
+        self.heap.clone()
     }
 }

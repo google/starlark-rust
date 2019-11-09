@@ -44,10 +44,11 @@ a == [1, 2, 0] and b == [1, 2, 0]
 
 #[test]
 fn recursive_list() {
-    starlark_fail!(
+    starlark_ok!(
         r#"
 cyclic = [1, 2, 3]
 cyclic[1] = cyclic
+cyclic[1][1][1][1][1][2] == 3
 "#
     )
 }
@@ -166,7 +167,7 @@ def f(): return x
                 type_values,
             )
             .unwrap();
-            env.freeze();
+            env.freeze(true);
             Ok(env)
         }
     }

@@ -35,7 +35,7 @@ pub fn simple_evaluation(starlark_input: &String) -> Result<String, String> {
     // Create a new global environment populated with the stdlib.
     let (global_env, type_values) = global_environment();
     // Extra symbols can be added to the global environment before freezing if desired.
-    global_env.freeze();
+    global_env.freeze(true);
     // Create our own local copy of the global environment.
     let mut env = global_env.child("simple-cli");
 

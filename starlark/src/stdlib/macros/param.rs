@@ -123,6 +123,7 @@ impl<T: TryParamConvertFromValue> TryParamConvertFromValue for EitherValueOrNone
 
 #[cfg(test)]
 mod test {
+    use crate::gc;
     use crate::starlark_fun;
     use crate::starlark_module;
     use crate::starlark_parse_param_type;
@@ -148,9 +149,9 @@ mod test {
     fn test_simple() {
         let (mut env, mut type_values) = global_environment();
         global(&mut env, &mut type_values);
-        env.freeze();
 
         let mut child = env.child("my");
+        let _g = gc::push_env(&child);
 
         let r = eval(
             &Arc::new(Mutex::new(CodeMap::new())),

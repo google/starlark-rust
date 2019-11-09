@@ -59,7 +59,7 @@ impl FileLoader for SimpleFileLoader {
         ) {
             return Err(EvalException::DiagnosedError(d));
         }
-        env.freeze();
+        env.freeze(true);
         self.map
             .lock()
             .unwrap()
