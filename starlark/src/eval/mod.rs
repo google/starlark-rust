@@ -36,6 +36,7 @@ use crate::eval::module::Module;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
+use crate::linked_hash_set::value::Set;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::UnOp;
 use crate::syntax::ast::*;
@@ -411,18 +412,6 @@ fn eval_transformed<E: EvaluationContextEnvironment>(
     }
 }
 
-fn make_set<E: EvaluationContextEnvironment>(
-    values: Vec<Value>,
-    context: &EvaluationContext<E>,
-    span: Span,
-) -> EvalResult {
-    context
-        .env
-        .env()
-        .make_set(values)
-        .map_err(|err| EvalException::DiagnosedError(err.to_diagnostic(span)))
-}
-
 // An intermediate transformation that tries to evaluate parameters of function / indices.
 // It is used to cache result of LHS in augmented assignment.
 // This transformation by default should be a deep copy (clone).
@@ -535,11 +524,14 @@ fn eval_expr<E: EvaluationContextEnvironment>(
             Ok(r.into())
         }
         ExprCompiled::Set(ref v) => {
+            if !context.env.env().set_literals_emabled() {
+                return t(Err(ValueError::TypeNotSupported("set".to_string())), expr);
+            }
             let mut values = Vec::with_capacity(v.len());
             for s in v {
                 values.push(eval_expr(s, context)?);
             }
-            make_set(values, context, expr.span)
+            t(Set::from(values), expr)
         }
         ExprCompiled::ListComprehension(ref expr, ref clauses) => {
             let mut list = Vec::new();
@@ -554,6 +546,10 @@ fn eval_expr<E: EvaluationContextEnvironment>(
             Ok(Value::from(list))
         }
         ExprCompiled::SetComprehension(ref expr, ref clauses) => {
+            if !context.env.env().set_literals_emabled() {
+                return t(Err(ValueError::TypeNotSupported("set".to_string())), expr);
+            }
+
             let mut values = Vec::new();
             eval_one_dimensional_comprehension(
                 &mut |context| {
@@ -563,7 +559,8 @@ fn eval_expr<E: EvaluationContextEnvironment>(
                 clauses,
                 context,
             )?;
-            make_set(values, context, expr.span)
+
+            t(Set::from(values), expr)
         }
         ExprCompiled::DictComprehension((ref k, ref v), ref clauses) => {
             let mut dict = Dictionary::new_typed();

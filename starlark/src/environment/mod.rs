@@ -109,22 +109,8 @@ struct EnvironmentContent {
     ///
     /// These bindings include methods for native types, e.g. `string.isalnum`.
     variables: HashMap<String, Value>,
-    /// Optional function which can be used to construct set literals (i.e. `{foo, bar}`).
-    /// If not set, attempts to use set literals will raise an error.
-    set_constructor: SetConstructor,
-}
-
-// Newtype so that EnvironmentContent can derive Debug.
-struct SetConstructor(Option<Box<dyn Fn(Vec<Value>) -> ValueResult>>);
-
-impl std::fmt::Debug for SetConstructor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        if self.0.is_some() {
-            write!(f, "<set constructor>")
-        } else {
-            write!(f, "<no set constructor>")
-        }
-    }
+    /// When `true`, set `{foo, bar}` literals are allowed.
+    set_literals: bool,
 }
 
 impl Environment {
@@ -135,7 +121,7 @@ impl Environment {
                 name_: name.into(),
                 parent: None,
                 variables: HashMap::new(),
-                set_constructor: SetConstructor(None),
+                set_literals: false,
             })),
         }
     }
@@ -148,7 +134,7 @@ impl Environment {
                 name_: name.into(),
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
-                set_constructor: SetConstructor(None),
+                set_literals: self.env.borrow().set_literals,
             })),
         }
     }
@@ -209,21 +195,13 @@ impl Environment {
     ///
     /// The `Value` returned by this function is expected to be a one-dimensional collection
     /// containing no duplicates.
-    pub fn with_set_constructor(&self, constructor: Box<dyn Fn(Vec<Value>) -> ValueResult>) {
-        self.env.borrow_mut().set_constructor = SetConstructor(Some(constructor));
+    pub fn enable_set_literals(&self) {
+        self.env.borrow_mut().set_literals = true;
     }
 
-    pub(crate) fn make_set(&self, values: Vec<Value>) -> ValueResult {
-        match self.env.borrow().set_constructor.0 {
-            Some(ref ctor) => ctor(values),
-            None => {
-                if let Some(parent) = self.get_parent() {
-                    parent.make_set(values)
-                } else {
-                    Err(ValueError::TypeNotSupported("set".to_string()))
-                }
-            }
-        }
+    /// Is it OK to have set literals?
+    pub(crate) fn set_literals_emabled(&self) -> bool {
+        self.env.borrow().set_literals
     }
 }
 
