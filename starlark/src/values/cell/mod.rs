@@ -21,6 +21,7 @@ use crate::values::cell::header::ObjectBorrowRef;
 use crate::values::cell::header::ObjectBorrowRefMut;
 use crate::values::cell::header::ObjectHeader;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -169,5 +170,29 @@ impl<T: ?Sized> ObjectCell<T> {
     /// If value is borrowed.
     pub fn freeze(&self) {
         self.header.freeze();
+    }
+}
+
+impl<T: fmt::Display + ?Sized> fmt::Display for ObjectRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.value, f)
+    }
+}
+
+impl<T: fmt::Debug + ?Sized> fmt::Debug for ObjectRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.value, f)
+    }
+}
+
+impl<T: fmt::Display + ?Sized> fmt::Display for ObjectRefMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.value, f)
+    }
+}
+
+impl<T: fmt::Debug + ?Sized> fmt::Debug for ObjectRefMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.value, f)
     }
 }

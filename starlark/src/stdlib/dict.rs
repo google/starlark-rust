@@ -48,8 +48,7 @@ starlark_module! {global =>
     /// x.clear()   # now x == {}
     /// # (x == {})"#).unwrap());
     /// ```
-    dict.clear(this) {
-        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+    dict.clear(this: &mut Dictionary) {
         this.clear();
         Ok(Value::new(NoneType::None))
     }
@@ -78,7 +77,7 @@ starlark_module! {global =>
     /// x.get("three", 0) == 0
     /// # )"#).unwrap());
     /// ```
-    dict.get(this, key, default = NoneType::None, /) {
+    dict.get(this: &Dictionary, key, default = NoneType::None, /) {
         match this.at(key) {
             Err(ValueError::KeyNotFound(..)) => Ok(default),
             x => x
@@ -102,8 +101,7 @@ starlark_module! {global =>
     /// x.items() == [("one", 1), ("two", 2)]
     /// # )"#).unwrap());
     /// ```
-    dict.items(this) {
-        let this = this.downcast_ref::<Dictionary>().unwrap();
+    dict.items(this: &Dictionary) {
         ok!(this.items())
     }
 
@@ -124,8 +122,7 @@ starlark_module! {global =>
     /// x.keys() == ["one", "two"]
     /// # )"#).unwrap());
     /// ```
-    dict.keys(this) {
-        let this = this.downcast_ref::<Dictionary>().unwrap();
+    dict.keys(this: &Dictionary) {
         Ok(Value::from(this.keys()))
     }
 
@@ -160,8 +157,7 @@ starlark_module! {global =>
     /// ```python
     /// x.pop("four")  # error: missing key
     /// ```
-    dict.pop(this, key, default = NoneType::None, /) {
-        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+    dict.pop(this: &mut Dictionary, key, default = NoneType::None, /) {
         match this.remove(&key)? {
             Some(x) => Ok(x),
             None => if default.get_type() == "NoneType" {
@@ -203,8 +199,7 @@ starlark_module! {global =>
     /// ```python
     /// x.popitem()  # error: empty dict
     /// ```
-    dict.popitem(this) {
-        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+    dict.popitem(this: &mut Dictionary) {
         match this.pop_front() {
             Some(x) => ok!(x),
             None => starlark_err!(
@@ -244,8 +239,7 @@ starlark_module! {global =>
     /// x == {"one": 1, "two": 2, "three": 0, "four": None}
     /// # )"#).unwrap());
     /// ```
-    dict.setdefault(this, key, default = NoneType::None, /) {
-        let mut this = this.downcast_mut::<Dictionary>()?.unwrap();
+    dict.setdefault(this: &mut Dictionary, key, default = NoneType::None, /) {
         if let Some(r) = this.get(&key)? {
             return Ok(r.clone())
         }
@@ -285,7 +279,7 @@ starlark_module! {global =>
     /// x == {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
     /// # )"#).unwrap());
     /// ```
-    dict.update(this, ?pairs, /, **kwargs) {
+    dict.update(this: &mut Dictionary, ?pairs, /, **kwargs) {
         if let Some(pairs) = pairs {
             match pairs.get_type() {
                 "list" => for v in &pairs.iter()? {
@@ -342,8 +336,7 @@ starlark_module! {global =>
     /// x.values() == [1, 2]
     /// # )"#).unwrap());
     /// ```
-    dict.values(this) {
-        let this = this.downcast_ref::<Dictionary>().unwrap();
+    dict.values(this: &Dictionary) {
         ok!(this.values())
     }
 }

@@ -98,6 +98,10 @@ impl List {
     pub fn remove_at(&mut self, index: usize) -> Value {
         self.content.remove(index)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Value> {
+        self.content.iter()
+    }
 }
 
 impl TypedValue for List {

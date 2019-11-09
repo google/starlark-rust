@@ -70,8 +70,7 @@ starlark_module! {global =>
     /// x == set([1, 2, 3])
     /// # )"#).unwrap());
     /// ```
-    set.add(this, el, /) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.add(this: &mut Set, el, /) {
         this.insert_if_absent(el)?;
         Ok(Value::new(NoneType::None))
     }
@@ -94,8 +93,7 @@ starlark_module! {global =>
     /// x == set()
     /// # )"#).unwrap());
     /// ```
-    set.clear(this) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.clear(this: &mut Set) {
         this.clear();
         Ok(Value::new(NoneType::None))
     }
@@ -117,8 +115,7 @@ starlark_module! {global =>
     /// y == set([1, 2, 3, 5])
     /// # )"#).unwrap());
     /// ```
-    set.copy(this) {
-        let this = this.downcast_ref::<Set>().unwrap();
+    set.copy(this: &Set) {
         ok!(this.copy())
     }
 
@@ -149,9 +146,9 @@ starlark_module! {global =>
     /// z == set([2, 3])
     /// # )"#).unwrap());
     /// ```
-    set.difference(this, *others) {
+    set.difference(this: &Set, *others) {
         let mut ret = Set::default();
-        for el in &this.iter()? {
+        for el in this.iter() {
             let mut is_in_any_other = false;
             for other in &others {
                 if other.is_in(&el)?.to_bool() {
@@ -160,7 +157,7 @@ starlark_module! {global =>
                 }
             }
             if !is_in_any_other {
-                ret.insert_if_absent(el)?;
+                ret.insert_if_absent(el.clone())?;
             }
         }
         ok!(ret)
@@ -183,8 +180,7 @@ starlark_module! {global =>
     /// x == set([4])
     /// # "#).unwrap());
     /// ```
-    set.difference_update(this, other, /) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.difference_update(this: &mut Set, other, /) {
         let previous_length = this.len() as usize;
         let mut values = Vec::with_capacity(previous_length);
         for el in this.get_content() {
@@ -219,8 +215,7 @@ starlark_module! {global =>
     /// x == set([1, 3])
     /// # )"#).unwrap());
     /// ```
-    set.discard(this, needle, /) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.discard(this: &mut Set, needle, /) {
         this.remove(&needle)?;
         Ok(Value::new(NoneType::None))
     }
@@ -252,9 +247,9 @@ starlark_module! {global =>
     /// z == set([2, 3])
     /// # )"#).unwrap());
     /// ```
-    set.intersection(this, *others) {
+    set.intersection(this: &Set, *others) {
         let mut ret = Set::default();
-        for el in &this.iter()? {
+        for el in this.iter() {
             let mut is_in_every_other = true;
             for other in &others {
                 if !other.is_in(&el)?.to_bool() {
@@ -263,7 +258,7 @@ starlark_module! {global =>
                 }
             }
             if is_in_every_other {
-                ret.insert_if_absent(el)?;
+                ret.insert_if_absent(el.clone())?;
             }
         }
         ok!(ret)
@@ -287,8 +282,7 @@ starlark_module! {global =>
     /// x == set([2])
     /// # "#).unwrap());
     /// ```
-    set.intersection_update(this, other, /) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.intersection_update(this: &mut Set, other, /) {
         let previous_length = this.len();
         let mut values = Vec::with_capacity(previous_length);
         for el in this.get_content() {
@@ -399,8 +393,7 @@ starlark_module! {global =>
     /// x == set([3])
     /// # )"#).unwrap());
     /// ```
-    set.pop(this, index = NoneType::None, /) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.pop(this: &mut Set, index = NoneType::None, /) {
         let length = this.len() as i64;
         let index = if index.get_type() == "NoneType" {
             length - 1
@@ -448,8 +441,7 @@ starlark_module! {global =>
     ///
     /// A subsequent call to `x.remove(2)` would yield an error because the element won't be
     /// found.
-    set.remove(this, needle, /) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.remove(this: &mut Set, needle, /) {
         let did_remove = this.remove(&needle)?;
         if did_remove {
             Ok(Value::new(NoneType::None))
@@ -561,10 +553,10 @@ starlark_module! {global =>
     /// z == [5, 6]
     /// # )"#).unwrap());
     /// ```
-    set.union(this, *others) {
+    set.union(this: &Set, *others) {
         let mut ret = Set::default();
-        for el in &this.iter()? {
-            ret.insert_if_absent(el)?;
+        for el in this.iter() {
+            ret.insert_if_absent(el.clone())?;
         }
         for other in others {
             for el in &other.iter()? {
@@ -595,8 +587,7 @@ starlark_module! {global =>
     /// x == set([1, 2, 3, "foo", "bar"])
     /// # )"#).unwrap());
     /// ```
-    set.update(this, *others) {
-        let mut this = this.downcast_mut::<Set>()?.unwrap();
+    set.update(this: &mut Set, *others) {
         for other in others {
             for el in &other.iter()? {
                 this.insert_if_absent(el)?;

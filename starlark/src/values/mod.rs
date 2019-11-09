@@ -1387,7 +1387,7 @@ impl Value {
 
 // Submodules
 pub mod boolean;
-mod cell;
+pub mod cell;
 pub mod dict;
 pub mod error;
 pub mod function;

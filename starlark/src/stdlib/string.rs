@@ -200,7 +200,7 @@ starlark_module! {global =>
     ///     72, 101, 108, 108, 111, 44, 32, 228, 184, 150, 231, 149, 140]
     /// # )"#).unwrap());
     /// ```
-    string.elems(this) {
+    string.elems(this: &String) {
         // Note that we return a list here... Which is not equivalent to the go implementation.
         ok!(this.to_str().into_bytes())
     }
@@ -220,7 +220,7 @@ starlark_module! {global =>
     /// "hello, world!".capitalize() == "Hello, World!"
     /// # )"#).unwrap());
     /// ```
-    string.capitalize(this: String) {
+    string.capitalize(this: &String) {
         let mut last_space = true;
         let mut result = String::new();
         for c in this.chars() {
@@ -264,7 +264,7 @@ starlark_module! {global =>
     /// list("Hello, 世界".codepoints()) == [72, 101, 108, 108, 111, 44, 32, 19990, 30028]
     /// # )"#).unwrap());
     /// ```
-    string.codepoints(this: String) {
+    string.codepoints(this: &String) {
         // Note that we return a list here... Which is not equivalent to the go implementation.
         let v : Vec<i64> = this.chars().map(|x| i64::from(u32::from(x))).collect();
         ok!(v)
@@ -299,7 +299,7 @@ starlark_module! {global =>
     /// "hello, world!".count("o", 7, 12) == 1  # in "world"
     /// # )"#).unwrap());
     /// ```
-    string.count(this: String, needle: String, start = 0, end = NoneType::None, /) {
+    string.count(this: &String, needle: &String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         let n = needle.as_str();
         let mut counter = 0 as i64;
@@ -328,7 +328,7 @@ starlark_module! {global =>
     /// "filename.sky".endswith(".sky") == True
     /// # )"#).unwrap());
     /// ```
-    string.endswith(this: String, suffix: String, /) {
+    string.endswith(this: &String, suffix: &String, /) {
         ok!(this.ends_with(suffix.as_str()))
     }
 
@@ -359,7 +359,7 @@ starlark_module! {global =>
     /// "bonbon".find("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.find(this: String, needle: String, start = 0, end = NoneType::None, /) {
+    string.find(this: &String, needle: &String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         let needle = needle.to_str();
         if let Some(substring) = this.as_str().get(start..end) {
@@ -427,7 +427,7 @@ starlark_module! {global =>
     /// "Is {0!r} {0!s}?".format("heterological") == "Is \"heterological\" heterological?"
     /// # )"#).unwrap());
     /// ```
-    string.format(this: String, *args, **kwargs) {
+    string.format(this: &String, *args, **kwargs) {
         let mut it = args.iter().cloned();
         let mut captured_by_index = false;
         let mut captured_by_order = false;
@@ -511,7 +511,7 @@ starlark_module! {global =>
     /// "bonbon".index("on", 2, 5) # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.index(this: String, needle: String, start = 0, end = NoneType::None, /) {
+    string.index(this: &String, needle: &String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
             if let Some(offset) = substring.find(needle.as_str()) {
@@ -543,7 +543,7 @@ starlark_module! {global =>
     /// "Catch-22".isalnum() == False
     /// # )"#).unwrap());
     /// ```
-    string.isalnum(this: String) {
+    string.isalnum(this: &String) {
         if this.is_empty() {
             ok!(false);
         }
@@ -575,7 +575,7 @@ starlark_module! {global =>
     /// "".isalpha() == False
     /// # )"#).unwrap());
     /// ```
-    string.isalpha(this: String) {
+    string.isalpha(this: &String) {
         if this.is_empty() {
             ok!(false);
         }
@@ -607,7 +607,7 @@ starlark_module! {global =>
     /// "".isdigit() == False
     /// # )"#).unwrap());
     /// ```
-    string.isdigit(this: String) {
+    string.isdigit(this: &String) {
         if this.is_empty() {
             ok!(false);
         }
@@ -640,7 +640,7 @@ starlark_module! {global =>
     /// "123".islower() == False
     /// # )"#).unwrap());
     /// ```
-    string.islower(this: String) {
+    string.islower(this: &String) {
         let mut result = false;
         for c in this.chars() {
             if c.is_uppercase() {
@@ -672,7 +672,7 @@ starlark_module! {global =>
     /// "".isspace() == False
     /// # )"#).unwrap());
     /// ```
-    string.isspace(this: String) {
+    string.isspace(this: &String) {
         if this.is_empty() {
             ok!(false);
         }
@@ -708,7 +708,7 @@ starlark_module! {global =>
     /// "123".istitle() == False
     /// # )"#).unwrap());
     /// ```
-    string.istitle(this: String) {
+    string.istitle(this: &String) {
         let mut last_space = true;
         let mut result = false;
 
@@ -753,7 +753,7 @@ starlark_module! {global =>
     /// "123".isupper() == False
     /// # )"#).unwrap());
     /// ```
-    string.isupper(this: String) {
+    string.isupper(this: &String) {
         let mut result = false;
         for c in this.chars() {
             if c.is_lowercase() {
@@ -785,7 +785,7 @@ starlark_module! {global =>
     /// "a".join("ctmrn".split_codepoints()) == "catamaran"
     /// # )"#).unwrap());
     /// ```
-    string.join(this: String, to_join, /) {
+    string.join(this: &String, to_join, /) {
         let mut r = String::new();
         let to_join_iter = to_join.iter()?;
         for (index, item) in to_join_iter.iter().enumerate() {
@@ -813,7 +813,7 @@ starlark_module! {global =>
     /// "Hello, World!".lower() == "hello, world!"
     /// # )"#).unwrap());
     /// ```
-    string.lower(this: String) {
+    string.lower(this: &String) {
         ok!(this.to_lowercase())
     }
 
@@ -831,7 +831,7 @@ starlark_module! {global =>
     /// "  hello  ".lstrip() == "hello  "
     /// # )"#).unwrap());
     /// ```
-    string.lstrip(this: String) {
+    string.lstrip(this: &String) {
         ok!(this.trim_start())
     }
 
@@ -854,7 +854,7 @@ starlark_module! {global =>
     /// "one/two/three".partition("/")	 == ("one", "/", "two/three")
     /// # )"#).unwrap());
     /// ```
-    string.partition(this: String, needle = " ", /) {
+    string.partition(this: &String, needle = " ", /) {
         check_string!(needle, partition);
         let needle = needle.to_str();
         if needle.is_empty() {
@@ -872,7 +872,7 @@ starlark_module! {global =>
                 this.as_str().get(offset2..).unwrap()
             ))
         } else {
-            ok!((this, "", ""))
+            ok!((this.clone(), "", ""))
         }
     }
 
@@ -896,7 +896,7 @@ starlark_module! {global =>
     /// "banana".replace("a", "o", 2)	 == "bonona"
     /// # )"#).unwrap());
     /// ```
-    string.replace(this: String, old: String, new: String, ?count: Option<usize>, /) {
+    string.replace(this: &String, old: &String, new: &String, ?count: Option<usize>, /) {
         ok!(
             match count {
                 None => this.replace(old.as_str(), new.as_str()),
@@ -927,7 +927,7 @@ starlark_module! {global =>
     /// "bonbon".rfind("on", 2, 5) == -1
     /// # )"#).unwrap());
     /// ```
-    string.rfind(this: String, needle: String, start = 0, end = NoneType::None, /) {
+    string.rfind(this: &String, needle: &String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.as_str().get(start..end) {
             if let Some(offset) = substring.rfind(needle.as_str()) {
@@ -959,7 +959,7 @@ starlark_module! {global =>
     /// "bonbon".rindex("on", 2, 5)   # error: substring not found  (in "nbo")
     /// # )"#).is_err());
     /// ```
-    string.rindex(this: String, needle: String, start = 0, end = NoneType::None, /) {
+    string.rindex(this: &String, needle: &String, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
         if let Some(substring) = this.get(start..end) {
             if let Some(offset) = substring.rfind(needle.as_str()) {
@@ -987,12 +987,12 @@ starlark_module! {global =>
     /// "one/two/three".rpartition("/")	 == ("one/two", "/", "three")
     /// # )"#).unwrap());
     /// ```
-    string.rpartition(this: String, needle: String = " ".to_owned(), /) {
+    string.rpartition(this: &String, needle: &String = " ".to_owned(), /) {
         if needle.is_empty() {
             starlark_err!(
                 INCORRECT_PARAMETER_TYPE_ERROR_CODE,
                 "Empty separator cannot be used for partitioning".to_owned(),
-                "Empty separtor".to_owned()
+                "Empty separator".to_owned()
             )
         }
         let this = this.to_str();
@@ -1000,7 +1000,7 @@ starlark_module! {global =>
             let offset2 = offset + needle.len();
             ok!((
                 this.as_str().get(..offset).unwrap(),
-                needle,
+                needle.clone(),
                 this.as_str().get(offset2..).unwrap()
             ))
         } else {
@@ -1030,7 +1030,7 @@ starlark_module! {global =>
     /// "one two  three".rsplit(None, 1) == ["one two", "three"]
     /// # )"#).unwrap());
     /// ```
-    string.rsplit(this: String, sep = NoneType::None, maxsplit = NoneType::None, /) {
+    string.rsplit(this: &String, sep = NoneType::None, maxsplit = NoneType::None, /) {
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None
         } else {
@@ -1075,7 +1075,7 @@ starlark_module! {global =>
     /// "  hello  ".rstrip() == "  hello"
     /// # )"#).unwrap());
     /// ```
-    string.rstrip(this: String) {
+    string.rstrip(this: &String) {
         ok!(this.to_str().trim_end())
     }
 
@@ -1121,7 +1121,7 @@ starlark_module! {global =>
     /// "banana".split("n", 1) == ["ba", "ana"]
     /// # )"#).unwrap());
     /// ```
-    string.split(this: String, sep = NoneType::None, maxsplit = NoneType::None, /) {
+    string.split(this: &String, sep = NoneType::None, maxsplit = NoneType::None, /) {
         let this = this.to_str();
         let maxsplit = if maxsplit.get_type() == "NoneType" {
             None
@@ -1175,7 +1175,7 @@ starlark_module! {global =>
     /// list("Hello, 世界".split_codepoints()) == ["H", "e", "l", "l", "o", ",", " ", "世", "界"]
     /// # )"#).unwrap());
     /// ```
-    string.split_codepoints(this: String) {
+    string.split_codepoints(this: &String) {
         let v : Vec<String> = this.to_str().chars().map(|x| x.to_string()).collect();
         ok!(v)
     }
@@ -1203,7 +1203,7 @@ starlark_module! {global =>
     /// "one\n\ntwo".splitlines(True) == ["one\n", "\n", "two"]
     /// # )"#).unwrap());
     /// ```
-    string.splitlines(this: String, keepends = false, /) {
+    string.splitlines(this: &String, keepends = false, /) {
         check_type!(keepends, "string.splitlines", bool);
         let this = this.to_str();
         let mut s = this.as_str();
@@ -1248,7 +1248,7 @@ starlark_module! {global =>
     /// "filename.sky".startswith("filename") == True
     /// # )"#).unwrap());
     /// ```
-    string.startswith(this: String, prefix, /) {
+    string.startswith(this: &String, prefix, /) {
         check_string!(prefix, startswith);
         ok!(this.to_str().starts_with(prefix.to_str().as_str()))
     }
@@ -1287,7 +1287,7 @@ starlark_module! {global =>
     /// "hElLo, WoRlD!".title() == "Hello, World!"
     /// # )"#).unwrap());
     /// ```
-    string.title(this: String) {
+    string.title(this: &String) {
         let mut last_space = true;
         let mut result = String::new();
         for c in this.to_str().chars() {
@@ -1326,7 +1326,7 @@ starlark_module! {global =>
     /// "Hello, World!".upper() == "HELLO, WORLD!"
     /// # )"#).unwrap());
     /// ```
-    string.upper(this: String) {
+    string.upper(this: &String) {
         ok!(this.to_str().to_uppercase())
     }
 }

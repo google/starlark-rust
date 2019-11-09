@@ -17,7 +17,13 @@
 
 use crate::environment::TypeValues;
 use crate::eval::call_stack::CallStack;
+use crate::values::cell::ObjectRef;
+use crate::values::cell::ObjectRefMut;
+use crate::values::error::ValueError;
 use crate::values::function::ParameterParser;
+use crate::values::Mutable;
+use crate::values::TypedValue;
+use crate::values::Value;
 
 pub mod param;
 pub mod signature;
@@ -53,6 +59,19 @@ macro_rules! starlark_signature {
     ($signature:ident ? $t:ident $(: $pt:ty)? $(,$($rest:tt)+)?) => {
         $signature.push_optional(stringify!($t));
         $( starlark_signature!($signature $($rest)+) )?
+    };
+
+    // Remove `&mut` and `&` from type because default value type should be inferred
+    // without `&`, e. g. in this parameter description "zzzz" should be converted
+    // to `String` not to `&String`:
+    // ```
+    // foo: &String = "zzzz"
+    // ```
+    ($signature:ident $t:ident : & mut $($rest:tt)+) => {
+        starlark_signature!($signature $t : $($rest)+)
+    };
+    ($signature:ident $t:ident : & $($rest:tt)+) => {
+        starlark_signature!($signature $t : $($rest)+)
     };
 
     // handle params with default value (both named and unnamed)
@@ -105,6 +124,32 @@ pub struct SignatureExtractionContext<'a> {
     pub args: ParameterParser<'a>,
 }
 
+/// Value operations used in macros
+#[doc(hidden)]
+impl Value {
+    /// `downcast_mut` shortcut used in macros.
+    pub fn downcast_mut_param<T: TypedValue<Holder = Mutable<T>>>(
+        &self,
+        param: &'static str,
+    ) -> Result<ObjectRefMut<'_, T>, ValueError> {
+        match self.downcast_mut()? {
+            Some(v) => Ok(v),
+            None => Err(ValueError::IncorrectParameterTypeNamed(param)),
+        }
+    }
+
+    /// `downcast_ref` shortcut used in macros.
+    pub fn downcast_ref_param<T: TypedValue>(
+        &self,
+        param: &'static str,
+    ) -> Result<ObjectRef<'_, T>, ValueError> {
+        match self.downcast_ref() {
+            Some(v) => Ok(v),
+            None => Err(ValueError::IncorrectParameterTypeNamed(param)),
+        }
+    }
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! starlark_signature_extraction {
@@ -139,6 +184,26 @@ macro_rules! starlark_signature_extraction {
             $ctx.args.next_arg()?.into_optional(stringify!($t))?;
         $( starlark_signature_extraction!($ctx $($rest)+) )?
     };
+
+    // Downcast argument to requested type.
+    // Note here we explicitly match `&` and `&mut` literals here,
+    // and this macro branch must come before the `: $pt:ty` match,
+    // because `&mut T` can be successfully matched as `$pt:ty`.
+
+    ($ctx:ident $t:ident : &mut $pt:ty $(= $e:expr)? $(,$($rest:tt)+)?) => {
+        let v: $crate::values::Value = $ctx.args.next_arg()?.into_normal(stringify!($t))?;
+        let mut r: $crate::values::cell::ObjectRefMut<$pt> = v.downcast_mut_param(stringify!($t))?;
+        #[allow(unused_mut)]
+        let mut $t: &mut $pt = &mut *r;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
+    };
+    ($ctx:ident $t:ident : &$pt:ty $(= $e:expr)? $(,$($rest:tt)+)?) => {
+        let v: $crate::values::Value = $ctx.args.next_arg()?.into_normal(stringify!($t))?;
+        let r: $crate::values::cell::ObjectRef<$pt> = v.downcast_ref_param(stringify!($t))?;
+        let $t: &$pt = &*r;
+        $( starlark_signature_extraction!($ctx $($rest)+) )?
+    };
+
     ($ctx:ident $t:ident $(: $pt:ty)? $(= $e:expr)? $(,$($rest:tt)+)?) => {
         #[allow(unused_mut)]
         let mut $t: starlark_parse_param_type!(1 $(: $pt)?) =
@@ -259,13 +324,22 @@ macro_rules! starlark_signatures {
 /// # Ok(Value::new(true))
 ///     }
 ///
-///     // Functions can optionally specify parameter types after colon.
+///     // Functions can optionally downcast parameter to `TypedValue` type
+///     // adding `&` or `&mut` after colon.
+///     // Note downcasting only works for types directly stored in `Value`,
+///     // which are `TypedValue` types, e. g.
+///     hello(person: &String) {
+///         Ok(Value::from(format!("Hello {}!", person)))
+///     }
+///
+///     // Functions can also optionally specify parameter conversion after colon.
 ///     // Parameter can be any type which implements `TryParamConvertFromValue`.
 ///     // When parameter type is not specified, it is defaulted to `Value`
 ///     // for regular parameters, `Vec<Value>` for `*args`
 ///     // and `LinkedHashMap<String, Value>` for `**kwargs`.
-///     sqr(x: i64) {
-///         Ok(Value::new(x * x))
+///     avg(vs: Vec<i64>) {
+///         // ...
+/// # Ok(Value::new(NoneType::None))
 ///     }
 ///
 ///     // It is also possible to capture the call stack with
@@ -286,7 +360,8 @@ macro_rules! starlark_signatures {
 /// #    my_starlark_module(&mut env, &mut type_values);
 /// #    assert_eq!(env.get("str").unwrap().get_type(), "function");
 /// #    assert_eq!(env.get("my_fun").unwrap().get_type(), "function");
-/// #    assert_eq!(env.get("sqr").unwrap().get_type(), "function");
+/// #    assert_eq!(env.get("hello").unwrap().get_type(), "function");
+/// #    assert_eq!(env.get("avg").unwrap().get_type(), "function");
 /// # }
 /// ```
 ///

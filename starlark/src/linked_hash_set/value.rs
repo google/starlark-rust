@@ -109,6 +109,10 @@ impl Set {
     pub fn len(&self) -> usize {
         self.content.len()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Value> {
+        self.content.iter().map(HashedValue::get_value)
+    }
 }
 
 impl From<Set> for Value {

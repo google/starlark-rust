@@ -47,8 +47,7 @@ starlark_module! {global =>
     /// x == [1, 2, 3]
     /// # )"#).unwrap());
     /// ```
-    list.append(this, el, /) {
-        let mut this = this.downcast_mut::<List>()?.unwrap();
+    list.append(this: &mut List, el, /) {
         this.push(el)?;
         Ok(Value::new(NoneType::None))
     }
@@ -71,8 +70,7 @@ starlark_module! {global =>
     /// x == []
     /// # )"#).unwrap());
     /// ```
-    list.clear(this) {
-        let mut this = this.downcast_mut::<List>()?.unwrap();
+    list.clear(this: &mut List) {
         this.clear();
         Ok(Value::new(NoneType::None))
     }
@@ -100,8 +98,7 @@ starlark_module! {global =>
     /// x == [1, 2, 3, "foo"]
     /// # )"#).unwrap());
     /// ```
-    list.extend(this, other, /) {
-        let mut this = this.downcast_mut::<List>()?.unwrap();
+    list.extend(this: &mut List, other, /) {
         this.extend(other)?;
         Ok(Value::new(NoneType::None))
     }
@@ -135,16 +132,15 @@ starlark_module! {global =>
     /// x.index("a", -2) == 5  # bananA
     /// # )"#).unwrap());
     /// ```
-    list.index(this, needle, start = 0, end = NoneType::None, /) {
+    list.index(this: &List, needle, start = 0, end = NoneType::None, /) {
         convert_indices!(this, start, end);
-        let it = this.iter()?;
-        let mut it = it.iter().skip(start).take(end - start);
-        if let Some(offset) = it.position(|x| x == needle) {
+        let mut it = this.iter().skip(start).take(end - start);
+        if let Some(offset) = it.position(|x| *x == needle) {
             Ok(Value::new((offset + start) as i64))
         } else {
             starlark_err!(
                 LIST_INDEX_FAILED_ERROR_CODE,
-                format!("Element '{}' not found in '{}'", needle, this),
+                format!("Element '{}' not found in '{}'", needle, this.to_repr()),
                 "not found".to_owned()
             );
         }
@@ -175,8 +171,7 @@ starlark_module! {global =>
     /// x == ["a", "b", "c", "d", "e"]
     /// # )"#).unwrap());
     /// ```
-    list.insert(this, index, el, /) {
-        let mut this = this.downcast_mut::<List>()?.unwrap();
+    list.insert(this: &mut List, index, el, /) {
         convert_indices!(this, index);
         this.insert(index, el)?;
         Ok(Value::new(NoneType::None))
@@ -206,8 +201,7 @@ starlark_module! {global =>
     /// x == [1]
     /// # )"#).unwrap());
     /// ```
-    list.pop(this, ?index, /) {
-        let mut this = this.downcast_mut::<List>()?.unwrap();
+    list.pop(this: &mut List, ?index, /) {
         let index = match index {
             Some(index) => index.to_int()?,
             None => this.length()? - 1,
@@ -242,8 +236,7 @@ starlark_module! {global =>
     /// A subsequence call to `x.remove(2)` would yield an error because the element won't be
     /// found.
     /// ```
-    list.remove(this, needle, /) {
-        let mut this = this.downcast_mut::<List>()?.unwrap();
+    list.remove(this: &mut List, needle, /) {
         this.remove(needle)?;
         Ok(Value::new(NoneType::None))
     }
