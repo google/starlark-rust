@@ -829,6 +829,7 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> Ev
         }
         StatementCompiled::Load(ref name, ref v) => {
             let loadenv = context.env.loader().load(name, context.type_values)?;
+            loadenv.freeze();
             for &(ref new_name, ref orig_name) in v.iter() {
                 t(
                     context.env.assert_module_env().import_symbol(
