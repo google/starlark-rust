@@ -20,14 +20,16 @@ use crate::eval::expr::ClauseCompiled;
 use crate::eval::set_expr;
 use crate::eval::t;
 use crate::eval::EvalException;
-use crate::eval::EvaluationContext;
+use crate::values::context::EvaluationContext;
+use crate::values::context::EvaluationContextEnvironment;
 
 pub(crate) fn eval_one_dimensional_comprehension<
-    F: FnMut(&mut EvaluationContext) -> Result<(), EvalException>,
+    E: EvaluationContextEnvironment,
+    F: FnMut(&mut EvaluationContext<E>) -> Result<(), EvalException>,
 >(
     expr: &mut F,
     clauses: &[AstClauseCompiled],
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> Result<(), EvalException> {
     if let Some((first, tl)) = clauses.split_first() {
         match &first.node {
