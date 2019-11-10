@@ -19,7 +19,8 @@
 //! All evaluation function can evaluate the full Starlark language (i.e. Bazel's
 //! .bzl files) or the BUILD file dialect (i.e. used to interpret Bazel's BUILD file).
 //! The BUILD dialect does not allow `def` statements.
-use crate::environment::{Environment, EnvironmentError, TypeValues};
+use crate::environment::Environment;
+use crate::environment::TypeValues;
 use crate::eval::call_stack::CallStack;
 use crate::eval::compr::eval_one_dimensional_comprehension;
 use crate::eval::def::Def;
@@ -42,6 +43,11 @@ use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
 use crate::syntax::lexer::{LexerIntoIter, LexerItem};
 use crate::syntax::parser::{parse, parse_file, parse_lexer};
+use crate::values::context::EvaluationContext;
+use crate::values::context::EvaluationContextEnvironment;
+use crate::values::context::EvaluationContextEnvironmentLocal;
+use crate::values::context::EvaluationContextEnvironmentModule;
+use crate::values::context::IndexedLocals;
 use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
 use crate::values::function::FunctionParameter;
@@ -52,13 +58,12 @@ use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::sync::{Arc, Mutex};
 
-fn eval_vector(
+fn eval_vector<E: EvaluationContextEnvironment>(
     v: &[AstExprCompiled],
-    ctx: &mut EvaluationContext,
+    ctx: &mut EvaluationContext<E>,
 ) -> Result<Vec<Value>, EvalException> {
     v.into_iter().map(|s| eval_expr(s, ctx)).collect()
 }
@@ -214,136 +219,12 @@ pub trait FileLoader {
     fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException>;
 }
 
-/// Starlark `def` or comprehension local variables
-pub(crate) struct IndexedLocals<'a> {
-    // This field is not used at runtime, but could be used for debugging or
-    // for better diagnostics in the future
-    _local_defs: &'a Locals,
-    /// Local variables are stored in this array. Names to slots are  mapped
-    /// during analysis phase. Note access by index is much faster than by name.
-    locals: RefCell<Vec<Option<Value>>>,
-}
-
-impl<'a> IndexedLocals<'a> {
-    fn new(local_defs: &'a Locals) -> IndexedLocals<'a> {
-        IndexedLocals {
-            _local_defs: local_defs,
-            locals: RefCell::new(vec![None; local_defs.len()]),
-        }
-    }
-
-    fn get_slot(&self, slot: usize, name: &str) -> Result<Value, EnvironmentError> {
-        match self.locals.borrow()[slot].clone() {
-            Some(value) => Ok(value),
-            None => Err(EnvironmentError::LocalVariableReferencedBeforeAssignment(
-                name.to_owned(),
-            )),
-        }
-    }
-
-    fn set_slot(&self, slot: usize, _name: &str, value: Value) {
-        self.locals.borrow_mut()[slot] = Some(value);
-    }
-}
-
-/// Stacked environment for [`EvaluationContext`].
-pub(crate) enum EvaluationContextEnvironment<'a> {
-    /// Module-level
-    Module(Environment, &'a dyn FileLoader),
-    /// Function-level or comprehension in global scope
-    Local(Environment, IndexedLocals<'a>),
-}
-
-impl<'a> EvaluationContextEnvironment<'a> {
-    fn env(&self) -> &Environment {
-        match self {
-            EvaluationContextEnvironment::Module(ref env, ..)
-            | EvaluationContextEnvironment::Local(ref env, ..) => env,
-        }
-    }
-
-    fn make_set(&self, values: Vec<Value>) -> ValueResult {
-        self.env().make_set(values)
-    }
-
-    fn loader(&self) -> &dyn FileLoader {
-        match *self {
-            EvaluationContextEnvironment::Module(_, loader) => loader,
-            _ => {
-                // If we reach here, this is a bug.
-                unreachable!()
-            }
-        }
-    }
-
-    fn get_global(&self, name: &str) -> Result<Value, EnvironmentError> {
-        match self {
-            EvaluationContextEnvironment::Module(env, ..) => env.get(name),
-            EvaluationContextEnvironment::Local(env, ..) => env.get(name),
-        }
-    }
-
-    fn get_slot(&self, _slot: usize, name: &str) -> Result<Value, EnvironmentError> {
-        match self {
-            EvaluationContextEnvironment::Local(_, locals) => locals.get_slot(_slot, name),
-            _ => unreachable!("slot in non-indexed environment"),
-        }
-    }
-
-    fn set_global(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
-        match self {
-            EvaluationContextEnvironment::Module(env, ..) => env.set(name, value),
-            EvaluationContextEnvironment::Local(..) => {
-                unreachable!("named assign to {} in local scope", name);
-            }
-        }
-    }
-
-    fn set_slot(&self, slot: usize, name: &str, value: Value) {
-        match self {
-            EvaluationContextEnvironment::Local(_, locals) => {
-                locals.set_slot(slot, name, value);
-            }
-            _ => unreachable!("slot in non-indexed environment"),
-        }
-    }
-
-    fn top_level_local_to_slot(&self, name: &str) -> usize {
-        match self {
-            EvaluationContextEnvironment::Local(_, locals) => {
-                locals._local_defs.top_level_name_to_slot(name).unwrap()
-            }
-            _ => unreachable!("slot in non-indexed environment"),
-        }
-    }
-
-    fn assert_module_env(&self) -> &Environment {
-        match self {
-            EvaluationContextEnvironment::Module(env, ..) => env,
-            EvaluationContextEnvironment::Local(..) => {
-                unreachable!("this function is meant to be called only on module level")
-            }
-        }
-    }
-}
-
-/// A structure holding all the data about the evaluation context
-/// (scope, load statement resolver, ...)
-pub(crate) struct EvaluationContext<'a> {
-    // Locals and captured context.
-    env: EvaluationContextEnvironment<'a>,
-    // Globals used to resolve type values, provided by the caller.
-    type_values: &'a TypeValues,
-    call_stack: &'a mut CallStack,
-    map: Arc<Mutex<CodeMap>>,
-}
-
-fn eval_bin_op(
+fn eval_bin_op<E: EvaluationContextEnvironment>(
     expr: &AstExprCompiled,
     op: BinOp,
     l: &AstExprCompiled,
     r: &AstExprCompiled,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     let l = eval_expr(l, context)?;
     let r = eval_expr(r, context)?;
@@ -378,13 +259,13 @@ fn eval_bin_op(
     )
 }
 
-fn eval_slice<'a>(
+fn eval_slice<E: EvaluationContextEnvironment>(
     this: &AstExprCompiled,
     a: &AstExprCompiled,
     start: &Option<AstExprCompiled>,
     stop: &Option<AstExprCompiled>,
     stride: &Option<AstExprCompiled>,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     let a = eval_expr(a, context)?;
     let start = match start {
@@ -402,14 +283,14 @@ fn eval_slice<'a>(
     t(a.slice(start, stop, stride), this)
 }
 
-fn eval_call<'a>(
+fn eval_call<E: EvaluationContextEnvironment>(
     this: &AstExprCompiled,
     e: &AstExprCompiled,
     pos: &[AstExprCompiled],
     named: &[(AstString, AstExprCompiled)],
     args: &Option<AstExprCompiled>,
     kwargs: &Option<AstExprCompiled>,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     let npos = eval_vector(pos, context)?;
     let mut nnamed = LinkedHashMap::new();
@@ -451,11 +332,11 @@ fn eval_call<'a>(
     }
 }
 
-fn eval_dot<'a>(
+fn eval_dot<E: EvaluationContextEnvironment>(
     this: &AstExprCompiled,
     e: &AstExprCompiled,
     s: &AstString,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     let left = eval_expr(e, context)?;
     if let Some(v) = context.type_values.get_type_value(&left, &s.node) {
@@ -476,9 +357,9 @@ enum TransformedExpr {
     Slot(usize, AstString),
 }
 
-fn set_transformed<'a>(
+fn set_transformed<E: EvaluationContextEnvironment>(
     transformed: &TransformedExpr,
-    context: &EvaluationContext,
+    context: &EvaluationContext<E>,
     new_value: Value,
 ) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
@@ -492,13 +373,20 @@ fn set_transformed<'a>(
             ok
         }
         TransformedExpr::Slot(slot, ident) => {
-            context.env.set_slot(*slot, &ident.node, new_value);
+            context
+                .env
+                .assert_local_env()
+                .locals
+                .set_slot(*slot, &ident.node, new_value);
             ok
         }
     }
 }
 
-fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationContext) -> EvalResult {
+fn eval_transformed<E: EvaluationContextEnvironment>(
+    transformed: &TransformedExpr,
+    context: &EvaluationContext<E>,
+) -> EvalResult {
     match transformed {
         TransformedExpr::Dot(ref left, ref s, ref span) => {
             if let Some(v) = context.type_values.get_type_value(left, &s) {
@@ -513,13 +401,25 @@ fn eval_transformed<'a>(transformed: &TransformedExpr, context: &EvaluationConte
             }
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
-        TransformedExpr::Slot(slot, ident) => t(context.env.get_slot(*slot, &ident.node), ident),
+        TransformedExpr::Slot(slot, ident) => t(
+            context
+                .env
+                .assert_local_env()
+                .locals
+                .get_slot(*slot, &ident.node),
+            ident,
+        ),
     }
 }
 
-fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> EvalResult {
+fn make_set<E: EvaluationContextEnvironment>(
+    values: Vec<Value>,
+    context: &EvaluationContext<E>,
+    span: Span,
+) -> EvalResult {
     context
         .env
+        .env()
         .make_set(values)
         .map_err(|err| EvalException::DiagnosedError(err.to_diagnostic(span)))
 }
@@ -527,9 +427,9 @@ fn make_set(values: Vec<Value>, context: &EvaluationContext, span: Span) -> Eval
 // An intermediate transformation that tries to evaluate parameters of function / indices.
 // It is used to cache result of LHS in augmented assignment.
 // This transformation by default should be a deep copy (clone).
-fn transform(
+fn transform<E: EvaluationContextEnvironment>(
     expr: &AstAugmentedAssignTargetExprCompiled,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> Result<TransformedExpr, EvalException> {
     match &expr.node {
         AugmentedAssignTargetExprCompiled::Dot(ref e, ref s) => Ok(TransformedExpr::Dot(
@@ -551,18 +451,18 @@ fn transform(
 }
 
 // Evaluate the AST in global context, create local context, and continue evaluating in local
-fn eval_expr_local(
+fn eval_expr_local<E: EvaluationContextEnvironment>(
     expr: &AstExprCompiled,
     locals: &Locals,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     let mut ctx = EvaluationContext {
         call_stack: context.call_stack,
-        env: EvaluationContextEnvironment::Local(
+        env: EvaluationContextEnvironmentLocal {
             // Note assertion that we where in module context
-            context.env.assert_module_env().clone(),
-            IndexedLocals::new(locals),
-        ),
+            globals: context.env.assert_module_env().env.clone(),
+            locals: IndexedLocals::new(locals),
+        },
         type_values: context.type_values,
         map: context.map.clone(),
     };
@@ -570,7 +470,10 @@ fn eval_expr_local(
 }
 
 // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
-fn eval_expr(expr: &AstExprCompiled, context: &mut EvaluationContext) -> EvalResult {
+fn eval_expr<E: EvaluationContextEnvironment>(
+    expr: &AstExprCompiled,
+    context: &mut EvaluationContext<E>,
+) -> EvalResult {
     match expr.node {
         ExprCompiled::Tuple(ref v) => {
             let r = eval_vector(v, context)?;
@@ -589,7 +492,10 @@ fn eval_expr(expr: &AstExprCompiled, context: &mut EvaluationContext) -> EvalRes
         }
         ExprCompiled::Name(ref name) => match &name.node {
             GlobalOrSlot::Global(ref i) => t(context.env.get_global(i), name),
-            GlobalOrSlot::Slot(slot, ref i) => t(context.env.get_slot(*slot, i), name),
+            GlobalOrSlot::Slot(slot, ref i) => t(
+                context.env.assert_local_env().locals.get_slot(*slot, i),
+                name,
+            ),
         },
         ExprCompiled::Value(ref v) => Ok(v.clone()),
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
@@ -683,9 +589,9 @@ fn eval_expr(expr: &AstExprCompiled, context: &mut EvaluationContext) -> EvalRes
 }
 
 // Perform an assignment on the LHS represented by this AST element
-fn set_expr(
+fn set_expr<E: EvaluationContextEnvironment>(
     expr: &AstAssignTargetExprCompiled,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
     new_value: Value,
 ) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
@@ -715,11 +621,15 @@ fn set_expr(
         }
         AssignTargetExprCompiled::Name(ref name) => match &name.node {
             GlobalOrSlot::Global(ref i) => {
-                t(context.env.set_global(&i, new_value), expr)?;
+                t(context.env.assert_module_env().env.set(&i, new_value), expr)?;
                 ok
             }
             GlobalOrSlot::Slot(slot, ref i) => {
-                context.env.set_slot(*slot, &i, new_value);
+                context
+                    .env
+                    .assert_local_env()
+                    .locals
+                    .set_slot(*slot, &i, new_value);
                 ok
             }
         },
@@ -733,11 +643,11 @@ fn set_expr(
     }
 }
 
-fn eval_assign_modify(
+fn eval_assign_modify<E: EvaluationContextEnvironment>(
     stmt: &AstStatementCompiled,
     lhs: &AstAugmentedAssignTargetExprCompiled,
     rhs: &AstExprCompiled,
-    context: &mut EvaluationContext,
+    context: &mut EvaluationContext<E>,
     op: AugmentedAssignOp,
 ) -> EvalResult
 where
@@ -757,7 +667,10 @@ where
     set_transformed(&lhs, context, t(op(&l, r), stmt)?)
 }
 
-fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> EvalResult {
+fn eval_stmt<E: EvaluationContextEnvironment>(
+    stmt: &AstStatementCompiled,
+    context: &mut EvaluationContext<E>,
+) -> EvalResult {
     match stmt.node {
         StatementCompiled::Break => Err(EvalException::Break(stmt.span)),
         StatementCompiled::Continue => Err(EvalException::Continue(stmt.span)),
@@ -814,24 +727,32 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> Ev
                 })
             }
             let f = Def::new(
-                context.env.assert_module_env().name(),
+                context.env.assert_module_env().env.name(),
                 FunctionSignature::new(p, 0),
                 stmt.clone(),
                 context.map.clone(),
-                context.env.assert_module_env().clone(),
+                context.env.assert_module_env().env.clone(),
             );
             t(
-                context.env.set_global(&stmt.name.node, f.clone()),
+                context
+                    .env
+                    .assert_module_env()
+                    .env
+                    .set(&stmt.name.node, f.clone()),
                 &stmt.name,
             )?;
             Ok(f)
         }
         StatementCompiled::Load(ref name, ref v) => {
-            let loadenv = context.env.loader().load(name, context.type_values)?;
+            let loadenv = context
+                .env
+                .assert_module_env()
+                .loader
+                .load(name, context.type_values)?;
             loadenv.freeze();
             for &(ref new_name, ref orig_name) in v.iter() {
                 t(
-                    context.env.assert_module_env().import_symbol(
+                    context.env.assert_module_env().env.import_symbol(
                         &loadenv,
                         &orig_name.node,
                         &new_name.node,
@@ -844,7 +765,10 @@ fn eval_stmt(stmt: &AstStatementCompiled, context: &mut EvaluationContext) -> Ev
     }
 }
 
-fn eval_block(block: &BlockCompiled, context: &mut EvaluationContext) -> EvalResult {
+fn eval_block<E: EvaluationContextEnvironment>(
+    block: &BlockCompiled,
+    context: &mut EvaluationContext<E>,
+) -> EvalResult {
     let mut r = Value::new(NoneType::None);
     for stmt in &block.0 {
         r = eval_stmt(stmt, context)?;
@@ -857,11 +781,14 @@ fn eval_module(
     env: &mut Environment,
     type_values: &TypeValues,
     map: Arc<Mutex<CodeMap>>,
-    file_loader: &dyn FileLoader,
+    loader: &dyn FileLoader,
 ) -> EvalResult {
     let mut call_stack = CallStack::default();
     let mut context = EvaluationContext {
-        env: EvaluationContextEnvironment::Module(env.clone(), file_loader),
+        env: EvaluationContextEnvironmentModule {
+            env: env.clone(),
+            loader,
+        },
         type_values,
         call_stack: &mut call_stack,
         map,

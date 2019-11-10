@@ -25,9 +25,6 @@ use crate::eval::locals::LocalsBuilder;
 use crate::eval::locals::LocalsQuery;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::EvalException;
-use crate::eval::EvaluationContext;
-use crate::eval::EvaluationContextEnvironment;
-use crate::eval::IndexedLocals;
 use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstParameter;
 use crate::syntax::ast::AstStatement;
@@ -36,6 +33,10 @@ use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::Expr;
 use crate::syntax::ast::Parameter;
 use crate::syntax::ast::Statement;
+use crate::values::context::EvaluationContext;
+use crate::values::context::EvaluationContextEnvironment;
+use crate::values::context::EvaluationContextEnvironmentLocal;
+use crate::values::context::IndexedLocals;
 use crate::values::error::ValueError;
 use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
@@ -225,10 +226,10 @@ impl TypedValue for Def {
         // argument binding
         let mut ctx = EvaluationContext {
             call_stack,
-            env: EvaluationContextEnvironment::Local(
-                self.captured_env.clone(),
-                IndexedLocals::new(&self.stmt.locals),
-            ),
+            env: EvaluationContextEnvironmentLocal {
+                globals: self.captured_env.clone(),
+                locals: IndexedLocals::new(&self.stmt.locals),
+            },
             type_values,
             map: self.map.clone(),
         };
@@ -263,9 +264,16 @@ impl TypedValue for Def {
             // tricky part: we know that we assign locals for function parameters
             // sequentially starting from 0
             if cfg!(debug_assertions) {
-                assert_eq!(i, ctx.env.top_level_local_to_slot(name));
+                assert_eq!(
+                    i,
+                    ctx.env
+                        .locals
+                        .local_defs
+                        .top_level_name_to_slot(name)
+                        .unwrap()
+                );
             }
-            ctx.env.set_slot(i, name, v);
+            ctx.env.assert_local_env().locals.set_slot(i, name, v);
         }
 
         parser.check_no_more_args()?;
