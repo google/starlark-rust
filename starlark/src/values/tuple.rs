@@ -15,6 +15,7 @@
 //! Define the tuple type for Starlark.
 use crate::values::error::ValueError;
 use crate::values::iter::TypedIterable;
+use crate::values::slice_indices::convert_slice_indices;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
@@ -354,8 +355,7 @@ impl TypedValue for Tuple {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        let (start, stop, stride) =
-            Value::convert_slice_indices(self.length()?, start, stop, stride)?;
+        let (start, stop, stride) = convert_slice_indices(self.length()?, start, stop, stride)?;
         Ok(Value::new(Tuple::new(slice_vector(
             start,
             stop,

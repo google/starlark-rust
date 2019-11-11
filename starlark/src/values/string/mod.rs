@@ -23,6 +23,7 @@ use std::hash::{Hash, Hasher};
 
 pub mod interpolation;
 
+use crate::values::slice_indices::convert_slice_indices;
 use std::fmt;
 use std::iter;
 
@@ -90,8 +91,7 @@ impl TypedValue for String {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        let (start, stop, stride) =
-            Value::convert_slice_indices(self.len() as i64, start, stop, stride)?;
+        let (start, stop, stride) = convert_slice_indices(self.len() as i64, start, stop, stride)?;
         let (low, take, astride) = if stride < 0 {
             (stop + 1, start - stop, -stride)
         } else {
