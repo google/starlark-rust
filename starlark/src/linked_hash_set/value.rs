@@ -17,6 +17,7 @@ use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::iter::TypedIterable;
+use crate::values::slice_indices::convert_slice_indices;
 use crate::values::*;
 use std::fmt;
 use std::fmt::Write as _;
@@ -195,8 +196,7 @@ impl TypedValue for Set {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> ValueResult {
-        let (start, stop, stride) =
-            Value::convert_slice_indices(self.length()?, start, stop, stride)?;
+        let (start, stop, stride) = convert_slice_indices(self.length()?, start, stop, stride)?;
         Ok(Value::from(tuple::slice_vector(
             start,
             stop,

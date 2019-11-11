@@ -15,6 +15,7 @@
 //! `range()` builtin implementation
 
 use crate::values::iter::TypedIterable;
+use crate::values::slice_indices::convert_slice_indices;
 use crate::values::{Immutable, TypedValue, Value, ValueError};
 use std::fmt;
 use std::fmt::Write as _;
@@ -133,8 +134,7 @@ impl TypedValue for Range {
         stop: Option<Value>,
         stride: Option<Value>,
     ) -> Result<Value, ValueError> {
-        let (start, stop, step) =
-            Value::convert_slice_indices(self.length()?, start, stop, stride)?;
+        let (start, stop, step) = convert_slice_indices(self.length()?, start, stop, stride)?;
         return Ok(Value::new(Range {
             start: self
                 .start
