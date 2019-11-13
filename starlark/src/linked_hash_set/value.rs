@@ -13,6 +13,8 @@
 // limitations under the License.
 
 //! Define the set type of Starlark
+use crate::environment::bin_op::CustomBinOp;
+use crate::environment::TypeValues;
 use crate::linked_hash_set::set_impl::LinkedHashSet;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
@@ -209,34 +211,6 @@ impl TypedValue for Set {
         Ok(self)
     }
 
-    /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a set.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// # assert!(
-    /// // {1, 2, 3} + {2, 3, 4} == {1, 2, 3, 4}
-    /// Value::from(vec![1,2,3]).add(Value::from(vec![2,3])).unwrap()
-    ///     == Value::from(vec![1, 2, 3, 2, 3])
-    /// # );
-    /// ```
-    fn add(&self, other: &Set) -> Result<Self, ValueError> {
-        let mut result = Set {
-            content: LinkedHashSet::new(),
-        };
-        for x in &self.content {
-            result.content.insert(x.clone());
-        }
-        for x in &other.content {
-            result.content.insert_if_absent(x.clone());
-        }
-        Ok(result)
-    }
-
     fn get_hash(&self) -> Result<u64, ValueError> {
         Ok(self
             .content
@@ -256,6 +230,21 @@ impl TypedIterable for Set {
     fn to_vec(&self) -> Vec<Value> {
         self.content.iter().map(|v| v.get_value().clone()).collect()
     }
+}
+
+pub(crate) fn global(type_values: &mut TypeValues) {
+    type_values.register_bin_op(CustomBinOp::Addition, |a: &Set, b: &Set| {
+        let mut result = Set {
+            content: LinkedHashSet::new(),
+        };
+        for x in &a.content {
+            result.content.insert(x.clone());
+        }
+        for x in &b.content {
+            result.content.insert_if_absent(x.clone());
+        }
+        Ok(result)
+    });
 }
 
 #[cfg(test)]

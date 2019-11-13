@@ -295,6 +295,10 @@ impl<T: TypedValue> TypedValueDyn for T {
         T::TYPE
     }
 
+    fn get_type_id_dyn(&self) -> TypeId {
+        TypeId::of::<T>()
+    }
+
     fn to_bool_dyn(&self) -> bool {
         self.to_bool()
     }
@@ -402,37 +406,26 @@ impl<T: TypedValue> TypedValueDyn for T {
         self.minus().map(Value::new)
     }
 
-    fn add_dyn(&self, other: Value) -> Result<Value, ValueError> {
-        match other.downcast_ref::<T>() {
-            Some(other) => self.add(&*other).map(Value::new),
-            None => Err(ValueError::IncorrectParameterType),
-        }
-    }
-
-    fn sub_dyn(&self, other: Value) -> Result<Value, ValueError> {
+    fn sub_dyn(&self, other: &Value) -> Result<Value, ValueError> {
         match other.downcast_ref() {
             Some(other) => self.sub(&*other).map(Value::new),
             None => Err(ValueError::IncorrectParameterType),
         }
     }
 
-    fn mul_dyn(&self, other: Value) -> Result<Value, ValueError> {
-        self.mul(other)
-    }
-
-    fn percent_dyn(&self, other: Value) -> Result<Value, ValueError> {
+    fn percent_dyn(&self, other: &Value) -> Result<Value, ValueError> {
         self.percent(other)
     }
 
-    fn div_dyn(&self, other: Value) -> Result<Value, ValueError> {
+    fn div_dyn(&self, other: &Value) -> Result<Value, ValueError> {
         self.div(other)
     }
 
-    fn floor_div_dyn(&self, other: Value) -> Result<Value, ValueError> {
+    fn floor_div_dyn(&self, other: &Value) -> Result<Value, ValueError> {
         self.floor_div(other)
     }
 
-    fn pipe_dyn(&self, other: Value) -> Result<Value, ValueError> {
+    fn pipe_dyn(&self, other: &Value) -> Result<Value, ValueError> {
         self.pipe(other)
     }
 }
@@ -464,6 +457,8 @@ pub(crate) trait TypedValueDyn: 'static {
     fn to_repr_impl_dyn(&self, buf: &mut String) -> fmt::Result;
 
     fn get_type_dyn(&self) -> &'static str;
+
+    fn get_type_id_dyn(&self) -> TypeId;
 
     fn to_bool_dyn(&self) -> bool;
 
@@ -514,24 +509,20 @@ pub(crate) trait TypedValueDyn: 'static {
 
     fn minus_dyn(&self) -> ValueResult;
 
-    fn add_dyn(&self, other: Value) -> ValueResult;
+    fn sub_dyn(&self, other: &Value) -> ValueResult;
 
-    fn sub_dyn(&self, other: Value) -> ValueResult;
+    fn percent_dyn(&self, other: &Value) -> ValueResult;
 
-    fn mul_dyn(&self, other: Value) -> ValueResult;
+    fn div_dyn(&self, other: &Value) -> ValueResult;
 
-    fn percent_dyn(&self, other: Value) -> ValueResult;
+    fn floor_div_dyn(&self, other: &Value) -> ValueResult;
 
-    fn div_dyn(&self, other: Value) -> ValueResult;
-
-    fn floor_div_dyn(&self, other: Value) -> ValueResult;
-
-    fn pipe_dyn(&self, other: Value) -> ValueResult;
+    fn pipe_dyn(&self, other: &Value) -> ValueResult;
 }
 
 /// A trait for a value with a type that all variable container
 /// will implement.
-pub trait TypedValue: Sized + 'static {
+pub trait TypedValue: Any + Sized + 'static {
     /// Must be either `MutableHolder<Self>` or `ImmutableHolder<Self>`
     type Holder: Mutability<Content = Self>;
 
@@ -898,25 +889,6 @@ pub trait TypedValue: Sized + 'static {
         })
     }
 
-    /// Add `other` to the current value.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[macro_use] extern crate starlark;
-    /// # use starlark::values::*;
-    /// # fn main() {
-    /// assert_eq!(3, int_op!(1.add(2)));  // 1.add(2) = 1 + 2 = 3
-    /// # }
-    /// ```
-    fn add(&self, _other: &Self) -> Result<Self, ValueError> {
-        Err(ValueError::OperationNotSupported {
-            op: "+".to_owned(),
-            left: Self::TYPE.to_owned(),
-            right: Some(Self::TYPE.to_owned()),
-        })
-    }
-
     /// Substract `other` from the current value.
     ///
     /// # Examples
@@ -936,25 +908,6 @@ pub trait TypedValue: Sized + 'static {
         })
     }
 
-    /// Multiply the current value with `other`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[macro_use] extern crate starlark;
-    /// # use starlark::values::*;
-    /// # fn main() {
-    /// assert_eq!(6, int_op!(2.mul(3)));  // 2.mul(3) = 2 * 3 = 6
-    /// # }
-    /// ```
-    fn mul(&self, other: Value) -> ValueResult {
-        Err(ValueError::OperationNotSupported {
-            op: "*".to_owned(),
-            left: Self::TYPE.to_owned(),
-            right: Some(other.get_type().to_owned()),
-        })
-    }
-
     /// Apply the percent operator between the current value and `other`.
     ///
     /// # Examples
@@ -967,10 +920,10 @@ pub trait TypedValue: Sized + 'static {
     /// // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
     /// assert_eq!(2, int_op!(5.percent(3)));
     /// // String formatting: "a {} c" % 3 == "a 3 c"
-    /// assert_eq!(Value::from("a 3 c"), Value::from("a %s c").percent(Value::from(3)).unwrap());
+    /// assert_eq!(Value::from("a 3 c"), Value::from("a %s c").percent(&Value::from(3)).unwrap());
     /// # }
     /// ```
-    fn percent(&self, other: Value) -> ValueResult {
+    fn percent(&self, other: &Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "%".to_owned(),
             left: Self::TYPE.to_owned(),
@@ -989,7 +942,7 @@ pub trait TypedValue: Sized + 'static {
     /// assert_eq!(3, int_op!(7.div(2)));  // 7.div(2) = 7 / 2 = 3
     /// # }
     /// ```
-    fn div(&self, other: Value) -> ValueResult {
+    fn div(&self, other: &Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "/".to_owned(),
             left: Self::TYPE.to_owned(),
@@ -1008,7 +961,7 @@ pub trait TypedValue: Sized + 'static {
     /// assert_eq!(3, int_op!(7.floor_div(2)));  // 7.div(2) = 7 / 2 = 3
     /// # }
     /// ```
-    fn floor_div(&self, other: Value) -> ValueResult {
+    fn floor_div(&self, other: &Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "//".to_owned(),
             left: Self::TYPE.to_owned(),
@@ -1019,7 +972,7 @@ pub trait TypedValue: Sized + 'static {
     /// Apply the operator pipe to the current value and `other`.
     ///
     /// This is usually the union on set.
-    fn pipe(&self, other: Value) -> ValueResult {
+    fn pipe(&self, other: &Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
             op: "|".to_owned(),
             left: Self::TYPE.to_owned(),
@@ -1060,6 +1013,9 @@ impl Value {
     }
     pub fn get_type(&self) -> &'static str {
         self.value_holder().get_type_dyn()
+    }
+    pub fn get_type_id(&self) -> TypeId {
+        self.value_holder().get_type_id_dyn()
     }
     pub fn to_bool(&self) -> bool {
         self.value_holder().to_bool_dyn()
@@ -1165,25 +1121,19 @@ impl Value {
     pub fn minus(&self) -> ValueResult {
         self.value_holder().minus_dyn()
     }
-    pub fn add(&self, other: Value) -> ValueResult {
-        self.value_holder().add_dyn(other)
-    }
-    pub fn sub(&self, other: Value) -> ValueResult {
+    pub fn sub(&self, other: &Value) -> ValueResult {
         self.value_holder().sub_dyn(other)
     }
-    pub fn mul(&self, other: Value) -> ValueResult {
-        self.value_holder().mul_dyn(other)
-    }
-    pub fn percent(&self, other: Value) -> ValueResult {
+    pub fn percent(&self, other: &Value) -> ValueResult {
         self.value_holder().percent_dyn(other)
     }
-    pub fn div(&self, other: Value) -> ValueResult {
+    pub fn div(&self, other: &Value) -> ValueResult {
         self.value_holder().div_dyn(other)
     }
-    pub fn floor_div(&self, other: Value) -> ValueResult {
+    pub fn floor_div(&self, other: &Value) -> ValueResult {
         self.value_holder().floor_div_dyn(other)
     }
-    pub fn pipe(&self, other: Value) -> ValueResult {
+    pub fn pipe(&self, other: &Value) -> ValueResult {
         self.value_holder().pipe_dyn(other)
     }
 }
@@ -1234,7 +1184,7 @@ impl Value {
 
 // Submodules
 pub mod boolean;
-mod cell;
+pub(crate) mod cell;
 pub mod context;
 pub mod dict;
 pub mod error;
@@ -1255,7 +1205,7 @@ use crate::values::cell::ObjectCell;
 use crate::values::cell::ObjectRef;
 use crate::values::cell::ObjectRefMut;
 use crate::values::none::NoneType;
-use std::any::Any;
+use std::any::{Any, TypeId};
 
 #[cfg(test)]
 mod tests {

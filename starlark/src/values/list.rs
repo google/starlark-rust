@@ -13,6 +13,8 @@
 // limitations under the License.
 
 //! Define the list type of Starlark
+use crate::environment::bin_op::CustomBinOp;
+use crate::environment::TypeValues;
 use crate::stdlib::list::LIST_REMOVE_ELEMENT_NOT_FOUND_ERROR_CODE;
 use crate::values::error::{RuntimeError, ValueError};
 use crate::values::iter::TypedIterable;
@@ -217,64 +219,6 @@ impl TypedValue for List {
         Ok(self)
     }
 
-    /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a list.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// # assert!(
-    /// // [1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]
-    /// Value::from(vec![1,2,3]).add(Value::from(vec![2,3])).unwrap()
-    ///     == Value::from(vec![1, 2, 3, 2, 3])
-    /// # );
-    /// ```
-    fn add(&self, other: &List) -> Result<List, ValueError> {
-        let mut result = List {
-            content: Vec::new(),
-        };
-        for x in &self.content {
-            result.content.push(x.clone());
-        }
-        for x in &other.content {
-            result.content.push(x.clone());
-        }
-        Ok(result)
-    }
-
-    /// Repeat `other` times this tuple.
-    ///
-    /// `other` has to be an int or a boolean.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::list::List;
-    /// # assert!(
-    /// // [1, 2, 3] * 3 == [1, 2, 3, 1, 2, 3, 1, 2, 3]
-    /// Value::from(vec![1,2,3]).mul(Value::from(3)).unwrap()
-    ///              == Value::from(vec![1, 2, 3, 1, 2, 3, 1, 2, 3])
-    /// # );
-    /// ```
-    fn mul(&self, other: Value) -> ValueResult {
-        match other.downcast_ref::<i64>() {
-            Some(l) => {
-                let mut result = List {
-                    content: Vec::new(),
-                };
-                for _i in 0..*l {
-                    result.content.extend(self.content.iter().cloned());
-                }
-                Ok(Value::new(result))
-            }
-            None => Err(ValueError::IncorrectParameterType),
-        }
-    }
-
     /// Set the value at `index` to `new_value`
     ///
     /// # Example
@@ -303,6 +247,42 @@ impl TypedIterable for List {
     }
 }
 
+impl From<List> for Value {
+    fn from(l: List) -> Self {
+        Value::new(l)
+    }
+}
+
+pub(crate) fn global(type_values: &mut TypeValues) {
+    type_values.register_bin_op(CustomBinOp::Addition, |a: &List, b: &List| {
+        let mut result = List {
+            content: Vec::new(),
+        };
+        for x in &a.content {
+            result.content.push(x.clone());
+        }
+        for x in &b.content {
+            result.content.push(x.clone());
+        }
+        Ok(result)
+    });
+    fn mul(l: &List, n: &i64) -> List {
+        let mut result = List {
+            content: Vec::new(),
+        };
+        for _i in 0..*n {
+            result.content.extend(l.content.iter().cloned());
+        }
+        result
+    }
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &List, b: &i64| {
+        Ok(mul(a, b))
+    });
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &i64, b: &List| {
+        Ok(mul(b, a))
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,18 +308,9 @@ mod tests {
 
     #[test]
     fn test_arithmetic_on_list() {
-        // [1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]
-        assert_eq!(
-            Value::from(vec![1, 2, 3])
-                .add(Value::from(vec![2, 3]))
-                .unwrap(),
-            Value::from(vec![1, 2, 3, 2, 3])
-        );
-        // [1, 2, 3] * 3 == [1, 2, 3, 1, 2, 3, 1, 2, 3]
-        assert_eq!(
-            Value::from(vec![1, 2, 3]).mul(Value::from(3)).unwrap(),
-            Value::from(vec![1, 2, 3, 1, 2, 3, 1, 2, 3])
-        );
+        starlark_ok!("[1, 2, 3] + [2, 3] == [1, 2, 3, 2, 3]");
+        starlark_ok!("[1, 2, 3] * 3 == [1, 2, 3, 1, 2, 3, 1, 2, 3]");
+        starlark_ok!("3 * [1, 2, 3] == [1, 2, 3, 1, 2, 3, 1, 2, 3]");
     }
 
     #[test]

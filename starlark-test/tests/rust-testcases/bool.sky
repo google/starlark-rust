@@ -1,7 +1,7 @@
 # Boolean tests
 
-True + 9223372036854775807   ###  Type of parameters mismatch
+True + 9223372036854775807   ###  + not supported for types bool and int
 ---
-[] * True                    ###  Type of parameters mismatch
+[] * True                    ###  * not supported for types list and bool
 ---
-() * False                   ###  Type of parameters mismatch
+() * False                   ###  * not supported for types tuple and bool

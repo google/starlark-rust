@@ -14,6 +14,8 @@
 
 //! Define the int type for Starlark.
 
+use crate::environment::bin_op::CustomBinOp;
+use crate::environment::TypeValues;
 use crate::values::error::ValueError;
 use crate::values::*;
 use std::cmp::Ordering;
@@ -26,7 +28,7 @@ use std::iter;
 macro_rules! int_op {
     ($v1:tt. $op:ident($v2:expr)) => {
         $crate::values::Value::new($v1)
-            .$op($crate::values::Value::new($v2))
+            .$op(&$crate::values::Value::new($v2))
             .unwrap()
             .to_int()
             .unwrap()
@@ -65,7 +67,7 @@ impl From<i64> for Value {
     }
 }
 
-fn i64_arith_bin_op<F>(left: i64, right: Value, op: &'static str, f: F) -> ValueResult
+fn i64_arith_bin_op<F>(left: i64, right: &Value, op: &'static str, f: F) -> ValueResult
 where
     F: FnOnce(i64, i64) -> Result<i64, ValueError>,
 {
@@ -112,22 +114,10 @@ impl TypedValue for i64 {
     fn minus(&self) -> Result<i64, ValueError> {
         self.checked_neg().ok_or(ValueError::IntegerOverflow)
     }
-    fn add(&self, other: &i64) -> Result<i64, ValueError> {
-        self.checked_add(*other).ok_or(ValueError::IntegerOverflow)
-    }
     fn sub(&self, other: &i64) -> Result<i64, ValueError> {
         self.checked_sub(*other).ok_or(ValueError::IntegerOverflow)
     }
-    fn mul(&self, other: Value) -> ValueResult {
-        match other.downcast_ref::<i64>() {
-            Some(other) => self
-                .checked_mul(*other)
-                .ok_or(ValueError::IntegerOverflow)
-                .map(Value::new),
-            None => other.mul(Value::new(*self)),
-        }
-    }
-    fn percent(&self, other: Value) -> ValueResult {
+    fn percent(&self, other: &Value) -> ValueResult {
         i64_arith_bin_op(*self, other, "%", |a, b| {
             if b == 0 {
                 return Err(ValueError::DivisionByZero);
@@ -144,10 +134,10 @@ impl TypedValue for i64 {
             }
         })
     }
-    fn div(&self, other: Value) -> ValueResult {
+    fn div(&self, other: &Value) -> ValueResult {
         self.floor_div(other)
     }
-    fn floor_div(&self, other: Value) -> ValueResult {
+    fn floor_div(&self, other: &Value) -> ValueResult {
         i64_arith_bin_op(*self, other, "//", |a, b| {
             if b == 0 {
                 return Err(ValueError::DivisionByZero);
@@ -172,6 +162,15 @@ impl TypedValue for i64 {
     }
 }
 
+pub(crate) fn global(type_values: &mut TypeValues) {
+    type_values.register_bin_op(CustomBinOp::Addition, |a: &i64, b: &i64| {
+        a.checked_add(*b).ok_or(ValueError::IntegerOverflow)
+    });
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &i64, b: &i64| {
+        a.checked_mul(*b).ok_or(ValueError::IntegerOverflow)
+    });
+}
+
 #[cfg(test)]
 mod test {
     use crate::int_op;
@@ -180,10 +179,10 @@ mod test {
     fn test_arithmetic_operators() {
         assert_eq!(1, int_op!(1.plus())); // 1.plus() = +1 = 1
         assert_eq!(-1, int_op!(1.minus())); // 1.minus() = -1
-        assert_eq!(3, int_op!(1.add(2))); // 1.add(2) = 1 + 2 = 3
+        starlark_ok!("3 == 1 + 2");
         assert_eq!(-1, int_op!(1.sub(2))); // 1.sub(2) = 1 - 2 = -1
-        assert_eq!(6, int_op!(2.mul(3))); // 2.mul(3) = 2 * 3 = 6
-                                          // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
+        starlark_ok!("2 * 3 == 6");
+        // Remainder of the floored division: 5.percent(3) = 5 % 3 = 2
         assert_eq!(2, int_op!(5.percent(3)));
         assert_eq!(3, int_op!(7.div(2))); // 7.div(2) = 7 / 2 = 3
     }

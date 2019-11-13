@@ -13,6 +13,8 @@
 // limitations under the License.
 
 //! Define the tuple type for Starlark.
+use crate::environment::bin_op::CustomBinOp;
+use crate::environment::TypeValues;
 use crate::values::error::ValueError;
 use crate::values::iter::TypedIterable;
 use crate::values::slice_indices::convert_slice_indices;
@@ -367,63 +369,6 @@ impl TypedValue for Tuple {
     fn iter(&self) -> Result<&dyn TypedIterable, ValueError> {
         Ok(self)
     }
-
-    /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a tuple.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::tuple::Tuple;
-    /// # assert!(
-    /// // (1, 2, 3) + (2, 3) == (1, 2, 3, 2, 3)
-    /// Value::from((1,2,3)).add(Value::from((2,3))).unwrap() == Value::from((1, 2, 3, 2, 3))
-    /// # );
-    /// ```
-    fn add(&self, other: &Tuple) -> Result<Tuple, ValueError> {
-        let mut result = Tuple {
-            content: Vec::with_capacity(self.content.len() + other.content.len()),
-        };
-        for x in &self.content {
-            result.content.push(x.clone());
-        }
-        for x in &other.content {
-            result.content.push(x.clone());
-        }
-        Ok(result)
-    }
-
-    /// Repeat `other` times this tuple.
-    ///
-    /// `other` has to be an int or a boolean.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::tuple::Tuple;
-    /// # assert!(
-    /// // (1, 2, 3) * 3 == (1, 2, 3, 1, 2, 3, 1, 2, 3)
-    /// Value::from((1,2,3)).mul(Value::from(3)).unwrap()
-    ///              == Value::from((1, 2, 3, 1, 2, 3, 1, 2, 3))
-    /// # );
-    /// ```
-    fn mul(&self, other: Value) -> ValueResult {
-        match other.downcast_ref::<i64>() {
-            Some(l) => {
-                let mut result = Tuple {
-                    content: Vec::new(),
-                };
-                for _i in 0..*l {
-                    result.content.extend(self.content.iter().cloned());
-                }
-                Ok(Value::new(result))
-            }
-            None => Err(ValueError::IncorrectParameterType),
-        }
-    }
 }
 
 impl TypedIterable for Tuple {
@@ -485,6 +430,42 @@ from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8);
 from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 from_tuple!(Tuple, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 
+impl From<Tuple> for Value {
+    fn from(t: Tuple) -> Self {
+        Value::new(t)
+    }
+}
+
+pub(crate) fn global(type_values: &mut TypeValues) {
+    type_values.register_bin_op(CustomBinOp::Addition, |a: &Tuple, b: &Tuple| {
+        let mut result = Tuple {
+            content: Vec::with_capacity(a.content.len() + b.content.len()),
+        };
+        for x in &a.content {
+            result.content.push(x.clone());
+        }
+        for x in &b.content {
+            result.content.push(x.clone());
+        }
+        Ok(result)
+    });
+    fn mul(t: &Tuple, n: &i64) -> Tuple {
+        let mut result = Tuple {
+            content: Vec::new(),
+        };
+        for _i in 0..*n {
+            result.content.extend(t.content.iter().cloned());
+        }
+        result
+    }
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &Tuple, b: &i64| {
+        Ok(mul(a, b))
+    });
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &i64, b: &Tuple| {
+        Ok(mul(b, a))
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -499,16 +480,9 @@ mod tests {
 
     #[test]
     fn test_arithmetic_on_tuple() {
-        // (1, 2, 3) + (2, 3) == (1, 2, 3, 2, 3)
-        assert_eq!(
-            Value::from((1, 2, 3)).add(Value::from((2, 3))).unwrap(),
-            Value::from((1, 2, 3, 2, 3))
-        );
-        // (1, 2, 3) * 3 == (1, 2, 3, 1, 2, 3, 1, 2, 3)
-        assert_eq!(
-            Value::from((1, 2, 3)).mul(Value::from(3)).unwrap(),
-            Value::from((1, 2, 3, 1, 2, 3, 1, 2, 3))
-        );
+        starlark_ok!("(1, 2, 3) + (2, 3) == (1, 2, 3, 2, 3)");
+        starlark_ok!("(1, 2, 3) * 3 == (1, 2, 3, 1, 2, 3, 1, 2, 3)");
+        starlark_ok!("3 * (1, 2, 3) == (1, 2, 3, 1, 2, 3, 1, 2, 3)");
     }
 
     #[test]

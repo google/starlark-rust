@@ -17,11 +17,15 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::environment::bin_op::BinOpRegistry;
+use crate::environment::bin_op::CustomBinOp;
 use crate::values::error::{RuntimeError, ValueError};
 use crate::values::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+pub mod bin_op;
 
 // TODO: move that code in some common error code list?
 // CM prefix = Critical Module
@@ -267,10 +271,12 @@ impl EnvironmentContent {
 /// Function implementations are only allowed to access
 /// type values from "type values" from the caller context,
 /// so this struct is passed instead of full `Environment`.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct TypeValues {
     /// List of static values of an object per type
     type_objs: HashMap<String, HashMap<String, Value>>,
+    /// Binary operator implementations
+    bin_op_registry: BinOpRegistry,
 }
 
 impl TypeValues {
@@ -300,5 +306,29 @@ impl TypeValues {
             dict.insert(attr.to_owned(), value);
             self.type_objs.insert(obj.to_owned(), dict);
         }
+    }
+
+    /// Register custom binary operator for a pair of types.
+    pub fn register_bin_op<
+        A: TypedValue,
+        B: TypedValue,
+        R: Into<Value>,
+        F: Fn(&A, &B) -> Result<R, ValueError> + 'static,
+    >(
+        &mut self,
+        bin_op: CustomBinOp,
+        f: F,
+    ) {
+        self.bin_op_registry.register_bin_op(bin_op, f)
+    }
+
+    /// Eval custom bin op
+    pub(crate) fn eval_bin_op(
+        &self,
+        bin_op: CustomBinOp,
+        l: &Value,
+        r: &Value,
+    ) -> Result<Value, ValueError> {
+        self.bin_op_registry.eval_bin_op(bin_op, l, r)
     }
 }

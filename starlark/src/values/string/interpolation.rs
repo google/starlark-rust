@@ -308,7 +308,7 @@ impl ArgsFormat {
         Ok(result)
     }
 
-    pub fn format(self, other: Value) -> Result<String, ValueError> {
+    pub fn format(self, other: &Value) -> Result<String, ValueError> {
         let mut r = self.init;
         let other_iter;
         let mut arg_iter: Box<dyn Iterator<Item = Value>> = if self.positional_count > 1 {
@@ -355,7 +355,7 @@ mod test {
         // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
         assert_eq!(
             Value::from("Hello %s, your score is %d")
-                .percent(Value::from(("Bob", 75)))
+                .percent(&Value::from(("Bob", 75)))
                 .unwrap(),
             Value::from("Hello Bob, your score is 75")
         );
@@ -363,7 +363,7 @@ mod test {
         // "%d %o %x %c" % (65, 65, 65, 65) == "65 101 41 A"
         assert_eq!(
             Value::from("%d %o %x %c")
-                .percent(Value::from((65, 65, 65, 65)))
+                .percent(&Value::from((65, 65, 65, 65)))
                 .unwrap(),
             Value::from("65 101 41 A")
         );
@@ -377,7 +377,7 @@ mod test {
             .unwrap();
         assert_eq!(
             Value::from("%(greeting)s, %(audience)s")
-                .percent(d)
+                .percent(&d)
                 .unwrap(),
             Value::from("Hello, world")
         );
@@ -388,11 +388,11 @@ mod test {
         let mut d = Value::try_from(HashMap::<String, Value>::new()).unwrap();
         d.set_at(Value::from("a"), Value::from(1)).unwrap();
         assert_eq!(
-            Value::from("%s%(a)%").percent(d.clone()).unwrap(),
+            Value::from("%s%(a)%").percent(&d).unwrap(),
             Value::from("{\"a\": 1}%")
         );
         assert_eq!(
-            Value::from("%s%(a)s").percent(d.clone()).unwrap(),
+            Value::from("%s%(a)s").percent(&d).unwrap(),
             Value::from("{\"a\": 1}1")
         );
     }

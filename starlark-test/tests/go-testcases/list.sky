@@ -39,9 +39,9 @@ f2()  ### Out of bound
 # list + list
 assert_eq([1, 2, 3] + [3, 4, 5], [1, 2, 3, 3, 4, 5])
 ---
-[1, 2] + (3, 4)  ### Type of parameters mismatch
+[1, 2] + (3, 4)  ### + not supported for types list and tuple
 ---
-(1, 2) + [3, 4]  ### Type of parameters mismatch
+(1, 2) + [3, 4]  ### + not supported for types tuple and list
 ---
 
 # list * int,  int * list
@@ -133,7 +133,7 @@ f4()
 def f5():
   x = []
   x += 1
-f5()  ### Type of parameters mismatch
+f5()  ### + not supported for types list and int
 ---
 
 # append

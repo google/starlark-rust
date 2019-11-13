@@ -22,10 +22,14 @@ use std::error::Error;
 use std::num::NonZeroI64;
 use std::sync;
 
-use crate::environment::{Environment, TypeValues};
+use crate::environment::Environment;
+use crate::environment::TypeValues;
+use crate::eval::eval_bin_op;
 use crate::eval::noload::eval;
 use crate::linked_hash_set;
+use crate::syntax::ast::BinOp;
 use crate::syntax::dialect::Dialect;
+use crate::values;
 use crate::values::dict::Dictionary;
 use crate::values::function::WrappedMethod;
 use crate::values::none::NoneType;
@@ -920,7 +924,7 @@ starlark_module! {global_functions =>
     /// zip(range(5), "abc".split_codepoints()) == [(0, "a"), (1, "b"), (2, "c")]
     /// # )"#).unwrap());
     /// ```
-    zip(*args) {
+    zip(env env, *args) {
         let mut v = Vec::new();
 
         for arg in args {
@@ -931,7 +935,7 @@ starlark_module! {global_functions =>
                     v.push(Value::from((e.clone(),)));
                     idx += 1;
                 } else if idx < v.len() {
-                    v[idx] = v[idx].add(Value::from((e.clone(),)))?;
+                    v[idx] = eval_bin_op(BinOp::Addition, &v[idx], &Value::from((e.clone(),)), env)?;
                     idx += 1;
                 }
             }
@@ -952,6 +956,13 @@ pub fn global_environment() -> (Environment, TypeValues) {
     env.set("True", Value::new(true)).unwrap();
     env.set("False", Value::new(false)).unwrap();
     global_functions(&mut env, &mut type_values);
+
+    values::int::global(&mut type_values);
+    values::list::global(&mut type_values);
+    values::tuple::global(&mut type_values);
+    values::dict::global(&mut type_values);
+    values::string::global(&mut type_values);
+
     string::global(&mut env, &mut type_values);
     list::global(&mut env, &mut type_values);
     dict::global(&mut env, &mut type_values);

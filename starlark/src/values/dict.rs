@@ -13,6 +13,8 @@
 // limitations under the License.
 
 //! Module define the Starlark type Dictionary
+use crate::environment::bin_op::CustomBinOp;
+use crate::environment::TypeValues;
 use crate::values::error::ValueError;
 use crate::values::hashed_value::HashedValue;
 use crate::values::iter::TypedIterable;
@@ -212,19 +214,6 @@ impl TypedValue for Dictionary {
         self.content.insert(index_key, new_value);
         Ok(())
     }
-
-    fn add(&self, other: &Dictionary) -> Result<Dictionary, ValueError> {
-        let mut result = Dictionary {
-            content: LinkedHashMap::new(),
-        };
-        for (k, v) in &self.content {
-            result.content.insert(k.clone(), v.clone());
-        }
-        for (k, v) in &other.content {
-            result.content.insert(k.clone(), v.clone());
-        }
-        Ok(result)
-    }
 }
 
 impl TypedIterable for Dictionary {
@@ -255,6 +244,27 @@ impl<T1: Into<Value> + Eq + Hash + Clone, T2: Into<Value> + Eq + Clone>
     fn try_from(a: LinkedHashMap<T1, T2>) -> Result<Value, ValueError> {
         Ok(Value::new(dict::Dictionary::try_from(a)?))
     }
+}
+
+impl From<Dictionary> for Value {
+    fn from(d: Dictionary) -> Self {
+        Value::new(d)
+    }
+}
+
+pub(crate) fn global(type_values: &mut TypeValues) {
+    type_values.register_bin_op(CustomBinOp::Addition, |a: &Dictionary, b: &Dictionary| {
+        let mut result = Dictionary {
+            content: LinkedHashMap::new(),
+        };
+        for (k, v) in &a.content {
+            result.content.insert(k.clone(), v.clone());
+        }
+        for (k, v) in &b.content {
+            result.content.insert(k.clone(), v.clone());
+        }
+        Ok(result)
+    });
 }
 
 #[cfg(test)]

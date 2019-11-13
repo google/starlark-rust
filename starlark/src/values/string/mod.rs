@@ -23,6 +23,8 @@ use std::hash::{Hash, Hasher};
 
 pub mod interpolation;
 
+use crate::environment::bin_op::CustomBinOp;
+use crate::environment::TypeValues;
 use crate::values::slice_indices::convert_slice_indices;
 use std::fmt;
 use std::iter;
@@ -133,51 +135,6 @@ impl TypedValue for String {
         Ok(Value::new(v))
     }
 
-    /// Concatenate `other` to the current value.
-    ///
-    /// `other` has to be a string.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::string;
-    /// # assert!(
-    /// // "abc" + "def" = "abcdef"
-    /// Value::from("abc").add(Value::from("def")).unwrap() == Value::from("abcdef")
-    /// # );
-    /// ```
-    fn add(&self, other: &String) -> Result<String, ValueError> {
-        Ok(self.chars().chain(other.chars()).collect())
-    }
-
-    /// Repeat `other` times this string.
-    ///
-    /// `other` has to be an int.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use starlark::values::*;
-    /// # use starlark::values::string;
-    /// # assert!(
-    /// // "abc" * 3 == "abcabcabc"
-    /// Value::from("abc").mul(Value::from(3)).unwrap() == Value::from("abcabcabc")
-    /// # );
-    /// ```
-    fn mul(&self, other: Value) -> ValueResult {
-        match other.downcast_ref::<i64>() {
-            Some(l) => {
-                let mut result = String::new();
-                for _i in 0..*l {
-                    result += self
-                }
-                Ok(Value::new(result))
-            }
-            None => Err(ValueError::IncorrectParameterType),
-        }
-    }
-
     /// Perform string interpolation
     ///
     /// Cf. [String interpolation on the Starlark spec](
@@ -193,12 +150,12 @@ impl TypedValue for String {
     /// # use std::convert::TryFrom;
     /// # assert!(
     /// // "Hello %s, your score is %d" % ("Bob", 75) == "Hello Bob, your score is 75"
-    /// Value::from("Hello %s, your score is %d").percent(Value::from(("Bob", 75))).unwrap()
+    /// Value::from("Hello %s, your score is %d").percent(&Value::from(("Bob", 75))).unwrap()
     ///     == Value::from("Hello Bob, your score is 75")
     /// # );
     /// # assert!(
     /// // "%d %o %x %c" % (65, 65, 65, 65) == "65 101 41 A"
-    /// Value::from("%d %o %x %c").percent(Value::from((65, 65, 65, 65))).unwrap()
+    /// Value::from("%d %o %x %c").percent(&Value::from((65, 65, 65, 65))).unwrap()
     ///     == Value::from("65 101 41 A")
     /// # );
     /// // "%(greeting)s, %(audience)s" % {"greeting": "Hello", "audience": "world"} ==
@@ -207,10 +164,10 @@ impl TypedValue for String {
     /// d.set_at(Value::from("greeting"), Value::from("Hello"));
     /// d.set_at(Value::from("audience"), Value::from("world"));
     /// # assert!(
-    /// Value::from("%(greeting)s, %(audience)s").percent(d).unwrap() == Value::from("Hello, world")
+    /// Value::from("%(greeting)s, %(audience)s").percent(&d).unwrap() == Value::from("Hello, world")
     /// # );
     /// ```
-    fn percent(&self, other: Value) -> ValueResult {
+    fn percent(&self, other: &Value) -> ValueResult {
         Ok(Value::new(ArgsFormat::parse(&self)?.format(other)?))
     }
 }
@@ -225,6 +182,25 @@ impl<'a> From<&'a str> for Value {
     fn from(a: &'a str) -> Value {
         Value::new(a.to_owned())
     }
+}
+
+pub(crate) fn global(type_values: &mut TypeValues) {
+    type_values.register_bin_op(CustomBinOp::Addition, |a: &String, b: &String| {
+        Ok(a.chars().chain(b.chars()).collect::<String>())
+    });
+    fn mul(s: &String, n: &i64) -> String {
+        let mut result = String::new();
+        for _i in 0..*n {
+            result += s;
+        }
+        result
+    }
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &String, b: &i64| {
+        Ok(mul(a, b))
+    });
+    type_values.register_bin_op(CustomBinOp::Multiplication, |a: &i64, b: &String| {
+        Ok(mul(b, a))
+    });
 }
 
 #[cfg(test)]
@@ -244,16 +220,8 @@ mod tests {
 
     #[test]
     fn test_arithmetic_on_string() {
-        // "abc" + "def" = "abcdef"
-        assert_eq!(
-            Value::from("abc").add(Value::from("def")).unwrap(),
-            Value::from("abcdef")
-        );
-        // "abc" * 3 == "abcabcabc"
-        assert_eq!(
-            Value::from("abc").mul(Value::from(3)).unwrap(),
-            Value::from("abcabcabc")
-        );
+        starlark_ok!("'abc' * 3 == 'abcabcabc'");
+        starlark_ok!("3 * 'abc' == 'abcabcabc'");
     }
 
     #[test]
