@@ -1209,11 +1209,7 @@ impl Value {
     pub fn downcast_ref<T: TypedValue>(&self) -> Option<ObjectRef<T>> {
         let object_ref = self.value_holder();
         let any = ObjectRef::map(object_ref, |o| o.as_any_ref());
-        if any.is::<T>() {
-            Some(ObjectRef::map(any, |any| any.downcast_ref().unwrap()))
-        } else {
-            None
-        }
+        ObjectRef::flat_map(any, |any| any.downcast_ref())
     }
 
     /// Get a mutable reference to underlying data or `None`
@@ -1232,11 +1228,7 @@ impl Value {
             Ok(v) => v,
         };
         let any = ObjectRefMut::map(object_ref, |o| o.as_any_mut());
-        Ok(if any.is::<T>() {
-            Some(ObjectRefMut::map(any, |any| any.downcast_mut().unwrap()))
-        } else {
-            None
-        })
+        Ok(ObjectRefMut::flat_map(any, |any| any.downcast_mut()))
     }
 }
 

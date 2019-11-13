@@ -65,6 +65,17 @@ impl<'b, T: ?Sized + 'b> ObjectRef<'b, T> {
             borrow: orig.borrow,
         }
     }
+
+    /// Convert ref to another type
+    pub fn flat_map<U: ?Sized, F>(orig: ObjectRef<'b, T>, f: F) -> Option<ObjectRef<'b, U>>
+    where
+        F: FnOnce(&T) -> Option<&U>,
+    {
+        f(orig.value).map(|value| ObjectRef {
+            value,
+            borrow: orig.borrow,
+        })
+    }
 }
 
 impl<T: ?Sized> Deref for ObjectRef<'_, T> {
@@ -93,6 +104,14 @@ impl<'b, T: ?Sized + 'b> ObjectRefMut<'b, T> {
             value: f(value),
             borrow,
         }
+    }
+
+    pub fn flat_map<U: ?Sized, F>(orig: ObjectRefMut<'b, T>, f: F) -> Option<ObjectRefMut<'b, U>>
+    where
+        F: FnOnce(&mut T) -> Option<&mut U>,
+    {
+        let ObjectRefMut { value, borrow } = orig;
+        f(value).map(|value| ObjectRefMut { value, borrow })
     }
 }
 
