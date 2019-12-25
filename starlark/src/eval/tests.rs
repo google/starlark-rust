@@ -15,11 +15,11 @@
 use crate::environment::Environment;
 use crate::environment::TypeValues;
 use crate::eval::eval;
-use crate::eval::testutil::starlark_no_diagnostic;
 use crate::eval::EvalException;
 use crate::eval::FileLoader;
 use crate::eval::{noload, RECURSION_ERROR_CODE};
 use crate::syntax::dialect::Dialect;
+use crate::testutil::starlark_no_diagnostic;
 use crate::values::Value;
 use codemap::CodeMap;
 use std::sync::{Arc, Mutex};
