@@ -992,7 +992,6 @@ pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
 #[cfg(test)]
 pub mod tests {
     use super::global_environment;
-    use super::starlark_default;
     use super::Dialect;
     use crate::eval::noload::eval;
     use codemap::CodeMap;
@@ -1014,16 +1013,6 @@ pub mod tests {
             Ok(v) => Ok(v.to_bool()),
             Err(d) => Err(d),
         }
-    }
-
-    /// A simple macro to execute a Starlark snippet and fails if the last statement is false.
-    macro_rules! starlark_ok {
-        ($($t:expr),+) => (starlark_ok_fn!(starlark_default, $($t),+))
-    }
-
-    /// Test that the execution of a starlark code raise an error
-    macro_rules! starlark_fail {
-        ($($t:expr),+) => (starlark_fail_fn!(starlark_default_fail, $($t),+))
     }
 
     #[test]

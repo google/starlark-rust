@@ -16,40 +16,10 @@
 use crate::environment;
 use crate::environment::TypeValues;
 use crate::eval;
-use crate::eval::noload;
 use crate::syntax::dialect::Dialect;
 use codemap::CodeMap;
-use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use codemap_diagnostic::Diagnostic;
 use std::sync;
-
-/// Execute a starlark snippet with an empty environment.
-pub fn starlark_empty(snippet: &str) -> Result<bool, Diagnostic> {
-    let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    let mut env = environment::Environment::new("test");
-    match noload::eval(
-        &map,
-        "<test>",
-        snippet,
-        Dialect::Bzl,
-        &mut env,
-        &TypeValues::default(),
-    ) {
-        Ok(v) => Ok(v.to_bool()),
-        Err(d) => {
-            Emitter::stderr(ColorConfig::Always, Some(&map.lock().unwrap())).emit(&[d.clone()]);
-            Err(d)
-        }
-    }
-}
-
-/// Execute a starlark snippet with an empty environment.
-pub fn starlark_empty_no_diagnostic(snippet: &str) -> Result<bool, Diagnostic> {
-    starlark_no_diagnostic(
-        &mut environment::Environment::new("test"),
-        snippet,
-        &TypeValues::default(),
-    )
-}
 
 /// Execute a starlark snippet with the passed environment.
 pub fn starlark_no_diagnostic(
@@ -89,10 +59,10 @@ macro_rules! starlark_fail_fn {
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.
 macro_rules! starlark_ok {
-    ($($t:expr),+) => (starlark_ok_fn!(testutil::starlark_empty, $($t),+))
+    ($($t:expr),+) => (starlark_ok_fn!($crate::stdlib::starlark_default, $($t),+))
 }
 
 /// Test that the execution of a starlark code raise an error
 macro_rules! starlark_fail {
-    ($($t:expr),+) => (starlark_fail_fn!(testutil::starlark_empty_no_diagnostic, $($t),+))
+    ($($t:expr),+) => (starlark_fail_fn!($crate::stdlib::tests::starlark_default_fail, $($t),+))
 }
