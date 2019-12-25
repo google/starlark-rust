@@ -359,7 +359,7 @@ enum TransformedExpr {
 
 fn set_transformed<E: EvaluationContextEnvironment>(
     transformed: &TransformedExpr,
-    context: &EvaluationContext<E>,
+    context: &mut EvaluationContext<E>,
     new_value: Value,
 ) -> EvalResult {
     let ok = Ok(Value::new(NoneType::None));
@@ -373,11 +373,7 @@ fn set_transformed<E: EvaluationContextEnvironment>(
             ok
         }
         TransformedExpr::Slot(slot, ident) => {
-            context
-                .env
-                .assert_local_env()
-                .locals
-                .set_slot(*slot, &ident.node, new_value);
+            context.env.set_local(*slot, &ident.node, new_value);
             ok
         }
     }
@@ -385,7 +381,7 @@ fn set_transformed<E: EvaluationContextEnvironment>(
 
 fn eval_transformed<E: EvaluationContextEnvironment>(
     transformed: &TransformedExpr,
-    context: &EvaluationContext<E>,
+    context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     match transformed {
         TransformedExpr::Dot(ref left, ref s, ref span) => {
@@ -401,14 +397,7 @@ fn eval_transformed<E: EvaluationContextEnvironment>(
             }
         }
         TransformedExpr::ArrayIndirection(ref e, ref idx, ref span) => t(e.at(idx.clone()), span),
-        TransformedExpr::Slot(slot, ident) => t(
-            context
-                .env
-                .assert_local_env()
-                .locals
-                .get_slot(*slot, &ident.node),
-            ident,
-        ),
+        TransformedExpr::Slot(slot, ident) => t(context.env.get_local(*slot, &ident.node), ident),
     }
 }
 
@@ -492,10 +481,7 @@ fn eval_expr<E: EvaluationContextEnvironment>(
         }
         ExprCompiled::Name(ref name) => match &name.node {
             GlobalOrSlot::Global(ref i) => t(context.env.get_global(i), name),
-            GlobalOrSlot::Slot(slot, ref i) => t(
-                context.env.assert_local_env().locals.get_slot(*slot, i),
-                name,
-            ),
+            GlobalOrSlot::Slot(slot, ref i) => t(context.env.get_local(*slot, i), name),
         },
         ExprCompiled::Value(ref v) => Ok(v.clone()),
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
@@ -625,11 +611,7 @@ fn set_expr<E: EvaluationContextEnvironment>(
                 ok
             }
             GlobalOrSlot::Slot(slot, ref i) => {
-                context
-                    .env
-                    .assert_local_env()
-                    .locals
-                    .set_slot(*slot, &i, new_value);
+                context.env.set_local(*slot, &i, new_value);
                 ok
             }
         },
