@@ -1333,18 +1333,8 @@ starlark_module! {global =>
 
 #[cfg(test)]
 mod tests {
-    use super::super::starlark_default;
-    use super::super::tests::starlark_default_fail;
     use super::*;
     use crate::values::dict;
-
-    macro_rules! starlark_ok {
-        ($($t:expr),+) => (starlark_ok_fn!(starlark_default, $($t),+))
-    }
-
-    macro_rules! starlark_fail {
-        ($($t:expr),+) => (starlark_fail_fn!(starlark_default_fail, $($t),+))
-    }
 
     #[test]
     fn test_format_capture() {

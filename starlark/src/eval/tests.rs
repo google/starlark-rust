@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::environment::{Environment, TypeValues};
+use crate::environment::Environment;
+use crate::environment::TypeValues;
+use crate::eval::eval;
 use crate::eval::testutil::starlark_no_diagnostic;
-use crate::eval::{eval, testutil, EvalException, FileLoader};
+use crate::eval::EvalException;
+use crate::eval::FileLoader;
 use crate::eval::{noload, RECURSION_ERROR_CODE};
 use crate::syntax::dialect::Dialect;
 use crate::values::Value;
