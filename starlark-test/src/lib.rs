@@ -131,7 +131,7 @@ impl FileLoader for HashMapFileLoader {
             Dialect::Bzl,
             &mut env,
             type_values,
-            self.clone(),
+            self,
         )?;
         Ok(env)
     }
@@ -175,7 +175,7 @@ def assert_(cond, msg="assertion failed"):
         starlark::syntax::dialect::Dialect::Bzl,
         &mut prelude.child(path),
         &type_values,
-        HashMapFileLoader {
+        &HashMapFileLoader {
             parent: prelude.clone(),
             files: test.files.clone(),
             map: map.clone(),

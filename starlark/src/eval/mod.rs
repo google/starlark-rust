@@ -54,7 +54,6 @@ use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 fn eval_vector(
@@ -210,7 +209,7 @@ impl Into<Diagnostic> for EvalException {
 }
 
 /// A trait for loading file using the load statement path.
-pub trait FileLoader: 'static {
+pub trait FileLoader {
     /// Open the file given by the load statement `path`.
     fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException>;
 }
@@ -250,7 +249,7 @@ impl<'a> IndexedLocals<'a> {
 /// Stacked environment for [`EvaluationContext`].
 pub(crate) enum EvaluationContextEnvironment<'a> {
     /// Module-level
-    Module(Environment, Rc<dyn FileLoader>),
+    Module(Environment, &'a dyn FileLoader),
     /// Function-level or comprehension in global scope
     Local(Environment, IndexedLocals<'a>),
 }
@@ -267,9 +266,9 @@ impl<'a> EvaluationContextEnvironment<'a> {
         self.env().make_set(values)
     }
 
-    fn loader(&self) -> Rc<dyn FileLoader> {
-        match self {
-            EvaluationContextEnvironment::Module(_, loader) => loader.clone(),
+    fn loader(&self) -> &dyn FileLoader {
+        match *self {
+            EvaluationContextEnvironment::Module(_, loader) => loader,
             _ => {
                 // If we reach here, this is a bug.
                 unreachable!()
@@ -857,7 +856,7 @@ fn eval_module(
     env: &mut Environment,
     type_values: &TypeValues,
     map: Arc<Mutex<CodeMap>>,
-    file_loader: Rc<dyn FileLoader>,
+    file_loader: &dyn FileLoader,
 ) -> EvalResult {
     let mut call_stack = CallStack::default();
     let mut context = EvaluationContext {
@@ -881,11 +880,7 @@ fn eval_module(
 /// * lexer: the custom lexer to use
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
-pub fn eval_lexer<
-    T1: Iterator<Item = LexerItem>,
-    T2: LexerIntoIter<T1>,
-    T3: FileLoader + 'static,
->(
+pub fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: &Arc<Mutex<CodeMap>>,
     filename: &str,
     content: &str,
@@ -893,14 +888,14 @@ pub fn eval_lexer<
     lexer: T2,
     env: &mut Environment,
     type_values: &TypeValues,
-    file_loader: T3,
+    file_loader: &dyn FileLoader,
 ) -> Result<Value, Diagnostic> {
     match eval_module(
         &parse_lexer(map, filename, content, dialect, lexer)?,
         env,
         type_values,
         map.clone(),
-        Rc::new(file_loader),
+        file_loader,
     ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -919,21 +914,21 @@ pub fn eval_lexer<
 ///   documentation](index.html#build_file).
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
-pub fn eval<T: FileLoader + 'static>(
+pub fn eval(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     content: &str,
     build: Dialect,
     env: &mut Environment,
     type_values: &TypeValues,
-    file_loader: T,
+    file_loader: &dyn FileLoader,
 ) -> Result<Value, Diagnostic> {
     match eval_module(
         &parse(map, path, content, build)?,
         env,
         type_values,
         map.clone(),
-        Rc::new(file_loader),
+        file_loader,
     ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),
@@ -951,20 +946,20 @@ pub fn eval<T: FileLoader + 'static>(
 ///   documentation](index.html#build_file).
 /// * env: the environment to mutate during the evaluation
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
-pub fn eval_file<T: FileLoader + 'static>(
+pub fn eval_file(
     map: &Arc<Mutex<CodeMap>>,
     path: &str,
     build: Dialect,
     env: &mut Environment,
     type_values: &TypeValues,
-    file_loader: T,
+    file_loader: &dyn FileLoader,
 ) -> Result<Value, Diagnostic> {
     match eval_module(
         &parse_file(map, path, build)?,
         env,
         type_values,
         map.clone(),
-        Rc::new(file_loader),
+        file_loader,
     ) {
         Ok(v) => Ok(v),
         Err(p) => Err(p.into()),

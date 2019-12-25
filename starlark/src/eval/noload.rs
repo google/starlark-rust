@@ -65,6 +65,6 @@ pub fn eval(
         dialect,
         env,
         type_values,
-        NoLoadFileLoader,
+        &NoLoadFileLoader,
     )
 }
