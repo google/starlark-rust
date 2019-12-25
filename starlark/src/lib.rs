@@ -73,6 +73,10 @@
 
 #![deny(intra_doc_link_resolution_failure)]
 
+#[cfg(test)]
+#[macro_use]
+pub(crate) mod testutil;
+
 pub mod environment;
 #[doc(hidden)]
 pub mod syntax;

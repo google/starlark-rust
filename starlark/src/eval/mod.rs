@@ -901,10 +901,6 @@ pub mod simple;
 pub mod call_stack;
 
 #[cfg(test)]
-#[macro_use]
-pub mod testutil;
-
-#[cfg(test)]
 mod tests;
 
 pub(crate) mod compiler;
