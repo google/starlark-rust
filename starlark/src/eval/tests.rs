@@ -183,7 +183,7 @@ def f(): return x
             Dialect::Build,
             &mut env,
             &TypeValues::default(),
-            TestContextCapturedFileLoader {}
+            &TestContextCapturedFileLoader {}
         )
         .unwrap()
     );
@@ -239,7 +239,7 @@ fn test_type_values_are_imported_from_caller() {
         Dialect::Bzl,
         &mut env,
         &type_values,
-        MyFileLoader {},
+        &MyFileLoader {},
     )
     .unwrap();
 

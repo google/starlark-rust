@@ -82,7 +82,7 @@ fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
             lexer,
             env,
             type_values,
-            SimpleFileLoader::new(&map.clone(), file_loader_env),
+            &SimpleFileLoader::new(&map.clone(), file_loader_env),
         ) {
             Ok(v) => {
                 if v.get_type() != "NoneType" {

@@ -55,7 +55,7 @@ impl FileLoader for SimpleFileLoader {
             Dialect::Bzl,
             &mut env,
             type_values,
-            self.clone(),
+            self,
         ) {
             return Err(EvalException::DiagnosedError(d));
         }
@@ -96,7 +96,7 @@ pub fn eval(
         dialect,
         env,
         type_values,
-        SimpleFileLoader::new(map, file_loader_env),
+        &SimpleFileLoader::new(map, file_loader_env),
     )
 }
 
@@ -125,6 +125,6 @@ pub fn eval_file(
         build,
         env,
         type_values,
-        SimpleFileLoader::new(map, file_loader_env),
+        &SimpleFileLoader::new(map, file_loader_env),
     )
 }
