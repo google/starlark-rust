@@ -20,7 +20,6 @@ use crate::eval::locals::Locals;
 use crate::eval::FileLoader;
 use crate::values::Value;
 use codemap::CodeMap;
-use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -47,8 +46,11 @@ pub(crate) trait EvaluationContextEnvironment {
     /// Panic if this environment is local
     fn assert_module_env(&self) -> &EvaluationContextEnvironmentModule;
 
-    /// Panic is this environment is module level
-    fn assert_local_env(&self) -> &EvaluationContextEnvironmentLocal;
+    /// Set local variable
+    fn set_local(&mut self, slot: usize, name: &str, value: Value);
+
+    /// Get local variable
+    fn get_local(&mut self, slot: usize, name: &str) -> Result<Value, EnvironmentError>;
 }
 
 pub(crate) struct EvaluationContextEnvironmentModule<'a> {
@@ -74,7 +76,11 @@ impl<'a> EvaluationContextEnvironment for EvaluationContextEnvironmentModule<'a>
         self
     }
 
-    fn assert_local_env(&self) -> &EvaluationContextEnvironmentLocal<'_> {
+    fn set_local(&mut self, _slot: usize, _name: &str, _value: Value) {
+        unreachable!("not a local env")
+    }
+
+    fn get_local(&mut self, _slot: usize, _name: &str) -> Result<Value, EnvironmentError> {
         unreachable!("not a local env")
     }
 }
@@ -92,8 +98,12 @@ impl<'a> EvaluationContextEnvironment for EvaluationContextEnvironmentLocal<'a> 
         unreachable!("not a module env")
     }
 
-    fn assert_local_env(&self) -> &EvaluationContextEnvironmentLocal {
-        self
+    fn set_local(&mut self, slot: usize, name: &str, value: Value) {
+        self.locals.set_slot(slot, name, value)
+    }
+
+    fn get_local(&mut self, slot: usize, name: &str) -> Result<Value, EnvironmentError> {
+        self.locals.get_slot(slot, name)
     }
 }
 
@@ -104,19 +114,19 @@ pub(crate) struct IndexedLocals<'a> {
     pub local_defs: &'a Locals,
     /// Local variables are stored in this array. Names to slots are  mapped
     /// during analysis phase. Note access by index is much faster than by name.
-    locals: RefCell<Vec<Option<Value>>>,
+    locals: Box<[Option<Value>]>,
 }
 
 impl<'a> IndexedLocals<'a> {
     pub fn new(local_defs: &'a Locals) -> IndexedLocals<'a> {
         IndexedLocals {
             local_defs,
-            locals: RefCell::new(vec![None; local_defs.len()]),
+            locals: vec![None; local_defs.len()].into_boxed_slice(),
         }
     }
 
     pub fn get_slot(&self, slot: usize, name: &str) -> Result<Value, EnvironmentError> {
-        match self.locals.borrow()[slot].clone() {
+        match self.locals[slot].clone() {
             Some(value) => Ok(value),
             None => Err(EnvironmentError::LocalVariableReferencedBeforeAssignment(
                 name.to_owned(),
@@ -124,7 +134,7 @@ impl<'a> IndexedLocals<'a> {
         }
     }
 
-    pub fn set_slot(&self, slot: usize, _name: &str, value: Value) {
-        self.locals.borrow_mut()[slot] = Some(value);
+    pub fn set_slot(&mut self, slot: usize, _name: &str, value: Value) {
+        self.locals[slot] = Some(value);
     }
 }

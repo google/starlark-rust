@@ -273,7 +273,7 @@ impl TypedValue for Def {
                         .unwrap()
                 );
             }
-            ctx.env.assert_local_env().locals.set_slot(i, name, v);
+            ctx.env.set_local(i, name, v);
         }
 
         parser.check_no_more_args()?;
