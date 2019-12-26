@@ -19,7 +19,9 @@ use crate::eval::expr::AstClauseCompiled;
 use crate::eval::expr::AstGlobalOrSlot;
 use crate::eval::expr::ClauseCompiled;
 use crate::eval::expr::ExprCompiled;
+use crate::eval::expr::ExprLocal;
 use crate::eval::expr::GlobalOrSlot;
+use crate::eval::globals::Globals;
 use crate::eval::locals::LocalsBuilder;
 use crate::eval::locals::LocalsQuery;
 use crate::syntax::ast::AstClause;
@@ -35,9 +37,9 @@ use codemap_diagnostic::Diagnostic;
 /// function or comprehension scope
 pub(crate) trait LocalOrGlobalCompiler {
     /// Resolve identifier to either local slot or global name
-    fn ident(&self, ident: AstString) -> GlobalOrSlot;
+    fn ident(&mut self, ident: AstString) -> GlobalOrSlot;
 
-    fn ast_ident(&self, ident: AstString) -> AstGlobalOrSlot {
+    fn ast_ident(&mut self, ident: AstString) -> AstGlobalOrSlot {
         Spanned {
             span: ident.span,
             node: self.ident(ident),
@@ -109,10 +111,12 @@ impl<'a> LocalCompiler<'a> {
 }
 
 impl<'a> LocalOrGlobalCompiler for LocalCompiler<'a> {
-    fn ident(&self, ident: AstString) -> GlobalOrSlot {
-        match self.locals_query.local_slot(&ident.node) {
-            Some(slot) => GlobalOrSlot::Slot(slot, ident.node),
-            None => GlobalOrSlot::Global(ident.node),
+    fn ident(&mut self, ident: AstString) -> GlobalOrSlot {
+        let (slot, local) = self.locals_query.slot(&ident.node);
+        GlobalOrSlot {
+            name: ident.node,
+            local,
+            slot,
         }
     }
 
@@ -155,11 +159,17 @@ impl<'a> LocalOrGlobalCompiler for LocalCompiler<'a> {
     }
 }
 
-pub(crate) struct GlobalCompiler;
+pub(crate) struct GlobalCompiler<'a> {
+    globals: &'a mut Globals,
+}
 
-impl GlobalCompiler {
+impl<'a> GlobalCompiler<'a> {
+    pub fn new(globals: &'a mut Globals) -> GlobalCompiler<'a> {
+        GlobalCompiler { globals }
+    }
+
     fn compile_comprehension_in_global_scope(
-        &self,
+        &mut self,
         expr: AstExpr,
     ) -> Result<ExprCompiled, Diagnostic> {
         let mut locals_builder = LocalsBuilder::default();
@@ -167,18 +177,28 @@ impl GlobalCompiler {
         Expr::collect_locals(&expr, &mut locals_builder);
 
         let locals = locals_builder.build();
+        // Note we are using private global index for comprehensions
+        let mut globals = Globals::default();
 
-        let mut locals_query = LocalsQuery::new(&locals);
+        let mut locals_query = LocalsQuery::new(&locals, &mut globals);
 
         let expr = ExprCompiled::compile_local(expr, &mut locals_query)?;
 
-        Ok(ExprCompiled::Local(expr, locals))
+        Ok(ExprCompiled::Local(ExprLocal {
+            expr,
+            locals,
+            globals,
+        }))
     }
 }
 
-impl LocalOrGlobalCompiler for GlobalCompiler {
-    fn ident(&self, ident: AstString) -> GlobalOrSlot {
-        GlobalOrSlot::Global(ident.node)
+impl<'a> LocalOrGlobalCompiler for GlobalCompiler<'a> {
+    fn ident(&mut self, ident: AstString) -> GlobalOrSlot {
+        GlobalOrSlot {
+            slot: self.globals.register_global(&ident.node),
+            name: ident.node,
+            local: false,
+        }
     }
     fn list_comprenesion(
         &mut self,

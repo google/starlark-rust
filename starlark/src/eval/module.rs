@@ -14,6 +14,7 @@
 
 //! Starlark module (`.bzl` or `BUILD` file parsed and post-processed)
 
+use crate::eval::globals::Globals;
 use crate::eval::stmt::BlockCompiled;
 use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::Statement;
@@ -22,12 +23,20 @@ use codemap_diagnostic::Diagnostic;
 
 /// Starlark module (`.bzl` or `BUILD` file parsed and post-processed)
 #[derive(Debug, Clone)]
-pub struct Module(pub(crate) BlockCompiled);
+pub struct Module {
+    /// Index of global variables used in this scope
+    /// (but not in child scopes).
+    pub(crate) globals: Globals,
+    /// Code
+    pub(crate) block: BlockCompiled,
+}
 
 impl Module {
     pub(crate) fn compile(stmt: AstStatement, _dialect: Dialect) -> Result<Module, Diagnostic> {
+        let mut globals = Globals::default();
         Statement::validate_break_continue(&stmt)?;
         Statement::validate_augmented_assignment_in_module(&stmt)?;
-        BlockCompiled::compile_global(stmt).map(Module)
+        let block = BlockCompiled::compile_global(stmt, &mut globals)?;
+        Ok(Module { globals, block })
     }
 }

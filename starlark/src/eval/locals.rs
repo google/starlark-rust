@@ -14,6 +14,7 @@
 
 //! Utilities to work with scope local variables.
 
+use crate::eval::globals::Globals;
 use std::collections::hash_map;
 use std::collections::HashMap;
 
@@ -42,6 +43,7 @@ pub(crate) struct LocalsBuilder {
 /// Utility to query slots assigned to local variables
 pub(crate) struct LocalsQuery<'a> {
     locals: &'a Locals,
+    globals: &'a mut Globals,
     current_scope_path: Vec<usize>,
     next: usize,
 }
@@ -122,9 +124,10 @@ impl LocalsBuilder {
 }
 
 impl<'a> LocalsQuery<'a> {
-    pub fn new(locals: &'a Locals) -> LocalsQuery<'a> {
+    pub fn new(locals: &'a Locals, globals: &'a mut Globals) -> LocalsQuery<'a> {
         LocalsQuery {
             locals,
+            globals,
             current_scope_path: Vec::new(),
             next: 0,
         }
@@ -133,10 +136,15 @@ impl<'a> LocalsQuery<'a> {
     /// Return a slot for a variable visible in current scope.
     /// Local could be registered in current scope or in parent scopes,
     /// but not in nested scopes.
-    pub fn local_slot(&self, name: &str) -> Option<usize> {
-        self.locals
+    pub fn slot(&mut self, name: &str) -> (usize, bool) {
+        match self
+            .locals
             .locals
             .local_index(name, &self.current_scope_path)
+        {
+            Some(slot) => (slot, true),
+            None => (self.globals.register_global(name), false),
+        }
     }
 
     /// Go to the next nested scope
@@ -173,10 +181,11 @@ mod test {
         builder.register_local("b");
         builder.register_local("a");
         let locals = builder.build();
-        let query = LocalsQuery::new(&locals);
-        assert_eq!(Some(0), query.local_slot("a"));
-        assert_eq!(Some(1), query.local_slot("b"));
-        assert_eq!(None, query.local_slot("c"));
+        let mut globals = Globals::default();
+        let mut query = LocalsQuery::new(&locals, &mut globals);
+        assert_eq!((0, true), query.slot("a"));
+        assert_eq!((1, true), query.slot("b"));
+        assert_eq!((0, false), query.slot("c"));
     }
 
     #[test]
@@ -187,12 +196,13 @@ mod test {
         builder.register_local("a");
         builder.pop_scope();
         let locals = builder.build();
-        let mut query = LocalsQuery::new(&locals);
-        assert_eq!(Some(0), query.local_slot("a"));
+        let mut globals = Globals::default();
+        let mut query = LocalsQuery::new(&locals, &mut globals);
+        assert_eq!((0, true), query.slot("a"));
         query.push_next_scope();
-        assert_eq!(Some(1), query.local_slot("a"));
+        assert_eq!((1, true), query.slot("a"));
         query.pop_scope();
-        assert_eq!(Some(0), query.local_slot("a"));
+        assert_eq!((0, true), query.slot("a"));
     }
 
     #[test]
@@ -208,15 +218,16 @@ mod test {
         builder.register_local("a");
         builder.pop_scope();
         let locals = builder.build();
-        let mut query = LocalsQuery::new(&locals);
-        assert_eq!(Some(0), query.local_slot("a"));
+        let mut globals = Globals::default();
+        let mut query = LocalsQuery::new(&locals, &mut globals);
+        assert_eq!((0, true), query.slot("a"));
         query.push_next_scope();
-        assert_eq!(Some(1), query.local_slot("a"));
+        assert_eq!((1, true), query.slot("a"));
         query.pop_scope();
-        assert_eq!(Some(0), query.local_slot("a"));
+        assert_eq!((0, true), query.slot("a"));
         query.push_next_scope();
-        assert_eq!(Some(2), query.local_slot("a"));
+        assert_eq!((2, true), query.slot("a"));
         query.pop_scope();
-        assert_eq!(Some(0), query.local_slot("a"));
+        assert_eq!((0, true), query.slot("a"));
     }
 }

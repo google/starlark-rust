@@ -23,6 +23,7 @@ use crate::eval::expr::AstAugmentedAssignTargetExprCompiled;
 use crate::eval::expr::AstExprCompiled;
 use crate::eval::expr::AugmentedAssignTargetExprCompiled;
 use crate::eval::expr::ExprCompiled;
+use crate::eval::globals::Globals;
 use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignOp;
@@ -120,55 +121,64 @@ impl BlockCompiled {
         }]))
     }
 
-    fn compile_global_stmts(stmts: Vec<AstStatement>) -> Result<BlockCompiled, Diagnostic> {
+    fn compile_global_stmts(
+        stmts: Vec<AstStatement>,
+        globals: &mut Globals,
+    ) -> Result<BlockCompiled, Diagnostic> {
         let mut r = Vec::new();
         for stmt in stmts {
-            r.extend(Self::compile_global(stmt)?.0);
+            r.extend(Self::compile_global(stmt, globals)?.0);
         }
         Ok(BlockCompiled(r))
     }
 
-    pub(crate) fn compile_global(stmt: AstStatement) -> Result<BlockCompiled, Diagnostic> {
+    pub(crate) fn compile_global(
+        stmt: AstStatement,
+        globals: &mut Globals,
+    ) -> Result<BlockCompiled, Diagnostic> {
         Ok(BlockCompiled(vec![Spanned {
             span: stmt.span,
             node: match stmt.node {
                 Statement::Def(name, params, suite) => {
-                    StatementCompiled::Def(DefCompiled::new(name, params, suite)?)
+                    let slot = globals.register_global(&name.node);
+                    StatementCompiled::Def(DefCompiled::new(name, slot, params, suite)?)
                 }
                 Statement::For(var, over, body) => StatementCompiled::For(
-                    AssignTargetExprCompiled::compile(var, &mut GlobalCompiler)?,
-                    ExprCompiled::compile_global(over)?,
-                    BlockCompiled::compile_global(body)?,
+                    AssignTargetExprCompiled::compile(var, &mut GlobalCompiler::new(globals))?,
+                    ExprCompiled::compile_global(over, globals)?,
+                    BlockCompiled::compile_global(body, globals)?,
                 ),
                 Statement::If(cond, then_block) => StatementCompiled::IfElse(
-                    ExprCompiled::compile_global(cond)?,
-                    BlockCompiled::compile_global(then_block)?,
+                    ExprCompiled::compile_global(cond, globals)?,
+                    BlockCompiled::compile_global(then_block, globals)?,
                     BlockCompiled(Vec::new()),
                 ),
                 Statement::IfElse(cond, then_block, else_block) => StatementCompiled::IfElse(
-                    ExprCompiled::compile_global(cond)?,
-                    BlockCompiled::compile_global(then_block)?,
-                    BlockCompiled::compile_global(else_block)?,
+                    ExprCompiled::compile_global(cond, globals)?,
+                    BlockCompiled::compile_global(then_block, globals)?,
+                    BlockCompiled::compile_global(else_block, globals)?,
                 ),
-                Statement::Statements(stmts) => return BlockCompiled::compile_global_stmts(stmts),
+                Statement::Statements(stmts) => {
+                    return BlockCompiled::compile_global_stmts(stmts, globals)
+                }
                 Statement::Expression(expr) => {
-                    StatementCompiled::Expression(ExprCompiled::compile_global(expr)?)
+                    StatementCompiled::Expression(ExprCompiled::compile_global(expr, globals)?)
                 }
                 Statement::Return(Some(expr)) => {
-                    StatementCompiled::Return(Some(ExprCompiled::compile_global(expr)?))
+                    StatementCompiled::Return(Some(ExprCompiled::compile_global(expr, globals)?))
                 }
                 Statement::Assign(target, source) => StatementCompiled::Assign(
-                    AssignTargetExprCompiled::compile(target, &mut GlobalCompiler)?,
-                    ExprCompiled::compile_global(source)?,
+                    AssignTargetExprCompiled::compile(target, &mut GlobalCompiler::new(globals))?,
+                    ExprCompiled::compile_global(source, globals)?,
                 ),
                 Statement::AugmentedAssign(target, op, source) => {
                     StatementCompiled::AugmentedAssign(
                         AugmentedAssignTargetExprCompiled::compile_impl(
                             target,
-                            &mut GlobalCompiler,
+                            &mut GlobalCompiler::new(globals),
                         )?,
                         op,
-                        ExprCompiled::compile_global(source)?,
+                        ExprCompiled::compile_global(source, globals)?,
                     )
                 }
                 Statement::Load(path, map) => StatementCompiled::Load(path, map),

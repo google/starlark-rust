@@ -20,11 +20,16 @@ use crate::eval::compiler::LocalCompiler;
 use crate::eval::eval_block;
 use crate::eval::expr::AstExprCompiled;
 use crate::eval::expr::ExprCompiled;
+use crate::eval::globals::Globals;
 use crate::eval::locals::Locals;
 use crate::eval::locals::LocalsBuilder;
 use crate::eval::locals::LocalsQuery;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::EvalException;
+use crate::eval::EvaluationContext;
+use crate::eval::EvaluationContextEnvironment;
+use crate::eval::IndexedGlobals;
+use crate::eval::IndexedLocals;
 use crate::syntax::ast::AssignTargetExpr;
 use crate::syntax::ast::AstParameter;
 use crate::syntax::ast::AstStatement;
@@ -33,10 +38,7 @@ use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::Expr;
 use crate::syntax::ast::Parameter;
 use crate::syntax::ast::Statement;
-use crate::values::context::EvaluationContext;
-use crate::values::context::EvaluationContextEnvironment;
 use crate::values::context::EvaluationContextEnvironmentLocal;
-use crate::values::context::IndexedLocals;
 use crate::values::error::ValueError;
 use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
@@ -62,14 +64,18 @@ pub(crate) enum ParameterCompiled {
 pub(crate) type AstParameterCompiled = Spanned<ParameterCompiled>;
 
 impl ParameterCompiled {
-    fn compile(param: AstParameter) -> Result<AstParameterCompiled, Diagnostic> {
+    fn compile(
+        param: AstParameter,
+        globals: &mut Globals,
+    ) -> Result<AstParameterCompiled, Diagnostic> {
         Ok(Spanned {
             span: param.span,
             node: match param.node {
                 Parameter::Normal(n) => ParameterCompiled::Normal(n),
-                Parameter::WithDefaultValue(n, d) => {
-                    ParameterCompiled::WithDefaultValue(n, ExprCompiled::compile_global(d)?)
-                }
+                Parameter::WithDefaultValue(n, d) => ParameterCompiled::WithDefaultValue(
+                    n,
+                    ExprCompiled::compile_global(d, globals)?,
+                ),
                 Parameter::Args(args) => ParameterCompiled::Args(args),
                 Parameter::KWArgs(args) => ParameterCompiled::KWArgs(args),
             },
@@ -82,18 +88,22 @@ impl ParameterCompiled {
 #[derive(Debug, Clone)]
 pub struct DefCompiled {
     pub(crate) name: AstString,
+    pub(crate) slot: usize,
     pub(crate) params: Vec<AstParameterCompiled>,
     pub(crate) suite: BlockCompiled,
     locals: Locals,
+    globals: Globals,
 }
 
 impl DefCompiled {
     pub fn new(
         name: AstString,
+        slot: usize,
         params: Vec<AstParameter>,
         suite: AstStatement,
     ) -> Result<DefCompiled, Diagnostic> {
         let mut locals_builder = LocalsBuilder::default();
+        let mut globals = Globals::default();
 
         for p in &params {
             locals_builder.register_local(p.name());
@@ -101,14 +111,14 @@ impl DefCompiled {
 
         let params = params
             .into_iter()
-            .map(ParameterCompiled::compile)
+            .map(|p| ParameterCompiled::compile(p, &mut globals))
             .collect::<Result<_, _>>()?;
 
         DefCompiled::collect_locals(&suite, &mut locals_builder);
 
         let locals = locals_builder.build();
 
-        let mut locals_query = LocalsQuery::new(&locals);
+        let mut locals_query = LocalsQuery::new(&locals, &mut globals);
 
         let mut local_compiler = LocalCompiler::new(&mut locals_query);
 
@@ -116,9 +126,11 @@ impl DefCompiled {
 
         Ok(DefCompiled {
             name,
+            slot,
             params,
             suite,
             locals,
+            globals,
         })
     }
 
@@ -227,7 +239,7 @@ impl TypedValue for Def {
         let mut ctx = EvaluationContext {
             call_stack,
             env: EvaluationContextEnvironmentLocal {
-                globals: self.captured_env.clone(),
+                globals: IndexedGlobals::new(&self.stmt.globals, self.captured_env.clone()),
                 locals: IndexedLocals::new(&self.stmt.locals),
             },
             type_values,
