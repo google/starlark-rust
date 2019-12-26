@@ -31,8 +31,7 @@ use crate::eval::expr::AstAugmentedAssignTargetExprCompiled;
 use crate::eval::expr::AstExprCompiled;
 use crate::eval::expr::AugmentedAssignTargetExprCompiled;
 use crate::eval::expr::ExprCompiled;
-use crate::eval::expr::GlobalOrSlot;
-use crate::eval::locals::Locals;
+use crate::eval::expr::ExprLocal;
 use crate::eval::module::Module;
 use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
@@ -47,6 +46,7 @@ use crate::values::context::EvaluationContext;
 use crate::values::context::EvaluationContextEnvironment;
 use crate::values::context::EvaluationContextEnvironmentLocal;
 use crate::values::context::EvaluationContextEnvironmentModule;
+use crate::values::context::IndexedGlobals;
 use crate::values::context::IndexedLocals;
 use crate::values::dict::Dictionary;
 use crate::values::error::ValueError;
@@ -441,21 +441,20 @@ fn transform<E: EvaluationContextEnvironment>(
 
 // Evaluate the AST in global context, create local context, and continue evaluating in local
 fn eval_expr_local<E: EvaluationContextEnvironment>(
-    expr: &AstExprCompiled,
-    locals: &Locals,
+    local: &ExprLocal,
     context: &mut EvaluationContext<E>,
 ) -> EvalResult {
     let mut ctx = EvaluationContext {
         call_stack: context.call_stack,
         env: EvaluationContextEnvironmentLocal {
             // Note assertion that we where in module context
-            globals: context.env.assert_module_env().env.clone(),
-            locals: IndexedLocals::new(locals),
+            globals: IndexedGlobals::new(&local.globals, context.env.env().clone()),
+            locals: IndexedLocals::new(&local.locals),
         },
         type_values: context.type_values,
         map: context.map.clone(),
     };
-    eval_expr(expr, &mut ctx)
+    eval_expr(&local.expr, &mut ctx)
 }
 
 // Evaluate the AST element, i.e. mutate the environment and return an evaluation result
@@ -479,10 +478,7 @@ fn eval_expr<E: EvaluationContextEnvironment>(
         ExprCompiled::Slice(ref a, ref start, ref stop, ref stride) => {
             eval_slice(expr, a, start, stop, stride, context)
         }
-        ExprCompiled::Name(ref name) => match &name.node {
-            GlobalOrSlot::Global(ref i) => t(context.env.get_global(i), name),
-            GlobalOrSlot::Slot(slot, ref i) => t(context.env.get_local(*slot, i), name),
-        },
+        ExprCompiled::Name(ref name) => t(context.env.get(&name.node), name),
         ExprCompiled::Value(ref v) => Ok(v.clone()),
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
         ExprCompiled::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
@@ -570,7 +566,7 @@ fn eval_expr<E: EvaluationContextEnvironment>(
             )?;
             Ok(Value::new(dict))
         }
-        ExprCompiled::Local(ref expr, ref locals) => eval_expr_local(expr, locals, context),
+        ExprCompiled::Local(ref local) => eval_expr_local(&local, context),
     }
 }
 
@@ -605,16 +601,10 @@ fn set_expr<E: EvaluationContextEnvironment>(
             t(eval_expr(e, context)?.set_attr(&(s.node), new_value), expr)?;
             ok
         }
-        AssignTargetExprCompiled::Name(ref name) => match &name.node {
-            GlobalOrSlot::Global(ref i) => {
-                t(context.env.assert_module_env().env.set(&i, new_value), expr)?;
-                ok
-            }
-            GlobalOrSlot::Slot(slot, ref i) => {
-                context.env.set_local(*slot, &i, new_value);
-                ok
-            }
-        },
+        AssignTargetExprCompiled::Name(ref name) => {
+            t(context.env.set(&name.node, new_value), expr)?;
+            ok
+        }
         AssignTargetExprCompiled::ArrayIndirection(ref e, ref idx) => {
             t(
                 eval_expr(e, context)?.set_at(eval_expr(idx, context)?, new_value),
@@ -718,9 +708,7 @@ fn eval_stmt<E: EvaluationContextEnvironment>(
             t(
                 context
                     .env
-                    .assert_module_env()
-                    .env
-                    .set(&stmt.name.node, f.clone()),
+                    .set_global(stmt.slot, &stmt.name.node, f.clone()),
                 &stmt.name,
             )?;
             Ok(f)
@@ -769,13 +757,14 @@ fn eval_module(
     let mut context = EvaluationContext {
         env: EvaluationContextEnvironmentModule {
             env: env.clone(),
+            globals: IndexedGlobals::new(&module.globals, env.clone()),
             loader,
         },
         type_values,
         call_stack: &mut call_stack,
         map,
     };
-    eval_block(&module.0, &mut context)
+    eval_block(&module.block, &mut context)
 }
 
 /// Evaluate a content provided by a custom Lexer, mutate the environment accordingly and return
@@ -889,6 +878,7 @@ pub(crate) mod compiler;
 pub(crate) mod compr;
 pub(crate) mod def;
 pub(crate) mod expr;
+pub(crate) mod globals;
 pub(crate) mod locals;
 pub mod module;
 pub mod stmt;

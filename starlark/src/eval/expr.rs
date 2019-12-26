@@ -17,6 +17,7 @@
 use crate::eval::compiler::GlobalCompiler;
 use crate::eval::compiler::LocalCompiler;
 use crate::eval::compiler::LocalOrGlobalCompiler;
+use crate::eval::globals::Globals;
 use crate::eval::locals::Locals;
 use crate::eval::locals::LocalsQuery;
 use crate::syntax::ast::AssignTargetExpr;
@@ -33,9 +34,10 @@ use codemap_diagnostic::Diagnostic;
 
 /// After syntax check each variable is resolved to either global or slot
 #[derive(Debug, Clone)]
-pub(crate) enum GlobalOrSlot {
-    Global(String),
-    Slot(usize, String),
+pub(crate) struct GlobalOrSlot {
+    pub name: String,
+    pub local: bool,
+    pub slot: usize,
 }
 pub(crate) type AstGlobalOrSlot = Spanned<GlobalOrSlot>;
 
@@ -64,6 +66,15 @@ pub(crate) enum ClauseCompiled {
     If(AstExprCompiled),
 }
 pub(crate) type AstClauseCompiled = Spanned<ClauseCompiled>;
+
+/// Expression wrapper which creates own local context.
+/// Used to evaluate comprehensions
+#[derive(Debug, Clone)]
+pub(crate) struct ExprLocal {
+    pub expr: AstExprCompiled,
+    pub locals: Locals,
+    pub globals: Globals,
+}
 
 /// Interperter-ready version of [`Expr`](crate::syntax::ast::Expr)
 #[derive(Debug, Clone)]
@@ -101,7 +112,7 @@ pub(crate) enum ExprCompiled {
     DictComprehension((AstExprCompiled, AstExprCompiled), Vec<AstClauseCompiled>),
     /// Creates a local scope for evaluation of subexpression in global scope.
     /// Used for evaluate comprehensions in global scope.
-    Local(AstExprCompiled, Locals),
+    Local(ExprLocal),
 }
 
 #[doc(hidden)]
@@ -207,8 +218,11 @@ impl ExprCompiled {
         Self::compile(expr, &mut LocalCompiler::new(locals_query))
     }
 
-    pub(crate) fn compile_global(expr: AstExpr) -> Result<AstExprCompiled, Diagnostic> {
-        Self::compile(expr, &mut GlobalCompiler)
+    pub(crate) fn compile_global(
+        expr: AstExpr,
+        globals: &mut Globals,
+    ) -> Result<AstExprCompiled, Diagnostic> {
+        Self::compile(expr, &mut GlobalCompiler::new(globals))
     }
 }
 
@@ -253,15 +267,9 @@ impl AugmentedAssignTargetExprCompiled {
             node: match expr.node {
                 AugmentedAssignTargetExpr::Identifier(a) => {
                     let span = a.span;
-                    match compiler.ident(a) {
-                        GlobalOrSlot::Global(..) => {
-                            unreachable!("must be filtered out at parse level")
-                        }
-                        GlobalOrSlot::Slot(slot, ident) => AugmentedAssignTargetExprCompiled::Slot(
-                            slot,
-                            Spanned { span, node: ident },
-                        ),
-                    }
+                    let GlobalOrSlot { slot, local, name } = compiler.ident(a);
+                    assert!(local, "global must be filtered out at parse level");
+                    AugmentedAssignTargetExprCompiled::Slot(slot, Spanned { span, node: name })
                 }
                 AugmentedAssignTargetExpr::ArrayIndirection(array, index) => {
                     AugmentedAssignTargetExprCompiled::ArrayIndirection(
