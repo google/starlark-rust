@@ -709,21 +709,21 @@ impl Statement {
 impl Display for BinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
-            BinOp::EqualsTo => f.write_str(" == "),
-            BinOp::Different => f.write_str(" != "),
-            BinOp::LowerThan => f.write_str(" < "),
-            BinOp::GreaterThan => f.write_str(" > "),
-            BinOp::LowerOrEqual => f.write_str(" <= "),
-            BinOp::GreaterOrEqual => f.write_str(" >= "),
-            BinOp::In => f.write_str(" in "),
-            BinOp::NotIn => f.write_str(" not in "),
-            BinOp::Substraction => f.write_str(" - "),
-            BinOp::Addition => f.write_str(" + "),
-            BinOp::Multiplication => f.write_str(" * "),
-            BinOp::Percent => f.write_str(" % "),
-            BinOp::Division => f.write_str(" / "),
-            BinOp::FloorDivision => f.write_str(" // "),
-            BinOp::Pipe => f.write_str(" | "),
+            BinOp::EqualsTo => f.write_str("=="),
+            BinOp::Different => f.write_str("!="),
+            BinOp::LowerThan => f.write_str("<"),
+            BinOp::GreaterThan => f.write_str(">"),
+            BinOp::LowerOrEqual => f.write_str("<="),
+            BinOp::GreaterOrEqual => f.write_str(">="),
+            BinOp::In => f.write_str("in"),
+            BinOp::NotIn => f.write_str("not in"),
+            BinOp::Substraction => f.write_str("-"),
+            BinOp::Addition => f.write_str("+"),
+            BinOp::Multiplication => f.write_str("*"),
+            BinOp::Percent => f.write_str("%"),
+            BinOp::Division => f.write_str("/"),
+            BinOp::FloorDivision => f.write_str("//"),
+            BinOp::Pipe => f.write_str("|"),
         }
     }
 }
@@ -839,7 +839,7 @@ impl Display for Expr {
             Expr::UnOp(op, ref e) => write!(f, "{}{}", op, e.node),
             Expr::And(ref l, ref r) => write!(f, "({} and {})", l.node, r.node),
             Expr::Or(ref l, ref r) => write!(f, "({} or {})", l.node, r.node),
-            Expr::BinOp(ref op, ref l, ref r) => write!(f, "({}{}{})", l.node, op, r.node),
+            Expr::BinOp(ref op, ref l, ref r) => write!(f, "({} {} {})", l.node, op, r.node),
             Expr::If(ref cond, ref v1, ref v2) => {
                 write!(f, "({} if {} else {})", v1.node, cond.node, v2.node)
             }
