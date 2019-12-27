@@ -220,6 +220,13 @@ pub trait FileLoader {
     fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException>;
 }
 
+fn eval_un_op(op: UnOp, v: Value) -> Result<Value, ValueError> {
+    match op {
+        UnOp::Plus => v.plus(),
+        UnOp::Minus => v.minus(),
+    }
+}
+
 fn eval_bin_op(op: BinOp, l: Value, r: Value) -> Result<Value, ValueError> {
     match op {
         BinOp::EqualsTo => l.equals(&r).map(Value::new),
@@ -482,8 +489,10 @@ fn eval_expr<E: EvaluationContextEnvironment>(
         ExprCompiled::Name(ref name) => t(context.env.get(&name.node), name),
         ExprCompiled::Value(ref v) => Ok(v.clone()),
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
-        ExprCompiled::UnOp(UnOp::Minus, ref s) => t(eval_expr(s, context)?.minus(), expr),
-        ExprCompiled::UnOp(UnOp::Plus, ref s) => t(eval_expr(s, context)?.plus(), expr),
+        ExprCompiled::UnOp(op, ref s) => {
+            let v = eval_expr(s, context)?;
+            t(eval_un_op(op, v), expr)
+        }
         ExprCompiled::Or(ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if l.to_bool() {
