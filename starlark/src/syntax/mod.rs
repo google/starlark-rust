@@ -35,3 +35,5 @@ mod grammar_tests;
 
 #[doc(hidden)]
 pub mod parser;
+
+pub(crate) mod fmt;
