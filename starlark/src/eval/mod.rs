@@ -487,7 +487,7 @@ fn eval_expr<E: EvaluationContextEnvironment>(
             eval_slice(expr, a, start, stop, stride, context)
         }
         ExprCompiled::Name(ref name) => t(context.env.get(&name.node), name),
-        ExprCompiled::Value(ref v) => Ok(v.clone()),
+        ExprCompiled::Value(ref v) => Ok(v.clone().into()),
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
         ExprCompiled::UnOp(op, ref s) => {
             let v = eval_expr(s, context)?;

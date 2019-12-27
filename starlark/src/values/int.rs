@@ -15,6 +15,7 @@
 //! Define the int type for Starlark.
 
 use crate::values::error::ValueError;
+use crate::values::frozen::FrozenOnCreation;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::fmt;
@@ -174,6 +175,8 @@ impl TypedValue for i64 {
         Ok(self.cmp(other))
     }
 }
+
+impl FrozenOnCreation for i64 {}
 
 #[cfg(test)]
 mod test {

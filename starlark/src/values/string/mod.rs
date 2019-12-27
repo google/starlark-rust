@@ -23,12 +23,21 @@ use std::hash::{Hash, Hasher};
 
 pub mod interpolation;
 
+use crate::values::cell::ObjectCell;
+use crate::values::frozen::FrozenOnCreation;
 use crate::values::slice_indices::convert_slice_indices;
 use std::fmt;
 use std::iter;
+use std::rc::Rc;
 
 impl TypedValue for String {
     type Holder = Immutable<String>;
+
+    fn new_value(self) -> Value {
+        Value(ValueInner::Other(Rc::new(ValueHolder {
+            value: ObjectCell::new_immutable_frozen(self),
+        })))
+    }
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,
@@ -214,6 +223,8 @@ impl TypedValue for String {
         Ok(Value::new(ArgsFormat::parse(&self)?.format(other)?))
     }
 }
+
+impl FrozenOnCreation for String {}
 
 impl From<String> for Value {
     fn from(s: String) -> Self {

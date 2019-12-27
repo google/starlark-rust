@@ -165,6 +165,13 @@ impl<T> ObjectCell<T> {
             value: UnsafeCell::new(value),
         }
     }
+
+    pub fn new_immutable_frozen(value: T) -> ObjectCell<T> {
+        ObjectCell {
+            header: ObjectHeader::immutable_frozen(),
+            value: UnsafeCell::new(value),
+        }
+    }
 }
 
 impl<T: ?Sized> ObjectCell<T> {

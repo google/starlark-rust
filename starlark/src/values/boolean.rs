@@ -15,6 +15,7 @@
 //! Define the bool type for Starlark.
 
 use crate::values::error::ValueError;
+use crate::values::frozen::FrozenOnCreation;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::fmt;
@@ -61,3 +62,5 @@ impl TypedValue for bool {
         Ok(self.cmp(other))
     }
 }
+
+impl FrozenOnCreation for bool {}
