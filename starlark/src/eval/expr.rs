@@ -29,6 +29,7 @@ use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::Expr;
+use crate::syntax::ast::UnOp;
 use crate::values::inspect::Inspectable;
 use crate::values::Value;
 use codemap::Spanned;
@@ -111,11 +112,10 @@ pub(crate) enum ExprCompiled {
     Name(AstGlobalOrSlot),
     Value(Value),
     Not(AstExprCompiled),
-    Minus(AstExprCompiled),
-    Plus(AstExprCompiled),
     And(AstExprCompiled, AstExprCompiled),
     Or(AstExprCompiled, AstExprCompiled),
-    Op(BinOp, AstExprCompiled, AstExprCompiled),
+    BinOp(BinOp, AstExprCompiled, AstExprCompiled),
+    UnOp(UnOp, AstExprCompiled),
     If(AstExprCompiled, AstExprCompiled, AstExprCompiled), // Order: condition, v1, v2 <=> v1 if condition else v2
     List(Vec<AstExprCompiled>),
     Set(Vec<AstExprCompiled>),
@@ -200,19 +200,18 @@ impl ExprCompiled {
                 Expr::IntLiteral(i) => ExprCompiled::Value(Value::from(i.node)),
                 Expr::StringLiteral(s) => ExprCompiled::Value(Value::from(s.node)),
                 Expr::Not(e) => ExprCompiled::Not(Self::compile(e, compiler)?),
-                Expr::Plus(e) => ExprCompiled::Plus(Self::compile(e, compiler)?),
-                Expr::Minus(e) => ExprCompiled::Minus(Self::compile(e, compiler)?),
                 Expr::And(lhs, rhs) => {
                     ExprCompiled::And(Self::compile(lhs, compiler)?, Self::compile(rhs, compiler)?)
                 }
                 Expr::Or(lhs, rhs) => {
                     ExprCompiled::Or(Self::compile(lhs, compiler)?, Self::compile(rhs, compiler)?)
                 }
-                Expr::Op(op, lhs, rhs) => ExprCompiled::Op(
+                Expr::BinOp(op, lhs, rhs) => ExprCompiled::BinOp(
                     op,
                     Self::compile(lhs, compiler)?,
                     Self::compile(rhs, compiler)?,
                 ),
+                Expr::UnOp(op, e) => ExprCompiled::UnOp(op, Self::compile(e, compiler)?),
                 Expr::If(cond, then_expr, else_expr) => ExprCompiled::If(
                     Self::compile(cond, compiler)?,
                     Self::compile(then_expr, compiler)?,
@@ -261,11 +260,10 @@ impl Inspectable for ExprCompiled {
             ExprCompiled::Name(n) => ("name", n.node.inspect()),
             ExprCompiled::Value(v) => ("value", v.clone()),
             ExprCompiled::Not(e) => ("not", e.inspect()),
-            ExprCompiled::Minus(e) => ("minus", e.inspect()),
-            ExprCompiled::Plus(e) => ("plus", e.inspect()),
             ExprCompiled::And(l, r) => ("and", (l, r).inspect()),
             ExprCompiled::Or(l, r) => ("or", (l, r).inspect()),
-            ExprCompiled::Op(op, l, r) => ("op", (format!("{:?}", op), l, r).inspect()),
+            ExprCompiled::BinOp(op, l, r) => ("bin_op", (format!("{:?}", op), l, r).inspect()),
+            ExprCompiled::UnOp(op, e) => ("un_op", (format!("{:?}", op), e).inspect()),
             ExprCompiled::If(cond, then_expr, else_expr) => {
                 ("if", (cond, then_expr, else_expr).inspect())
             }

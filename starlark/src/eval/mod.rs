@@ -37,6 +37,7 @@ use crate::eval::stmt::AstStatementCompiled;
 use crate::eval::stmt::BlockCompiled;
 use crate::eval::stmt::StatementCompiled;
 use crate::syntax::ast::BinOp;
+use crate::syntax::ast::UnOp;
 use crate::syntax::ast::*;
 use crate::syntax::dialect::Dialect;
 use crate::syntax::errors::SyntaxError;
@@ -481,8 +482,8 @@ fn eval_expr<E: EvaluationContextEnvironment>(
         ExprCompiled::Name(ref name) => t(context.env.get(&name.node), name),
         ExprCompiled::Value(ref v) => Ok(v.clone()),
         ExprCompiled::Not(ref s) => Ok(Value::new(!eval_expr(s, context)?.to_bool())),
-        ExprCompiled::Minus(ref s) => t(eval_expr(s, context)?.minus(), expr),
-        ExprCompiled::Plus(ref s) => t(eval_expr(s, context)?.plus(), expr),
+        ExprCompiled::UnOp(UnOp::Minus, ref s) => t(eval_expr(s, context)?.minus(), expr),
+        ExprCompiled::UnOp(UnOp::Plus, ref s) => t(eval_expr(s, context)?.plus(), expr),
         ExprCompiled::Or(ref l, ref r) => {
             let l = eval_expr(l, context)?;
             Ok(if l.to_bool() {
@@ -499,7 +500,7 @@ fn eval_expr<E: EvaluationContextEnvironment>(
                 eval_expr(r, context)?
             })
         }
-        ExprCompiled::Op(op, ref l, ref r) => eval_bin_op(expr, op, l, r, context),
+        ExprCompiled::BinOp(op, ref l, ref r) => eval_bin_op(expr, op, l, r, context),
         ExprCompiled::If(ref cond, ref v1, ref v2) => {
             if eval_expr(cond, context)?.to_bool() {
                 eval_expr(v1, context)

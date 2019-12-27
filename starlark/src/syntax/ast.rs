@@ -133,11 +133,10 @@ pub enum Expr {
     IntLiteral(AstInt),
     StringLiteral(AstString),
     Not(AstExpr),
-    Minus(AstExpr),
-    Plus(AstExpr),
     And(AstExpr, AstExpr),
     Or(AstExpr, AstExpr),
-    Op(BinOp, AstExpr, AstExpr),
+    BinOp(BinOp, AstExpr, AstExpr),
+    UnOp(UnOp, AstExpr),
     If(AstExpr, AstExpr, AstExpr), // Order: condition, v1, v2 <=> v1 if condition else v2
     List(Vec<AstExpr>),
     Set(Vec<AstExpr>),
@@ -291,10 +290,10 @@ impl Expr {
                 }
             }
             Expr::Identifier(..) | Expr::IntLiteral(..) | Expr::StringLiteral(..) => {}
-            Expr::Not(ref expr) | Expr::Plus(ref expr) | Expr::Minus(ref expr) => {
+            Expr::Not(ref expr) | Expr::UnOp(_, ref expr) => {
                 Expr::collect_locals(expr, locals_builder);
             }
-            Expr::Op(_, ref lhs, ref rhs)
+            Expr::BinOp(_, ref lhs, ref rhs)
             | Expr::And(ref lhs, ref rhs)
             | Expr::Or(ref lhs, ref rhs) => {
                 Expr::collect_locals(lhs, locals_builder);
@@ -470,6 +469,22 @@ pub enum BinOp {
     Division,
     FloorDivision,
     Pipe,
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum UnOp {
+    Plus,
+    Minus,
+}
+
+impl fmt::Display for UnOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnOp::Plus => write!(f, "+"),
+            UnOp::Minus => write!(f, "-"),
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -821,11 +836,10 @@ impl Display for Expr {
             Expr::Identifier(ref s) => s.node.fmt(f),
             Expr::IntLiteral(ref i) => i.node.fmt(f),
             Expr::Not(ref e) => write!(f, "(not {})", e.node),
-            Expr::Minus(ref e) => write!(f, "-{}", e.node),
-            Expr::Plus(ref e) => write!(f, "+{}", e.node),
+            Expr::UnOp(op, ref e) => write!(f, "{}{}", op, e.node),
             Expr::And(ref l, ref r) => write!(f, "({} and {})", l.node, r.node),
             Expr::Or(ref l, ref r) => write!(f, "({} or {})", l.node, r.node),
-            Expr::Op(ref op, ref l, ref r) => write!(f, "({}{}{})", l.node, op, r.node),
+            Expr::BinOp(ref op, ref l, ref r) => write!(f, "({}{}{})", l.node, op, r.node),
             Expr::If(ref cond, ref v1, ref v2) => {
                 write!(f, "({} if {} else {})", v1.node, cond.node, v2.node)
             }
