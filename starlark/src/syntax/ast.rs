@@ -16,6 +16,9 @@
 
 use super::lexer;
 use crate::eval::locals::LocalsBuilder;
+use crate::syntax::fmt::comma_separated_fmt;
+use crate::syntax::fmt::fmt_string_literal;
+use crate::syntax::fmt::indent;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use lalrpop_util;
@@ -741,41 +744,6 @@ impl Display for AugmentedAssignOp {
     }
 }
 
-fn comma_separated_fmt<I, F>(
-    f: &mut dyn fmt::Write,
-    v: &[I],
-    converter: F,
-    for_tuple: bool,
-) -> fmt::Result
-where
-    F: Fn(&I, &mut dyn fmt::Write) -> fmt::Result,
-{
-    for (i, e) in v.iter().enumerate() {
-        f.write_str(if i == 0 { "" } else { ", " })?;
-        converter(e, f)?;
-    }
-    if v.len() == 1 && for_tuple {
-        f.write_str(",")?;
-    }
-    Ok(())
-}
-
-fn fmt_string_literal(f: &mut dyn fmt::Write, s: &str) -> fmt::Result {
-    f.write_str("\"")?;
-    for c in s.chars() {
-        match c {
-            '\n' => f.write_str("\\n")?,
-            '\t' => f.write_str("\\t")?,
-            '\r' => f.write_str("\\r")?,
-            '\0' => f.write_str("\\0")?,
-            '"' => f.write_str("\\\"")?,
-            '\\' => f.write_str("\\\\")?,
-            x => f.write_str(&x.to_string())?,
-        }
-    }
-    f.write_str("\"")
-}
-
 impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match *self {
@@ -967,23 +935,23 @@ impl Statement {
             }
             Statement::If(ref cond, ref suite) => {
                 writeln!(f, "{}if {}:", tab, cond.node)?;
-                suite.node.fmt_with_tab(f, &format!("  {}", tab))
+                suite.node.fmt_with_tab(f, &indent(tab))
             }
             Statement::IfElse(ref cond, ref suite1, ref suite2) => {
                 writeln!(f, "{}if {}:", tab, cond.node)?;
-                suite1.node.fmt_with_tab(f, &format!("  {}", tab))?;
+                suite1.node.fmt_with_tab(f, &indent(tab))?;
                 writeln!(f, "{}else:", tab)?;
-                suite2.node.fmt_with_tab(f, &format!("  {}", tab))
+                suite2.node.fmt_with_tab(f, &indent(tab))
             }
             Statement::For(ref bind, ref coll, ref suite) => {
                 writeln!(f, "{}for {} in {}:", tab, bind.node, coll.node)?;
-                suite.node.fmt_with_tab(f, &format!("  {}", tab))
+                suite.node.fmt_with_tab(f, &indent(tab))
             }
             Statement::Def(ref name, ref params, ref suite) => {
                 write!(f, "{}def {}(", tab, name.node)?;
                 comma_separated_fmt(f, params, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("):\n")?;
-                suite.node.fmt_with_tab(f, &format!("  {}", tab))
+                suite.node.fmt_with_tab(f, &indent(tab))
             }
             Statement::Load(ref filename, ref v) => {
                 write!(f, "{}load(", tab)?;
