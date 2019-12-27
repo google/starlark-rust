@@ -933,7 +933,7 @@ impl Display for Clause {
 }
 
 impl Statement {
-    fn fmt_with_tab(&self, f: &mut Formatter<'_>, tab: String) -> fmt::Result {
+    fn fmt_with_tab(&self, f: &mut Formatter<'_>, tab: &str) -> fmt::Result {
         match *self {
             Statement::Break => writeln!(f, "{}break", tab),
             Statement::Continue => writeln!(f, "{}continue", tab),
@@ -953,23 +953,23 @@ impl Statement {
             }
             Statement::If(ref cond, ref suite) => {
                 writeln!(f, "{}if {}:", tab, cond.node)?;
-                suite.node.fmt_with_tab(f, tab + "  ")
+                suite.node.fmt_with_tab(f, &format!("  {}", tab))
             }
             Statement::IfElse(ref cond, ref suite1, ref suite2) => {
                 writeln!(f, "{}if {}:", tab, cond.node)?;
-                suite1.node.fmt_with_tab(f, tab.clone() + "  ")?;
+                suite1.node.fmt_with_tab(f, &format!("  {}", tab))?;
                 writeln!(f, "{}else:", tab)?;
-                suite2.node.fmt_with_tab(f, tab + "  ")
+                suite2.node.fmt_with_tab(f, &format!("  {}", tab))
             }
             Statement::For(ref bind, ref coll, ref suite) => {
                 writeln!(f, "{}for {} in {}:", tab, bind.node, coll.node)?;
-                suite.node.fmt_with_tab(f, tab + "  ")
+                suite.node.fmt_with_tab(f, &format!("  {}", tab))
             }
             Statement::Def(ref name, ref params, ref suite) => {
                 write!(f, "{}def {}(", tab, name.node)?;
                 comma_separated_fmt(f, params, |x, f| x.node.fmt(f), false)?;
                 f.write_str("):\n")?;
-                suite.node.fmt_with_tab(f, tab + "  ")
+                suite.node.fmt_with_tab(f, &format!("  {}", tab))
             }
             Statement::Load(ref filename, ref v) => {
                 write!(f, "{}load(", tab)?;
@@ -991,6 +991,6 @@ impl Statement {
 
 impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt_with_tab(f, "".to_owned())
+        self.fmt_with_tab(f, "")
     }
 }
