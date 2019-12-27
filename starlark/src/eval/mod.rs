@@ -220,7 +220,34 @@ pub trait FileLoader {
     fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException>;
 }
 
-fn eval_bin_op<E: EvaluationContextEnvironment>(
+fn eval_bin_op(op: BinOp, l: Value, r: Value) -> Result<Value, ValueError> {
+    match op {
+        BinOp::EqualsTo => l.equals(&r).map(Value::new),
+        BinOp::Different => l.equals(&r).map(|b| Value::new(!b)),
+        BinOp::LowerThan => l.compare(&r).map(|c| Value::new(c == Ordering::Less)),
+        BinOp::GreaterThan => l.compare(&r).map(|c| Value::new(c == Ordering::Greater)),
+        BinOp::LowerOrEqual => l.compare(&r).map(|c| Value::new(c != Ordering::Greater)),
+        BinOp::GreaterOrEqual => l.compare(&r).map(|c| Value::new(c != Ordering::Less)),
+        BinOp::In => r.is_in(&l).map(Value::new),
+        BinOp::NotIn => r.is_in(&l).map(|r| Value::new(!r)),
+        BinOp::Substraction => l.sub(r),
+        BinOp::Addition => l.add(r),
+        BinOp::Multiplication => l.mul(r),
+        BinOp::Percent => l.percent(r),
+        BinOp::Division => {
+            // No types currently support / so always error.
+            return Err(ValueError::OperationNotSupported {
+                op: "/".to_string(),
+                left: l.get_type().to_string(),
+                right: Some(r.get_type().to_string()),
+            });
+        }
+        BinOp::FloorDivision => l.floor_div(r),
+        BinOp::Pipe => l.pipe(r),
+    }
+}
+
+fn eval_bin_op_expr<E: EvaluationContextEnvironment>(
     expr: &AstExprCompiled,
     op: BinOp,
     l: &AstExprCompiled,
@@ -230,34 +257,7 @@ fn eval_bin_op<E: EvaluationContextEnvironment>(
     let l = eval_expr(l, context)?;
     let r = eval_expr(r, context)?;
 
-    t(
-        match op {
-            BinOp::EqualsTo => l.equals(&r).map(Value::new),
-            BinOp::Different => l.equals(&r).map(|b| Value::new(!b)),
-            BinOp::LowerThan => l.compare(&r).map(|c| Value::new(c == Ordering::Less)),
-            BinOp::GreaterThan => l.compare(&r).map(|c| Value::new(c == Ordering::Greater)),
-            BinOp::LowerOrEqual => l.compare(&r).map(|c| Value::new(c != Ordering::Greater)),
-            BinOp::GreaterOrEqual => l.compare(&r).map(|c| Value::new(c != Ordering::Less)),
-            BinOp::In => r.is_in(&l).map(Value::new),
-            BinOp::NotIn => r.is_in(&l).map(|r| Value::new(!r)),
-            BinOp::Substraction => l.sub(r),
-            BinOp::Addition => l.add(r),
-            BinOp::Multiplication => l.mul(r),
-            BinOp::Percent => l.percent(r),
-            BinOp::Division => {
-                // No types currently support / so always error.
-                let err = ValueError::OperationNotSupported {
-                    op: "/".to_string(),
-                    left: l.get_type().to_string(),
-                    right: Some(r.get_type().to_string()),
-                };
-                return Err(EvalException::DiagnosedError(err.to_diagnostic(expr.span)));
-            }
-            BinOp::FloorDivision => l.floor_div(r),
-            BinOp::Pipe => l.pipe(r),
-        },
-        expr,
-    )
+    t(eval_bin_op(op, l, r), expr)
 }
 
 fn eval_slice<E: EvaluationContextEnvironment>(
@@ -500,7 +500,7 @@ fn eval_expr<E: EvaluationContextEnvironment>(
                 eval_expr(r, context)?
             })
         }
-        ExprCompiled::BinOp(op, ref l, ref r) => eval_bin_op(expr, op, l, r, context),
+        ExprCompiled::BinOp(op, ref l, ref r) => eval_bin_op_expr(expr, op, l, r, context),
         ExprCompiled::If(ref cond, ref v1, ref v2) => {
             if eval_expr(cond, context)?.to_bool() {
                 eval_expr(v1, context)
