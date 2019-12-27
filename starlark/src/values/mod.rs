@@ -135,6 +135,16 @@ impl Value {
         }
     }
 
+    /// Get a copy of the object header
+    fn object_header_copy(&self) -> ObjectHeader {
+        match &self.0 {
+            ValueInner::None(..) | ValueInner::Int(..) | ValueInner::Bool(..) => {
+                ObjectHeader::immutable_frozen()
+            }
+            ValueInner::Other(rc) => rc.value.get_header_copy(),
+        }
+    }
+
     fn value_holder(&self) -> ObjectRef<dyn TypedValueDyn> {
         self.try_value_holder(false).unwrap()
     }
@@ -164,6 +174,11 @@ impl Value {
         } else {
             Ok(self.clone())
         }
+    }
+
+    /// Check is the object is frozen.
+    pub(crate) fn is_frozen(&self) -> bool {
+        self.object_header_copy().is_frozen()
     }
 
     /// Determine if the value pointed by other is a descendant of self
@@ -1290,6 +1305,7 @@ pub(crate) mod cell;
 pub mod context;
 pub mod dict;
 pub mod error;
+pub(crate) mod frozen;
 pub mod function;
 pub mod hashed_value;
 pub(crate) mod inspect;

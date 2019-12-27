@@ -161,6 +161,14 @@ impl ObjectHeader {
         }
     }
 
+    /// True iff the object is frozen.
+    pub fn is_frozen(&self) -> bool {
+        match self.get_decoded() {
+            ObjectState::MutableFrozen | ObjectState::ImmutableFrozen => true,
+            _ => false,
+        }
+    }
+
     /// Create new object header for mutable object
     pub fn mutable() -> ObjectHeader {
         ObjectHeader {
@@ -172,6 +180,13 @@ impl ObjectHeader {
     pub fn immutable() -> ObjectHeader {
         ObjectHeader {
             state: Cell::new(ObjectState::Immutable.encode()),
+        }
+    }
+
+    /// Create new object header for immutable frozen object
+    pub fn immutable_frozen() -> ObjectHeader {
+        ObjectHeader {
+            state: Cell::new(ObjectState::ImmutableFrozen.encode()),
         }
     }
 

@@ -15,6 +15,7 @@
 //! Define the None type for Starlark.
 
 use crate::values::error::ValueError;
+use crate::values::frozen::FrozenOnCreation;
 use crate::values::*;
 use std::cmp::Ordering;
 use std::fmt;
@@ -59,6 +60,8 @@ impl TypedValue for NoneType {
         Ok(9_223_380_832_852_120_682)
     }
 }
+
+impl FrozenOnCreation for NoneType {}
 
 impl From<NoneType> for Value {
     fn from(NoneType::None: NoneType) -> Self {

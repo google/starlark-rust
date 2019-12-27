@@ -14,6 +14,7 @@
 
 //! `range()` builtin implementation
 
+use crate::values::frozen::FrozenOnCreation;
 use crate::values::iter::TypedIterable;
 use crate::values::slice_indices::convert_slice_indices;
 use crate::values::{Immutable, TypedValue, Value, ValueError};
@@ -203,6 +204,8 @@ impl TypedValue for Range {
         Box::new(iter::empty())
     }
 }
+
+impl FrozenOnCreation for Range {}
 
 /// For tests
 impl PartialEq for Range {

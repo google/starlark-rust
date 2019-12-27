@@ -30,6 +30,7 @@ use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::Expr;
 use crate::syntax::ast::UnOp;
+use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
 use crate::values::Value;
 use codemap::Spanned;
@@ -110,7 +111,7 @@ pub(crate) enum ExprCompiled {
         Option<AstExprCompiled>,
     ),
     Name(AstGlobalOrSlot),
-    Value(Value),
+    Value(FrozenValue),
     Not(AstExprCompiled),
     And(AstExprCompiled, AstExprCompiled),
     Or(AstExprCompiled, AstExprCompiled),
@@ -197,8 +198,8 @@ impl ExprCompiled {
                     b.map(|e| Self::compile(e, compiler)).transpose()?,
                     c.map(|e| Self::compile(e, compiler)).transpose()?,
                 ),
-                Expr::IntLiteral(i) => ExprCompiled::Value(Value::from(i.node)),
-                Expr::StringLiteral(s) => ExprCompiled::Value(Value::from(s.node)),
+                Expr::IntLiteral(i) => ExprCompiled::Value(FrozenValue::from(i.node)),
+                Expr::StringLiteral(s) => ExprCompiled::Value(FrozenValue::from(s.node)),
                 Expr::Not(e) => ExprCompiled::Not(Self::compile(e, compiler)?),
                 Expr::And(lhs, rhs) => {
                     ExprCompiled::And(Self::compile(lhs, compiler)?, Self::compile(rhs, compiler)?)
@@ -258,7 +259,7 @@ impl Inspectable for ExprCompiled {
             }
             ExprCompiled::Slice(array, a, b, c) => ("slice", (array, a, b, c).inspect()),
             ExprCompiled::Name(n) => ("name", n.node.inspect()),
-            ExprCompiled::Value(v) => ("value", v.clone()),
+            ExprCompiled::Value(v) => ("value", Value::from(v.clone())),
             ExprCompiled::Not(e) => ("not", e.inspect()),
             ExprCompiled::And(l, r) => ("and", (l, r).inspect()),
             ExprCompiled::Or(l, r) => ("or", (l, r).inspect()),
