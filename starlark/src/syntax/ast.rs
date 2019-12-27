@@ -727,13 +727,13 @@ impl Display for AugmentedAssignOp {
 }
 
 fn comma_separated_fmt<I, F>(
-    f: &mut Formatter<'_>,
+    f: &mut dyn fmt::Write,
     v: &[I],
     converter: F,
     for_tuple: bool,
 ) -> fmt::Result
 where
-    F: Fn(&I, &mut Formatter<'_>) -> fmt::Result,
+    F: Fn(&I, &mut dyn fmt::Write) -> fmt::Result,
 {
     for (i, e) in v.iter().enumerate() {
         f.write_str(if i == 0 { "" } else { ", " })?;
@@ -745,7 +745,7 @@ where
     Ok(())
 }
 
-fn fmt_string_literal(f: &mut Formatter<'_>, s: &str) -> fmt::Result {
+fn fmt_string_literal(f: &mut dyn fmt::Write, s: &str) -> fmt::Result {
     f.write_str("\"")?;
     for c in s.chars() {
         match c {
@@ -766,7 +766,7 @@ impl Display for Expr {
         match *self {
             Expr::Tuple(ref e) => {
                 f.write_str("(")?;
-                comma_separated_fmt(f, e, |x, f| x.node.fmt(f), true)?;
+                comma_separated_fmt(f, e, |x, f| write!(f, "{}", &x.node), true)?;
                 f.write_str(")")
             }
             Expr::Dot(ref e, ref s) => write!(f, "{}.{}", e.node, s.node),
@@ -831,12 +831,12 @@ impl Display for Expr {
             }
             Expr::List(ref v) => {
                 f.write_str("[")?;
-                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                comma_separated_fmt(f, v, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("]")
             }
             Expr::Set(ref v) => {
                 f.write_str("{")?;
-                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                comma_separated_fmt(f, v, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("}")
             }
             Expr::Dict(ref v) => {
@@ -846,17 +846,17 @@ impl Display for Expr {
             }
             Expr::ListComprehension(ref e, ref v) => {
                 write!(f, "[{}", e.node)?;
-                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                comma_separated_fmt(f, v, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("]")
             }
             Expr::SetComprehension(ref e, ref v) => {
                 write!(f, "{{{}", e.node)?;
-                comma_separated_fmt(f, v, |x, f| x.node.fmt(f), false)?;
+                comma_separated_fmt(f, v, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("}}")
             }
             Expr::DictComprehension((ref k, ref v), ref c) => {
                 write!(f, "{{{}: {}", k.node, v.node)?;
-                comma_separated_fmt(f, c, |x, f| x.node.fmt(f), false)?;
+                comma_separated_fmt(f, c, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("}}")
             }
             Expr::StringLiteral(ref s) => fmt_string_literal(f, &s.node),
@@ -933,7 +933,7 @@ impl Display for Clause {
 }
 
 impl Statement {
-    fn fmt_with_tab(&self, f: &mut Formatter<'_>, tab: &str) -> fmt::Result {
+    fn fmt_with_tab(&self, f: &mut dyn fmt::Write, tab: &str) -> fmt::Result {
         match *self {
             Statement::Break => writeln!(f, "{}break", tab),
             Statement::Continue => writeln!(f, "{}continue", tab),
@@ -967,7 +967,7 @@ impl Statement {
             }
             Statement::Def(ref name, ref params, ref suite) => {
                 write!(f, "{}def {}(", tab, name.node)?;
-                comma_separated_fmt(f, params, |x, f| x.node.fmt(f), false)?;
+                comma_separated_fmt(f, params, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("):\n")?;
                 suite.node.fmt_with_tab(f, &format!("  {}", tab))
             }
