@@ -656,11 +656,8 @@ fn eval_stmt<E: EvaluationContextEnvironment>(
     match stmt.node {
         StatementCompiled::Break => Err(EvalException::Break(stmt.span)),
         StatementCompiled::Continue => Err(EvalException::Continue(stmt.span)),
-        StatementCompiled::Return(Some(ref e)) => {
+        StatementCompiled::Return(ref e) => {
             Err(EvalException::Return(stmt.span, eval_expr(e, context)?))
-        }
-        StatementCompiled::Return(None) => {
-            Err(EvalException::Return(stmt.span, Value::new(NoneType::None)))
         }
         StatementCompiled::Expression(ref e) => eval_expr(e, context),
         StatementCompiled::Assign(ref lhs, ref rhs) => {

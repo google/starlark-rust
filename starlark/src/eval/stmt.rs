@@ -28,6 +28,7 @@ use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignOp;
 use crate::syntax::ast::Statement;
+use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
 use crate::values::none::NoneType;
 use crate::values::Value;
@@ -42,7 +43,7 @@ pub(crate) type AstStatementCompiled = Spanned<StatementCompiled>;
 pub(crate) enum StatementCompiled {
     Break,
     Continue,
-    Return(Option<AstExprCompiled>),
+    Return(AstExprCompiled),
     Expression(AstExprCompiled),
     Assign(AstAssignTargetExprCompiled, AstExprCompiled),
     AugmentedAssign(
@@ -88,9 +89,12 @@ impl BlockCompiled {
                     )
                 }
                 Statement::Return(Some(expr)) => {
-                    StatementCompiled::Return(Some(ExprCompiled::compile(expr, compiler)?))
+                    StatementCompiled::Return(ExprCompiled::compile(expr, compiler)?)
                 }
-                Statement::Return(None) => StatementCompiled::Return(None),
+                Statement::Return(None) => StatementCompiled::Return(Box::new(Spanned {
+                    span: stmt.span,
+                    node: ExprCompiled::Value(FrozenValue::from(NoneType::None)),
+                })),
                 Statement::If(cond, then_block) => StatementCompiled::IfElse(
                     ExprCompiled::compile(cond, compiler)?,
                     BlockCompiled::compile_local(then_block, compiler)?,
@@ -168,8 +172,12 @@ impl BlockCompiled {
                     StatementCompiled::Expression(ExprCompiled::compile_global(expr, globals)?)
                 }
                 Statement::Return(Some(expr)) => {
-                    StatementCompiled::Return(Some(ExprCompiled::compile_global(expr, globals)?))
+                    StatementCompiled::Return(ExprCompiled::compile_global(expr, globals)?)
                 }
+                Statement::Return(None) => StatementCompiled::Return(Box::new(Spanned {
+                    span: stmt.span,
+                    node: ExprCompiled::Value(FrozenValue::from(NoneType::None)),
+                })),
                 Statement::Assign(target, source) => StatementCompiled::Assign(
                     AssignTargetExprCompiled::compile(target, &mut GlobalCompiler::new(globals))?,
                     ExprCompiled::compile_global(source, globals)?,
@@ -188,7 +196,6 @@ impl BlockCompiled {
                 Statement::Pass => return Ok(BlockCompiled(Vec::new())),
                 Statement::Break => StatementCompiled::Break,
                 Statement::Continue => StatementCompiled::Continue,
-                Statement::Return(None) => StatementCompiled::Return(None),
             },
         }]))
     }
