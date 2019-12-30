@@ -25,7 +25,7 @@ operator or floating point). It optionally includes a `set` type
 as an extension which is not specified in [the
 official Starlark specification](https://github.com/bazelbuild/starlark/blob/master/spec.md), but note that this
 is just an insertion-order-preserving set, and does not have optimisations for nesting as can be found in the
-starlark Java implemnetation's [depset](https://docs.bazel.build/versions/master/skylark/lib/depset.html) implementation.
+starlark Java implementation's [depset](https://docs.bazel.build/versions/master/skylark/lib/depset.html) implementation.
 It uses signed 64-bit integers.
 
 ## Usage
