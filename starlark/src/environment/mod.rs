@@ -162,7 +162,7 @@ impl Environment {
     /// Freeze the environment, all its value will become immutable after that
     pub fn freeze(&self) -> &Self {
         if !self.env.get_header_copy().is_mutable_frozen() {
-            self.env.borrow_mut().freeze();
+            self.env.borrow().freeze_values();
             self.env.freeze();
         }
         self
@@ -237,10 +237,8 @@ impl Environment {
 }
 
 impl EnvironmentContent {
-    /// Create a new child environment
-    /// Freeze the environment, all its value will become immutable after that
-    pub fn freeze(&mut self) {
-        for v in self.variables.values_mut() {
+    fn freeze_values(&self) {
+        for v in self.variables.values() {
             v.freeze();
         }
     }

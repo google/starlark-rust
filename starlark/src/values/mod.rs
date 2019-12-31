@@ -370,7 +370,7 @@ impl<T: TypedValue> TypedValueDyn for T {
 
     /// Freezes the current value.
     fn freeze_dyn(&self) {
-        for mut value in self.values_for_descendant_check_and_freeze() {
+        for value in self.values_for_descendant_check_and_freeze() {
             value.freeze();
         }
     }
@@ -1160,7 +1160,7 @@ impl Value {
         self.value_holder().is_pure_dyn()
     }
 
-    pub fn freeze(&mut self) {
+    pub fn freeze(&self) {
         match &self.0 {
             ValueInner::Other(rc) => {
                 if rc.value.freeze() {
