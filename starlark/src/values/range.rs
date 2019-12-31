@@ -56,6 +56,7 @@ impl Iterator for RangeIterator {
 
 impl TypedValue for Range {
     const TYPE: &'static str = "range";
+    const PURE: bool = true;
 
     fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
         if self.step.get() != 1 {

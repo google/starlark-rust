@@ -34,6 +34,7 @@ impl StarlarkStruct {
 
 impl TypedValue for StarlarkStruct {
     type Holder = Immutable<StarlarkStruct>;
+    const PURE: bool = true;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

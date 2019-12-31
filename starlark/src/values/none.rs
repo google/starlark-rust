@@ -31,6 +31,7 @@ pub enum NoneType {
 impl TypedValue for NoneType {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "NoneType";
+    const PURE: bool = true;
 
     const INLINE: bool = true;
 

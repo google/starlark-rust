@@ -97,6 +97,7 @@ impl List {
 
 impl TypedValue for List {
     type Holder = Mutable<List>;
+    const PURE: bool = true;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

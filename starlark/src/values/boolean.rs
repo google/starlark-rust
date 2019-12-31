@@ -31,6 +31,7 @@ impl From<bool> for Value {
 impl TypedValue for bool {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "bool";
+    const PURE: bool = true;
 
     const INLINE: bool = true;
 

@@ -87,6 +87,7 @@ where
 impl TypedValue for i64 {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "int";
+    const PURE: bool = true;
 
     const INLINE: bool = true;
 

@@ -131,6 +131,7 @@ impl<T1: Into<Value> + Hash + Eq + Clone, T2: Into<Value> + Eq + Clone>
 /// Define the Dictionary type
 impl TypedValue for Dictionary {
     type Holder = Mutable<Dictionary>;
+    const PURE: bool = true;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

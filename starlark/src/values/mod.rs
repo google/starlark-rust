@@ -364,6 +364,10 @@ impl<T: TypedValue> TypedValueDyn for T {
             .unwrap_or(FunctionId(DataPtr::from(self)))
     }
 
+    fn is_pure_dyn(&self) -> bool {
+        T::PURE
+    }
+
     /// Freezes the current value.
     fn freeze_dyn(&self) {
         for mut value in self.values_for_descendant_check_and_freeze() {
@@ -558,6 +562,8 @@ pub(crate) trait TypedValueDyn: 'static {
     /// Id used to detect recursion (which is prohibited in Starlark)
     fn function_id_dyn(&self) -> FunctionId;
 
+    fn is_pure_dyn(&self) -> bool;
+
     fn freeze_dyn(&self);
 
     fn to_str_impl_dyn(&self, buf: &mut String) -> fmt::Result;
@@ -637,6 +643,14 @@ pub(crate) trait TypedValueDyn: 'static {
 pub trait TypedValue: Sized + 'static {
     /// Must be either `MutableHolder<Self>` or `ImmutableHolder<Self>`
     type Holder: Mutability<Content = Self>;
+
+    /// The value of this type is pure.
+    ///
+    /// "Pure" means that:
+    /// * operations accepting `&self` do not modify object or global state
+    /// * these operations are safe to be executed speculatively
+    ///   (e. g. they don't panic)
+    const PURE: bool = false;
 
     /// Return a string describing the type of self, as returned by the type() function.
     const TYPE: &'static str;
@@ -1142,6 +1156,10 @@ impl fmt::Debug for Value {
 }
 
 impl Value {
+    pub(crate) fn is_pure(&self) -> bool {
+        self.value_holder().is_pure_dyn()
+    }
+    
     pub fn freeze(&mut self) {
         match &self.0 {
             ValueInner::Other(rc) => {

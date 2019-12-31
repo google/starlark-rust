@@ -256,6 +256,7 @@ impl<
 
 impl TypedValue for Tuple {
     type Holder = Immutable<Tuple>;
+    const PURE: bool = true;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

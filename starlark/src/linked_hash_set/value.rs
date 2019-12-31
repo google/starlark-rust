@@ -120,6 +120,7 @@ impl From<Set> for Value {
 
 impl TypedValue for Set {
     type Holder = Mutable<Set>;
+    const PURE: bool = true;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,

@@ -32,6 +32,7 @@ use std::iter;
 
 impl TypedValue for String {
     type Holder = Immutable<String>;
+    const PURE: bool = true;
 
     const INLINE: bool = true;
 
