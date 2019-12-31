@@ -461,7 +461,16 @@ impl ExprCompiled {
             ExprCompiled::ArrayIndirection(array, index) => {
                 let array = Self::optimize_on_freeze(array, captured_env);
                 let index = Self::optimize_on_freeze(index, captured_env);
-                ExprCompiled::ArrayIndirection(array, index)
+                loop {
+                    if let (Ok(array), Ok(index)) = (array.node.pure(), index.node.pure()) {
+                        if let Ok(r) = array.get_ref().at(index.get_ref().clone()) {
+                            if let Ok(r) = FrozenValue::new(r) {
+                                break ExprCompiled::Value(r);
+                            }
+                        }
+                    }
+                    break ExprCompiled::ArrayIndirection(array, index);
+                }
             }
             ExprCompiled::Slice(array, a, b, c) => {
                 let array = Self::optimize_on_freeze(array, captured_env);
@@ -825,6 +834,23 @@ S = struct(x=10)
 
 def f():
   return S.x
+",
+            "\
+def f():
+  return 10
+",
+        );
+    }
+
+    #[test]
+    fn inline_array_index() {
+        test_optimize_on_freeze(
+            "\
+X = [10, 20]
+I = 0
+
+def f():
+  return X[I]
 ",
             "\
 def f():
