@@ -41,13 +41,18 @@ use crate::syntax::ast::Parameter;
 use crate::syntax::ast::Statement;
 use crate::values::context::EvaluationContextEnvironmentLocal;
 use crate::values::error::ValueError;
+use crate::values::function;
 use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
 use crate::values::function::FunctionType;
 use crate::values::function::StrOrRepr;
 use crate::values::inspect::Inspectable;
 use crate::values::none::NoneType;
-use crate::values::{function, Immutable, TypedValue, Value, ValueResult};
+use crate::values::Immutable;
+use crate::values::TypedValue;
+use crate::values::Value;
+use crate::values::ValueOther;
+use crate::values::ValueResult;
 use codemap::{CodeMap, Spanned};
 use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
@@ -205,11 +210,11 @@ impl Def {
         stmt: DefCompiled,
         map: Arc<Mutex<CodeMap>>,
         env: Environment,
-    ) -> Value {
+    ) -> ValueOther<Def> {
         // This can be implemented by delegating to `Function::new`,
         // but having a separate type allows slight more efficient implementation
         // and optimizations in the future.
-        Value::new(Def {
+        ValueOther::new(Def {
             function_type: FunctionType::Def(stmt.name.node.clone(), module),
             signature,
             stmt,

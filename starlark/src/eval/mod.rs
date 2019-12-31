@@ -522,14 +522,15 @@ fn eval_expr<E: EvaluationContextEnvironment>(
             Ok(Value::from(r))
         }
         ExprCompiled::Dict(ref v) => {
-            let mut r = dict::Dictionary::new();
+            let r = dict::Dictionary::new();
             for s in v.iter() {
                 t(
-                    r.set_at(eval_expr(&s.0, context)?, eval_expr(&s.1, context)?),
+                    r.borrow_mut()
+                        .set_at(eval_expr(&s.0, context)?, eval_expr(&s.1, context)?),
                     expr,
                 )?
             }
-            Ok(r)
+            Ok(r.into())
         }
         ExprCompiled::Set(ref v) => {
             let mut values = Vec::with_capacity(v.len());
@@ -715,10 +716,10 @@ fn eval_stmt<E: EvaluationContextEnvironment>(
             t(
                 context
                     .env
-                    .set_global(stmt.slot, &stmt.name.node, f.clone()),
+                    .set_global(stmt.slot, &stmt.name.node, f.clone().into()),
                 &stmt.name,
             )?;
-            Ok(f)
+            Ok(f.into())
         }
         StatementCompiled::Load(ref name, ref v) => {
             let loadenv = context

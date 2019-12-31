@@ -32,6 +32,8 @@ impl TypedValue for NoneType {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "NoneType";
 
+    const INLINE: bool = true;
+
     fn new_value(self) -> Value {
         Value(ValueInner::None(self))
     }

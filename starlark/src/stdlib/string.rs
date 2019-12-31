@@ -1339,7 +1339,7 @@ mod tests {
     #[test]
     fn test_format_capture() {
         let args = Value::from(vec!["1", "2", "3"]);
-        let mut kwargs = dict::Dictionary::new();
+        let mut kwargs: Value = dict::Dictionary::new().into();
         let it = args.iter().unwrap();
         let mut it = it.iter();
         let mut captured_by_index = false;

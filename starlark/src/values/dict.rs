@@ -30,14 +30,14 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
-    pub fn new_typed() -> Dictionary {
+    pub(crate) fn new_typed() -> Dictionary {
         Dictionary {
             content: LinkedHashMap::new(),
         }
     }
 
-    pub fn new() -> Value {
-        Value::new(Dictionary::new_typed())
+    pub(crate) fn new() -> ValueOther<Dictionary> {
+        ValueOther::default()
     }
 
     pub fn get_content(&self) -> &LinkedHashMap<HashedValue, Value> {

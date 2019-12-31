@@ -29,8 +29,8 @@ pub(crate) struct Set {
 }
 
 impl Set {
-    pub fn _empty() -> Value {
-        Value::new(Set::default())
+    pub fn _new() -> ValueOther<Set> {
+        ValueOther::default()
     }
 
     pub fn from<V: Into<Value>>(values: Vec<V>) -> Result<Value, ValueError> {
