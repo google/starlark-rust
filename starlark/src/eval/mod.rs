@@ -24,6 +24,7 @@ use crate::environment::TypeValues;
 use crate::eval::call_stack::CallStack;
 use crate::eval::compr::eval_one_dimensional_comprehension;
 use crate::eval::def::Def;
+use crate::eval::def::DefCompiled;
 use crate::eval::def::ParameterCompiled;
 use crate::eval::expr::AssignTargetExprCompiled;
 use crate::eval::expr::AstAssignTargetExprCompiled;
@@ -651,6 +652,35 @@ where
     set_transformed(&lhs, context, t(op(&l, r), stmt)?)
 }
 
+fn eval_def<E: EvaluationContextEnvironment>(
+    context: &mut EvaluationContext<E>,
+    stmt: &DefCompiled,
+) -> Result<Value, EvalException> {
+    let mut p = Vec::new();
+    for x in &stmt.params {
+        p.push(match x.node {
+            ParameterCompiled::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
+            ParameterCompiled::WithDefaultValue(ref n, ref v) => {
+                FunctionParameter::WithDefaultValue(n.node.clone(), eval_expr(v, context)?)
+            }
+            ParameterCompiled::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
+            ParameterCompiled::KWArgs(ref n) => FunctionParameter::KWArgsDict(n.node.clone()),
+        })
+    }
+    let f = Def::new(
+        context.env.assert_module_env().env.name(),
+        FunctionSignature::new(p, 0),
+        stmt.clone(),
+        context.map.clone(),
+        context.env.assert_module_env().env.clone(),
+    );
+    t(
+        context.env.set_def(stmt.slot, &stmt.name.node, f.clone()),
+        &stmt.name,
+    )?;
+    Ok(f.into())
+}
+
 fn eval_stmt<E: EvaluationContextEnvironment>(
     stmt: &AstStatementCompiled,
     context: &mut EvaluationContext<E>,
@@ -693,35 +723,7 @@ fn eval_stmt<E: EvaluationContextEnvironment>(
             }
             result
         }
-        StatementCompiled::Def(ref stmt) => {
-            let mut p = Vec::new();
-            for x in &stmt.params {
-                p.push(match x.node {
-                    ParameterCompiled::Normal(ref n) => FunctionParameter::Normal(n.node.clone()),
-                    ParameterCompiled::WithDefaultValue(ref n, ref v) => {
-                        FunctionParameter::WithDefaultValue(n.node.clone(), eval_expr(v, context)?)
-                    }
-                    ParameterCompiled::Args(ref n) => FunctionParameter::ArgsArray(n.node.clone()),
-                    ParameterCompiled::KWArgs(ref n) => {
-                        FunctionParameter::KWArgsDict(n.node.clone())
-                    }
-                })
-            }
-            let f = Def::new(
-                context.env.assert_module_env().env.name(),
-                FunctionSignature::new(p, 0),
-                stmt.clone(),
-                context.map.clone(),
-                context.env.assert_module_env().env.clone(),
-            );
-            t(
-                context
-                    .env
-                    .set_global(stmt.slot, &stmt.name.node, f.clone().into()),
-                &stmt.name,
-            )?;
-            Ok(f.into())
-        }
+        StatementCompiled::Def(ref stmt) => eval_def(context, stmt),
         StatementCompiled::Load(ref name, ref v) => {
             let loadenv = context
                 .env

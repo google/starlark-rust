@@ -16,11 +16,13 @@ use crate::environment::Environment;
 use crate::environment::EnvironmentError;
 use crate::environment::TypeValues;
 use crate::eval::call_stack::CallStack;
+use crate::eval::def::Def;
 use crate::eval::expr::GlobalOrSlot;
 use crate::eval::globals::Globals;
 use crate::eval::locals::Locals;
 use crate::eval::FileLoader;
 use crate::values::Value;
+use crate::values::ValueOther;
 use codemap::CodeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -64,6 +66,13 @@ pub(crate) trait EvaluationContextEnvironment {
 
     fn set_global(&mut self, slot: usize, name: &str, value: Value)
         -> Result<(), EnvironmentError>;
+
+    fn set_def(
+        &mut self,
+        slot: usize,
+        name: &str,
+        value: ValueOther<Def>,
+    ) -> Result<(), EnvironmentError>;
 
     fn set(&mut self, name_slot: &GlobalOrSlot, value: Value) -> Result<(), EnvironmentError> {
         let GlobalOrSlot { name, local, slot } = name_slot;
@@ -117,6 +126,17 @@ impl<'a> EvaluationContextEnvironment for EvaluationContextEnvironmentModule<'a>
         self.globals.set_slot(slot, name, value)
     }
 
+    fn set_def(
+        &mut self,
+        slot: usize,
+        name: &str,
+        value: ValueOther<Def>,
+    ) -> Result<(), EnvironmentError> {
+        self.set_global(slot, name, value.clone().into())?;
+        self.globals.env.add_def(value);
+        Ok(())
+    }
+
     fn top_level_local_to_slot(&self, _name: &str) -> usize {
         unreachable!("not a local env")
     }
@@ -150,6 +170,15 @@ impl<'a> EvaluationContextEnvironment for EvaluationContextEnvironmentLocal<'a> 
         _value: Value,
     ) -> Result<(), EnvironmentError> {
         unreachable!("assign to global in local environment")
+    }
+
+    fn set_def(
+        &mut self,
+        slot: usize,
+        name: &str,
+        value: ValueOther<Def>,
+    ) -> Result<(), EnvironmentError> {
+        self.set_global(slot, name, value.into())
     }
 
     fn top_level_local_to_slot(&self, name: &str) -> usize {

@@ -1159,7 +1159,7 @@ impl Value {
     pub(crate) fn is_pure(&self) -> bool {
         self.value_holder().is_pure_dyn()
     }
-    
+
     pub fn freeze(&mut self) {
         match &self.0 {
             ValueInner::Other(rc) => {

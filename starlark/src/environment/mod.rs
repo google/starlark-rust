@@ -17,6 +17,7 @@
 //! is the list of variable in the current scope. It can be frozen, after which all values from
 //! this environment become immutable.
 
+use crate::eval::def::Def;
 use crate::values::cell::error::ObjectBorrowMutError;
 use crate::values::cell::ObjectCell;
 use crate::values::error::{RuntimeError, ValueError};
@@ -109,6 +110,8 @@ struct EnvironmentContent {
     ///
     /// These bindings include methods for native types, e.g. `string.isalnum`.
     variables: HashMap<String, Value>,
+    /// Functions defined in this environment
+    defs: Vec<ValueOther<Def>>,
     /// Optional function which can be used to construct set literals (i.e. `{foo, bar}`).
     /// If not set, attempts to use set literals will raise an error.
     set_constructor: SetConstructor,
@@ -135,6 +138,7 @@ impl Environment {
                 name_: name.into(),
                 parent: None,
                 variables: HashMap::new(),
+                defs: Vec::new(),
                 set_constructor: SetConstructor(None),
             })),
         }
@@ -148,6 +152,7 @@ impl Environment {
                 name_: name.into(),
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
+                defs: Vec::new(),
                 set_constructor: SetConstructor(None),
             })),
         }
@@ -171,6 +176,10 @@ impl Environment {
     /// Set the value of a variable in that environment.
     pub fn set(&self, name: &str, value: Value) -> Result<(), EnvironmentError> {
         self.env.try_borrow_mut()?.set(name, value)
+    }
+
+    pub(crate) fn add_def(&self, def: ValueOther<Def>) {
+        self.env.borrow_mut().defs.push(def);
     }
 
     /// Get the value of the variable `name`

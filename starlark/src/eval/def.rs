@@ -205,6 +205,12 @@ pub(crate) struct Def {
     stmt: DefCompiled,
 }
 
+impl fmt::Debug for Def {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Def").field("...", &"...").finish()
+    }
+}
+
 impl Def {
     pub fn new(
         module: RcString,
