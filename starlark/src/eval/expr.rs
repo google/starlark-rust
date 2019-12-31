@@ -447,7 +447,16 @@ impl ExprCompiled {
             }
             ExprCompiled::Dot(object, field) => {
                 let object = ExprCompiled::optimize_on_freeze(object, captured_env);
-                ExprCompiled::Dot(object, field)
+                loop {
+                    if let Ok(object) = object.node.pure() {
+                        if let Ok(r) = object.get_ref().get_attr(&field.node) {
+                            if let Ok(r) = FrozenValue::new(r) {
+                                break ExprCompiled::Value(r);
+                            }
+                        }
+                    }
+                    break ExprCompiled::Dot(object, field);
+                }
             }
             ExprCompiled::ArrayIndirection(array, index) => {
                 let array = Self::optimize_on_freeze(array, captured_env);
@@ -804,6 +813,22 @@ def f():
             "\
 def f():
   return [10, True]
+",
+        );
+    }
+
+    #[test]
+    fn inline_struct_field() {
+        test_optimize_on_freeze(
+            "\
+S = struct(x=10)
+
+def f():
+  return S.x
+",
+            "\
+def f():
+  return 10
 ",
         );
     }
