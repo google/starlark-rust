@@ -509,7 +509,11 @@ impl ExprCompiled {
             }
             ExprCompiled::Not(expr) => {
                 let expr = Self::optimize_on_freeze(expr, captured_env);
-                ExprCompiled::Not(expr)
+                if let Ok(v) = expr.node.pure() {
+                    ExprCompiled::Value(FrozenValue::from(!v.get_ref().to_bool()))
+                } else {
+                    ExprCompiled::Not(expr)
+                }
             }
             ExprCompiled::If(cond, then_expr, else_expr) => {
                 let cond = Self::optimize_on_freeze(cond, captured_env);
@@ -857,5 +861,19 @@ def f():
   return 10
 ",
         );
+    }
+
+    #[test]
+    fn inline_not() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  return not 1
+",
+            "\
+def f():
+  return False
+",
+        )
     }
 }
