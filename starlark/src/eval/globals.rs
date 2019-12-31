@@ -16,6 +16,7 @@
 
 use crate::stdlib::structs::StarlarkStruct;
 use crate::values::inspect::Inspectable;
+use crate::values::string::rc::RcString;
 use crate::values::Value;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
@@ -42,7 +43,7 @@ impl Globals {
 
 impl Inspectable for Globals {
     fn inspect(&self) -> Value {
-        let mut fields = LinkedHashMap::<String, Value>::new();
+        let mut fields = LinkedHashMap::<RcString, Value>::new();
         fields.insert("name_to_index".into(), self.name_to_index.inspect());
         Value::new(StarlarkStruct::new(fields))
     }

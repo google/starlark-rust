@@ -48,12 +48,14 @@ use crate::values::function::FunctionType;
 use crate::values::function::StrOrRepr;
 use crate::values::inspect::Inspectable;
 use crate::values::none::NoneType;
+use crate::values::string::rc::RcString;
 use crate::values::Immutable;
 use crate::values::TypedValue;
 use crate::values::Value;
 use crate::values::ValueOther;
 use crate::values::ValueResult;
-use codemap::{CodeMap, Spanned};
+use codemap::CodeMap;
+use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
 use std::convert::TryInto;
@@ -186,7 +188,7 @@ impl DefCompiled {
 
 impl Inspectable for DefCompiled {
     fn inspect(&self) -> Value {
-        let mut fields = LinkedHashMap::<String, Value>::new();
+        let mut fields = LinkedHashMap::<RcString, Value>::new();
         fields.insert("name".into(), self.name.node.clone().into());
         fields.insert("locals".into(), self.locals.inspect());
         fields.insert("suite".into(), self.suite.inspect());
@@ -205,7 +207,7 @@ pub(crate) struct Def {
 
 impl Def {
     pub fn new(
-        module: String,
+        module: RcString,
         signature: FunctionSignature,
         stmt: DefCompiled,
         map: Arc<Mutex<CodeMap>>,
@@ -248,7 +250,7 @@ impl TypedValue for Def {
         call_stack: &mut CallStack,
         type_values: &TypeValues,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
@@ -315,7 +317,7 @@ impl TypedValue for Def {
     }
 
     fn inspect_custom(&self) -> Value {
-        let mut fields = LinkedHashMap::<String, Value>::new();
+        let mut fields = LinkedHashMap::<RcString, Value>::new();
         fields.insert("captured_env".into(), self.captured_env.name().into());
         fields.insert("stmt".into(), self.stmt.inspect());
         Value::new(StarlarkStruct::new(fields))

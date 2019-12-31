@@ -20,6 +20,7 @@
 use crate::values::cell::error::ObjectBorrowMutError;
 use crate::values::cell::ObjectCell;
 use crate::values::error::{RuntimeError, ValueError};
+use crate::values::string::rc::RcString;
 use crate::values::*;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -101,7 +102,7 @@ pub struct Environment {
 #[derive(Debug)]
 struct EnvironmentContent {
     /// A name for this environment, used mainly for debugging.
-    name_: String,
+    name_: RcString,
     /// Super environment that represent a higher scope than the current one
     parent: Option<Environment>,
     /// List of variable bindings
@@ -131,7 +132,7 @@ impl Environment {
     pub fn new(name: &str) -> Environment {
         Environment {
             env: Rc::new(ObjectCell::new_mutable(EnvironmentContent {
-                name_: name.to_owned(),
+                name_: name.into(),
                 parent: None,
                 variables: HashMap::new(),
                 set_constructor: SetConstructor(None),
@@ -144,7 +145,7 @@ impl Environment {
         self.freeze();
         Environment {
             env: Rc::new(ObjectCell::new_mutable(EnvironmentContent {
-                name_: name.to_owned(),
+                name_: name.into(),
                 parent: Some(self.clone()),
                 variables: HashMap::new(),
                 set_constructor: SetConstructor(None),
@@ -163,7 +164,7 @@ impl Environment {
     }
 
     /// Return the name of this module
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> RcString {
         self.env.borrow().name_.clone()
     }
 
@@ -264,15 +265,16 @@ impl EnvironmentContent {
 /// Function implementations are only allowed to access
 /// type values from "type values" from the caller context,
 /// so this struct is passed instead of full `Environment`.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct TypeValues {
     /// List of static values of an object per type
-    type_objs: HashMap<String, HashMap<String, Value>>,
+    type_objs: HashMap<RcString, HashMap<RcString, Value>>,
 }
 
 impl TypeValues {
     /// Get a type value if it exists (e.g. list.index).
     pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
+        println!("{:?}", self);
         self.type_objs
             .get(obj.get_type())
             .and_then(|o| o.get(id))
@@ -280,7 +282,7 @@ impl TypeValues {
     }
 
     /// List the attribute of a type
-    pub fn list_type_value(&self, obj: &Value) -> Vec<String> {
+    pub fn list_type_value(&self, obj: &Value) -> Vec<RcString> {
         self.type_objs
             .get(obj.get_type())
             .into_iter()
@@ -291,11 +293,11 @@ impl TypeValues {
     /// Get the object of type `obj_type`, and create it if none exists
     pub fn add_type_value(&mut self, obj: &str, attr: &str, value: Value) {
         if let Some(ref mut v) = self.type_objs.get_mut(obj) {
-            v.insert(attr.to_owned(), value);
+            v.insert(attr.into(), value);
         } else {
             let mut dict = HashMap::new();
-            dict.insert(attr.to_owned(), value);
-            self.type_objs.insert(obj.to_owned(), dict);
+            dict.insert(attr.into(), value);
+            self.type_objs.insert(obj.into(), dict);
         }
     }
 }

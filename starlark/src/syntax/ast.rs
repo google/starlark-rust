@@ -19,6 +19,7 @@ use crate::eval::locals::LocalsBuilder;
 use crate::syntax::fmt::comma_separated_fmt;
 use crate::syntax::fmt::fmt_string_literal;
 use crate::syntax::fmt::indent;
+use crate::values::string::rc::RcString;
 use codemap::{Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use lalrpop_util;
@@ -37,7 +38,7 @@ pub type AstAssignTargetExpr = Spanned<AssignTargetExpr>;
 #[doc(hidden)]
 pub type AstArgument = Spanned<Argument>;
 #[doc(hidden)]
-pub type AstString = Spanned<String>;
+pub type AstString = Spanned<RcString>;
 #[doc(hidden)]
 pub type AstParameter = Spanned<Parameter>;
 #[doc(hidden)]
@@ -85,7 +86,15 @@ macro_rules! to_ast_trait {
 }
 
 to_ast_trait!(i64, AstInt);
-to_ast_trait!(String, AstString);
+
+impl ToAst<AstString> for String {
+    fn to_ast(self, span: Span) -> Spanned<RcString> {
+        Spanned {
+            span,
+            node: RcString::from(self),
+        }
+    }
+}
 
 #[doc(hidden)]
 #[derive(Debug, Clone)]
@@ -108,12 +117,12 @@ pub enum Parameter {
 to_ast_trait!(Parameter, AstParameter);
 
 impl Parameter {
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> RcString {
         match self {
-            Parameter::Normal(n) => &n.node,
-            Parameter::WithDefaultValue(n, ..) => &n.node,
-            Parameter::Args(n) => &n.node,
-            Parameter::KWArgs(n) => &n.node,
+            Parameter::Normal(n) => n.node.clone(),
+            Parameter::WithDefaultValue(n, ..) => n.node.clone(),
+            Parameter::Args(n) => n.node.clone(),
+            Parameter::KWArgs(n) => n.node.clone(),
         }
     }
 }
@@ -391,7 +400,7 @@ impl AssignTargetExpr {
     ) {
         match expr.node {
             AssignTargetExpr::Identifier(ref ident) => {
-                locals_builder.register_local(&ident.node);
+                locals_builder.register_local(ident.node.clone());
             }
             AssignTargetExpr::Subtargets(ref subtargets) => {
                 for s in subtargets {
@@ -439,7 +448,7 @@ impl AugmentedAssignTargetExpr {
     ) {
         match expr.node {
             AugmentedAssignTargetExpr::Identifier(ref ident) => {
-                locals_builder.register_local(&ident.node);
+                locals_builder.register_local(ident.node.clone());
             }
             _ => {}
         }
@@ -841,7 +850,7 @@ impl Display for Expr {
                 comma_separated_fmt(f, c, |x, f| write!(f, "{}", &x.node), false)?;
                 f.write_str("}}")
             }
-            Expr::StringLiteral(ref s) => fmt_string_literal(f, &s.node),
+            Expr::StringLiteral(ref s) => fmt_string_literal(f, s.node.as_str()),
         }
     }
 }
@@ -955,13 +964,13 @@ impl Statement {
             }
             Statement::Load(ref filename, ref v) => {
                 write!(f, "{}load(", tab)?;
-                fmt_string_literal(f, &filename.node)?;
+                fmt_string_literal(f, filename.node.as_str())?;
                 comma_separated_fmt(
                     f,
                     v,
                     |x, f| {
                         write!(f, "{} = ", x.0.node)?;
-                        fmt_string_literal(f, &(x.1.node))
+                        fmt_string_literal(f, x.1.node.as_str())
                     },
                     false,
                 )?;

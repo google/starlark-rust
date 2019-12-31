@@ -22,22 +22,18 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 pub mod interpolation;
+pub mod rc;
 
-use crate::values::cell::ObjectCell;
 use crate::values::frozen::FrozenOnCreation;
 use crate::values::slice_indices::convert_slice_indices;
+use crate::values::string::rc::RcString;
 use std::fmt;
 use std::iter;
-use std::rc::Rc;
 
 impl TypedValue for String {
     type Holder = Immutable<String>;
 
-    fn new_value(self) -> Value {
-        Value(ValueInner::Other(Rc::new(ValueHolder {
-            value: ObjectCell::new_immutable_frozen(self),
-        })))
-    }
+    const INLINE: bool = true;
 
     fn values_for_descendant_check_and_freeze<'a>(
         &'a self,
@@ -59,6 +55,11 @@ impl TypedValue for String {
     }
 
     const TYPE: &'static str = "string";
+
+    fn new_value(self) -> Value {
+        Value(ValueInner::String(RcString::from(self)))
+    }
+
     fn to_bool(&self) -> bool {
         !self.is_empty()
     }

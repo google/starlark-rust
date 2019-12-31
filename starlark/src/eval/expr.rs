@@ -32,6 +32,7 @@ use crate::syntax::ast::Expr;
 use crate::syntax::ast::UnOp;
 use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
+use crate::values::string::rc::RcString;
 use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
@@ -40,7 +41,7 @@ use linked_hash_map::LinkedHashMap;
 /// After syntax check each variable is resolved to either global or slot
 #[derive(Debug, Clone)]
 pub(crate) struct GlobalOrSlot {
-    pub name: String,
+    pub name: RcString,
     pub local: bool,
     pub slot: usize,
 }
@@ -83,7 +84,7 @@ pub(crate) struct ExprLocal {
 
 impl Inspectable for ExprLocal {
     fn inspect(&self) -> Value {
-        let mut fields = LinkedHashMap::<String, Value>::new();
+        let mut fields = LinkedHashMap::<RcString, Value>::new();
         fields.insert("expr".into(), self.expr.inspect());
         fields.insert("locals".into(), self.locals.inspect());
         fields.insert("globals".into(), self.globals.inspect());
@@ -199,7 +200,9 @@ impl ExprCompiled {
                     c.map(|e| Self::compile(e, compiler)).transpose()?,
                 ),
                 Expr::IntLiteral(i) => ExprCompiled::Value(FrozenValue::from(i.node)),
-                Expr::StringLiteral(s) => ExprCompiled::Value(FrozenValue::from(s.node)),
+                Expr::StringLiteral(s) => {
+                    ExprCompiled::Value(FrozenValue::new(s.node.into()).unwrap())
+                }
                 Expr::Not(e) => ExprCompiled::Not(Self::compile(e, compiler)?),
                 Expr::And(lhs, rhs) => {
                     ExprCompiled::And(Self::compile(lhs, compiler)?, Self::compile(rhs, compiler)?)
