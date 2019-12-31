@@ -14,7 +14,19 @@
 
 //! Implementation of `def`.
 
-use crate::environment::{Environment, TypeValues};
+use std::convert::TryInto;
+use std::fmt;
+use std::iter;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use codemap::CodeMap;
+use codemap::Spanned;
+use codemap_diagnostic::Diagnostic;
+use linked_hash_map::LinkedHashMap;
+
+use crate::environment::Environment;
+use crate::environment::TypeValues;
 use crate::eval::call_stack::CallStack;
 use crate::eval::compiler::LocalCompiler;
 use crate::eval::eval_block;
@@ -49,19 +61,11 @@ use crate::values::function::StrOrRepr;
 use crate::values::inspect::Inspectable;
 use crate::values::none::NoneType;
 use crate::values::string::rc::RcString;
-use crate::values::Immutable;
+use crate::values::Mutable;
 use crate::values::TypedValue;
 use crate::values::Value;
 use crate::values::ValueOther;
 use crate::values::ValueResult;
-use codemap::CodeMap;
-use codemap::Spanned;
-use codemap_diagnostic::Diagnostic;
-use linked_hash_map::LinkedHashMap;
-use std::convert::TryInto;
-use std::fmt;
-use std::iter;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub(crate) enum ParameterCompiled {
@@ -70,6 +74,7 @@ pub(crate) enum ParameterCompiled {
     Args(AstString),
     KWArgs(AstString),
 }
+
 pub(crate) type AstParameterCompiled = Spanned<ParameterCompiled>;
 
 impl ParameterCompiled {
@@ -230,10 +235,15 @@ impl Def {
             map,
         })
     }
+
+    pub fn optimize_on_freeze(&mut self) {
+        // TODO: optimize
+    }
 }
 
 impl TypedValue for Def {
-    type Holder = Immutable<Def>;
+    /// Must be mutable to be able to [optimize on free](Def::optimize_on_freeze).
+    type Holder = Mutable<Def>;
 
     const TYPE: &'static str = "function";
 

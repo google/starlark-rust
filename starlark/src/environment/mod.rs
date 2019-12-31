@@ -238,6 +238,12 @@ impl Environment {
 
 impl EnvironmentContent {
     fn freeze_values(&self) {
+        // Must optimize before freeze, because it's not possible
+        // to borrow mutably after freeze.
+        for d in &self.defs {
+            d.borrow_mut().optimize_on_freeze();
+        }
+
         for v in self.variables.values() {
             v.freeze();
         }
