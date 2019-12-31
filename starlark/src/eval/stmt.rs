@@ -90,6 +90,15 @@ impl StatementCompiled {
                     }
                 }
                 StatementCompiled::IfElse(cond, then_block, else_block) => {
+                    let cond = ExprCompiled::optimize_on_freeze(cond, captured_env);
+                    if let Ok(cond) = cond.node.pure() {
+                        let block = if cond.get_ref().to_bool() {
+                            then_block
+                        } else {
+                            else_block
+                        };
+                        return BlockCompiled::optimize_on_freeze(block, captured_env).0;
+                    }
                     let then_block = BlockCompiled::optimize_on_freeze(then_block, captured_env);
                     let else_block = BlockCompiled::optimize_on_freeze(else_block, captured_env);
                     StatementCompiled::IfElse(cond, then_block, else_block)
@@ -403,6 +412,23 @@ def f():
 ",
             "\
 def f():
+",
+        );
+    }
+
+    #[test]
+    fn optimize_if_else() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  if True:
+    return 1
+  else:
+    return 2
+",
+            "\
+def f():
+  return 1
 ",
         );
     }
