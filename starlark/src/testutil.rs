@@ -16,10 +16,17 @@
 use crate::environment;
 use crate::environment::TypeValues;
 use crate::eval;
+use crate::eval::def::Def;
+use crate::eval::noload;
+use crate::stdlib::global_environment_for_repl_and_tests;
 use crate::syntax::dialect::Dialect;
+use crate::values::cell::ObjectRef;
+use crate::values::Value;
 use codemap::CodeMap;
 use codemap_diagnostic::Diagnostic;
 use std::sync;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Execute a starlark snippet with the passed environment.
 pub fn starlark_no_diagnostic(
@@ -65,4 +72,27 @@ macro_rules! starlark_ok {
 /// Test that the execution of a starlark code raise an error
 macro_rules! starlark_fail {
     ($($t:expr),+) => (starlark_fail_fn!($crate::stdlib::tests::starlark_default_fail, $($t),+))
+}
+
+pub fn test_optimize_on_freeze(input: &str, expected: &str) {
+    let map = Arc::new(Mutex::new(codemap::CodeMap::new()));
+    let (global, type_values) = global_environment_for_repl_and_tests();
+    global.freeze();
+    let mut env = global.child("test");
+    let f: Value = noload::eval(
+        &map,
+        "test",
+        input,
+        crate::syntax::dialect::Dialect::Bzl,
+        &mut env,
+        &type_values,
+    )
+    .unwrap();
+
+    env.freeze();
+
+    let def: ObjectRef<Def> = f.downcast_ref().unwrap();
+    let mut actual = String::new();
+    def.fmt_for_test(&mut actual, "").unwrap();
+    assert_eq!(expected, &actual);
 }

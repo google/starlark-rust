@@ -16,6 +16,7 @@
 
 use crate::values::TypedValue;
 use crate::values::Value;
+use std::fmt;
 
 /// Marker trait for types which are frozen on creation.
 ///
@@ -30,6 +31,12 @@ pub trait FrozenOnCreation {}
 /// [`Value`] wrapper which asserts the value is frozen.
 #[derive(Clone, Debug)]
 pub(crate) struct FrozenValue(Value);
+
+impl fmt::Display for FrozenValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
 
 impl FrozenValue {
     pub fn new(value: Value) -> Result<FrozenValue, ()> {

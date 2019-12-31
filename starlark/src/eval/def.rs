@@ -51,6 +51,7 @@ use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::Expr;
 use crate::syntax::ast::Parameter;
 use crate::syntax::ast::Statement;
+use crate::syntax::fmt::indent;
 use crate::values::context::EvaluationContextEnvironmentLocal;
 use crate::values::error::ValueError;
 use crate::values::function;
@@ -73,6 +74,17 @@ pub(crate) enum ParameterCompiled {
     WithDefaultValue(AstString, AstExprCompiled),
     Args(AstString),
     KWArgs(AstString),
+}
+
+impl fmt::Display for ParameterCompiled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParameterCompiled::Normal(n) => write!(f, "{}", n.node),
+            ParameterCompiled::WithDefaultValue(n, d) => write!(f, "{} = {}", n.node, d.node),
+            ParameterCompiled::Args(a) => write!(f, "*{}", a.node),
+            ParameterCompiled::KWArgs(a) => write!(f, "**{}", a.node),
+        }
+    }
 }
 
 pub(crate) type AstParameterCompiled = Spanned<ParameterCompiled>;
@@ -189,6 +201,18 @@ impl DefCompiled {
             Statement::Load(..) | Statement::Def(..) => unreachable!(),
         }
     }
+
+    pub(crate) fn fmt_for_test(&self, f: &mut dyn fmt::Write, tab: &str) -> fmt::Result {
+        write!(f, "{}def {}(", tab, self.name.node)?;
+        for (i, p) in self.params.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", p.node)?;
+        }
+        writeln!(f, "):")?;
+        self.suite.fmt_for_test(f, &indent(tab))
+    }
 }
 
 impl Inspectable for DefCompiled {
@@ -238,6 +262,11 @@ impl Def {
 
     pub fn optimize_on_freeze(&mut self) {
         // TODO: optimize
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn fmt_for_test(&self, f: &mut dyn fmt::Write, indent: &str) -> fmt::Result {
+        self.stmt.fmt_for_test(f, indent)
     }
 }
 

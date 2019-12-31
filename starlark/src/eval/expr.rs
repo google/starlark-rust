@@ -30,6 +30,7 @@ use crate::syntax::ast::AugmentedAssignTargetExpr;
 use crate::syntax::ast::BinOp;
 use crate::syntax::ast::Expr;
 use crate::syntax::ast::UnOp;
+use crate::syntax::fmt::comma_separated_fmt;
 use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
 use crate::values::string::rc::RcString;
@@ -37,6 +38,7 @@ use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
 use linked_hash_map::LinkedHashMap;
+use std::fmt;
 
 /// After syntax check each variable is resolved to either global or slot
 #[derive(Debug, Clone)]
@@ -65,6 +67,20 @@ pub(crate) enum AugmentedAssignTargetExprCompiled {
 }
 pub(crate) type AstAugmentedAssignTargetExprCompiled = Spanned<AugmentedAssignTargetExprCompiled>;
 
+impl fmt::Display for AugmentedAssignTargetExprCompiled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AugmentedAssignTargetExprCompiled::Slot(_, s) => write!(f, "{}", s.node),
+            AugmentedAssignTargetExprCompiled::Dot(object, field) => {
+                write!(f, "{}.{}", object.node, field.node)
+            }
+            AugmentedAssignTargetExprCompiled::ArrayIndirection(array, index) => {
+                write!(f, "{}[{}]", array.node, index.node)
+            }
+        }
+    }
+}
+
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub(crate) enum ClauseCompiled {
@@ -72,6 +88,15 @@ pub(crate) enum ClauseCompiled {
     If(AstExprCompiled),
 }
 pub(crate) type AstClauseCompiled = Spanned<ClauseCompiled>;
+
+impl fmt::Display for ClauseCompiled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            ClauseCompiled::For(ref t, ref e) => write!(f, " for {} in {}", t.node, e.node),
+            ClauseCompiled::If(ref t) => write!(f, " if {}", t.node),
+        }
+    }
+}
 
 /// Expression wrapper which creates own local context.
 /// Used to evaluate comprehensions
@@ -128,6 +153,115 @@ pub(crate) enum ExprCompiled {
     /// Creates a local scope for evaluation of subexpression in global scope.
     /// Used for evaluate comprehensions in global scope.
     Local(ExprLocal),
+}
+
+impl fmt::Display for ExprCompiled {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ExprCompiled::Tuple(t) => {
+                write!(f, "(")?;
+                comma_separated_fmt(f, &t, |x, f| write!(f, "{}", &x.node), true)?;
+                write!(f, ")")
+            }
+            ExprCompiled::List(l) => {
+                write!(f, "[")?;
+                comma_separated_fmt(f, &l, |x, f| write!(f, "{}", &x.node), false)?;
+                write!(f, "]")
+            }
+            ExprCompiled::Set(s) => {
+                write!(f, "{{")?;
+                comma_separated_fmt(f, &s, |x, f| write!(f, "{}", &x.node), false)?;
+                write!(f, "}}")
+            }
+            ExprCompiled::Dict(d) => {
+                write!(f, "{{")?;
+                comma_separated_fmt(
+                    f,
+                    &d,
+                    |x, f| write!(f, "{}: {}", &x.0.node, &x.1.node),
+                    false,
+                )?;
+                write!(f, "}}")
+            }
+            ExprCompiled::Dot(object, field) => write!(f, "{}.{}", object.node, field.node),
+            ExprCompiled::ArrayIndirection(array, index) => {
+                write!(f, "{}[{}]", array.node, index.node)
+            }
+            ExprCompiled::Slice(array, a, b, c) => {
+                write!(f, "{}[", array.node)?;
+                if let Some(a) = a {
+                    write!(f, "{}", a.node)?;
+                }
+                write!(f, ":")?;
+                if let Some(b) = b {
+                    write!(f, "{}", b.node)?;
+                }
+                write!(f, ":")?;
+                if let Some(c) = c {
+                    write!(f, "{}", c.node)?;
+                }
+                write!(f, "]")
+            }
+            ExprCompiled::Name(name) => write!(f, "{}", name.name),
+            ExprCompiled::Value(v) => write!(f, "{}", v),
+            ExprCompiled::Not(expr) => write!(f, "not {}", expr.node),
+            ExprCompiled::UnOp(op, expr) => write!(f, "{}{}", op, expr.node),
+            ExprCompiled::And(l, r) => write!(f, "{} and {}", l.node, r.node),
+            ExprCompiled::Or(l, r) => write!(f, "{} or {}", l.node, r.node),
+            ExprCompiled::BinOp(op, l, r) => write!(f, "{} {} {}", l.node, op, r.node),
+            ExprCompiled::If(cond, th, el) => {
+                write!(f, "{} if {} else {}", th.node, cond.node, el.node)
+            }
+            ExprCompiled::Call(e, pos, named, args, kwargs) => {
+                write!(f, "{}(", e.node)?;
+                let mut first = true;
+                for a in pos {
+                    if !first {
+                        f.write_str(", ")?;
+                    }
+                    first = false;
+                    a.node.fmt(f)?;
+                }
+                for &(ref k, ref v) in named {
+                    if !first {
+                        f.write_str(", ")?;
+                    }
+                    first = false;
+                    write!(f, "{} = {}", k.node, v.node)?;
+                }
+                if let Some(ref x) = args {
+                    if !first {
+                        f.write_str(", ")?;
+                    }
+                    first = false;
+                    write!(f, "*{}", x.node)?;
+                }
+                if let Some(ref x) = kwargs {
+                    if !first {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "**{}", x.node)?;
+                }
+                f.write_str(")")
+            }
+            ExprCompiled::ListComprehension(ref e, ref v) => {
+                write!(f, "[{}", e.node)?;
+                comma_separated_fmt(f, v, |x, f| write!(f, "{}", &x.node), false)?;
+                f.write_str("]")
+            }
+            ExprCompiled::SetComprehension(ref e, ref v) => {
+                write!(f, "{{{}", e.node)?;
+                comma_separated_fmt(f, v, |x, f| write!(f, "{}", &x.node), false)?;
+                f.write_str("}}")
+            }
+            ExprCompiled::DictComprehension((ref k, ref v), ref c) => {
+                write!(f, "{{{}: {}", k.node, v.node)?;
+                comma_separated_fmt(f, c, |x, f| write!(f, "{}", &x.node), false)?;
+                f.write_str("}}")
+            }
+            ExprCompiled::Local(local) => write!(f, "{}", local.expr.node),
+        }
+    }
 }
 
 #[doc(hidden)]

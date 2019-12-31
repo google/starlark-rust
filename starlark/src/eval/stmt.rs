@@ -28,12 +28,16 @@ use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignOp;
 use crate::syntax::ast::Statement;
+use crate::syntax::fmt::comma_separated_fmt;
+use crate::syntax::fmt::fmt_string_literal;
+use crate::syntax::fmt::indent;
 use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
 use crate::values::none::NoneType;
 use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
+use std::fmt;
 
 #[doc(hidden)]
 pub(crate) type AstStatementCompiled = Spanned<StatementCompiled>;
@@ -59,6 +63,47 @@ pub(crate) enum StatementCompiled {
 
 #[derive(Debug, Clone)]
 pub(crate) struct BlockCompiled(pub(crate) Vec<AstStatementCompiled>);
+
+impl StatementCompiled {
+    fn fmt_for_test(&self, f: &mut dyn fmt::Write, tab: &str) -> fmt::Result {
+        match self {
+            StatementCompiled::Break => writeln!(f, "{}break", tab),
+            StatementCompiled::Continue => writeln!(f, "{}continue", tab),
+            StatementCompiled::Return(e) => writeln!(f, "{}return {}", tab, e.node),
+            StatementCompiled::Expression(e) => writeln!(f, "{}{}", tab, e.node),
+            StatementCompiled::Assign(l, r) => writeln!(f, "{}{} = {}", tab, l.node, r.node),
+            StatementCompiled::AugmentedAssign(l, op, r) => {
+                writeln!(f, "{}{} {} {}", tab, l.node, op, r.node)
+            }
+            StatementCompiled::IfElse(cond, th, el) => {
+                writeln!(f, "{}if {}:", tab, cond.node)?;
+                th.fmt_for_test(f, &indent(tab))?;
+                writeln!(f, "{}else:", tab)?;
+                el.fmt_for_test(f, &indent(tab))?;
+                Ok(())
+            }
+            StatementCompiled::For(var, over, body) => {
+                writeln!(f, "{}for {} in {}:", tab, var.node, over.node)?;
+                body.fmt_for_test(f, &indent(tab))
+            }
+            StatementCompiled::Load(filename, v) => {
+                write!(f, "{}load(", tab)?;
+                fmt_string_literal(f, &filename.node)?;
+                comma_separated_fmt(
+                    f,
+                    v,
+                    |x, f| {
+                        write!(f, "{} = ", x.0.node)?;
+                        fmt_string_literal(f, &(x.1.node))
+                    },
+                    false,
+                )?;
+                f.write_str(")\n")
+            }
+            StatementCompiled::Def(def) => def.fmt_for_test(f, tab),
+        }
+    }
+}
 
 impl BlockCompiled {
     fn compile_local_stmts(
@@ -199,6 +244,13 @@ impl BlockCompiled {
             },
         }]))
     }
+
+    pub(crate) fn fmt_for_test(&self, f: &mut dyn fmt::Write, indent: &str) -> fmt::Result {
+        for s in &self.0 {
+            s.node.fmt_for_test(f, indent)?;
+        }
+        Ok(())
+    }
 }
 
 impl Inspectable for BlockCompiled {
@@ -226,5 +278,24 @@ impl Inspectable for StatementCompiled {
             StatementCompiled::Load(what, bindings) => ("load", (what, bindings).inspect()),
         };
         Value::from((Value::from(name), param))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::testutil::test_optimize_on_freeze;
+
+    #[test]
+    fn optimize_on_freeze_dummy() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  return 1
+",
+            "\
+def f():
+  return 1
+",
+        );
     }
 }

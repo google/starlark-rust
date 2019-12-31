@@ -15,6 +15,7 @@
 //! AST for parsed starlark files.
 
 use super::lexer;
+use crate::eval::expr::AssignTargetExprCompiled;
 use crate::eval::locals::LocalsBuilder;
 use crate::syntax::fmt::comma_separated_fmt;
 use crate::syntax::fmt::fmt_string_literal;
@@ -169,6 +170,31 @@ pub enum AssignTargetExpr {
     Subtargets(Vec<AstAssignTargetExpr>),
 }
 to_ast_trait!(AssignTargetExpr, AstAssignTargetExpr);
+
+impl fmt::Display for AssignTargetExprCompiled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AssignTargetExprCompiled::Dot(object, field) => {
+                write!(f, "{}.{}", object.node, field.node)
+            }
+            AssignTargetExprCompiled::ArrayIndirection(array, index) => {
+                write!(f, "{}[{}]", array.node, index.node)
+            }
+            AssignTargetExprCompiled::Name(n) => write!(f, "{}", n.name),
+            AssignTargetExprCompiled::Subtargets(subtargets) => {
+                write!(f, "[")?;
+                for (i, s) in subtargets.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                        s.node.fmt(f)?;
+                    }
+                }
+                write!(f, "]")?;
+                Ok(())
+            }
+        }
+    }
+}
 
 /// `x` in `x += a`
 #[doc(hidden)]
