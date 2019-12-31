@@ -1339,6 +1339,10 @@ impl PartialEq for Value {
 impl Eq for Value {}
 
 impl Value {
+    pub(crate) fn is<T: TypedValue>(&self) -> bool {
+        self.value_holder().as_any_ref().is::<T>()
+    }
+
     /// Get a reference to underlying data or `None`
     /// if contained object has different type than requested.
     ///

@@ -25,6 +25,7 @@ use crate::eval::expr::AstExprCompiled;
 use crate::eval::expr::AugmentedAssignTargetExprCompiled;
 use crate::eval::expr::ExprCompiled;
 use crate::eval::globals::Globals;
+use crate::linked_hash_set::value::Set;
 use crate::syntax::ast::AstStatement;
 use crate::syntax::ast::AstString;
 use crate::syntax::ast::AugmentedAssignOp;
@@ -32,9 +33,13 @@ use crate::syntax::ast::Statement;
 use crate::syntax::fmt::comma_separated_fmt;
 use crate::syntax::fmt::fmt_string_literal;
 use crate::syntax::fmt::indent;
+use crate::values::dict::Dictionary;
 use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
+use crate::values::list::List;
 use crate::values::none::NoneType;
+use crate::values::range::Range;
+use crate::values::tuple::Tuple;
 use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
@@ -86,6 +91,20 @@ impl StatementCompiled {
                     StatementCompiled::IfElse(cond, then_block, else_block)
                 }
                 StatementCompiled::For(assign, over, block) => {
+                    let over = ExprCompiled::optimize_on_freeze(over, captured_env);
+                    if let Ok(over) = over.node.pure() {
+                        let over: Value = over.into();
+                        if over.is::<List>()
+                            || over.is::<Range>()
+                            || over.is::<Tuple>()
+                            || over.is::<Set>()
+                            || over.is::<Dictionary>()
+                        {
+                            if !over.to_bool() {
+                                return Vec::new();
+                            }
+                        }
+                    }
                     let assign = AssignTargetExprCompiled::optimize_on_freeze(assign, captured_env);
                     let block = BlockCompiled::optimize_on_freeze(block, captured_env);
                     StatementCompiled::For(assign, over, block)
@@ -351,6 +370,22 @@ def f():
             "\
 def f():
   return 1
+",
+        );
+    }
+
+    #[test]
+    fn prune_empty_for() {
+        test_optimize_on_freeze(
+            "\
+L = {}
+
+def f():
+  for x in L:
+    return 1
+",
+            "\
+def f():
 ",
         );
     }
