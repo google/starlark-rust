@@ -83,7 +83,11 @@ impl StatementCompiled {
                 }
                 StatementCompiled::Expression(expr) => {
                     let expr = ExprCompiled::optimize_on_freeze(expr, captured_env);
-                    StatementCompiled::Expression(expr)
+                    if let Ok(_) = expr.node.pure() {
+                        return Vec::new();
+                    } else {
+                        StatementCompiled::Expression(expr)
+                    }
                 }
                 StatementCompiled::IfElse(cond, then_block, else_block) => {
                     let then_block = BlockCompiled::optimize_on_freeze(then_block, captured_env);
@@ -383,6 +387,19 @@ L = {}
 def f():
   for x in L:
     return 1
+",
+            "\
+def f():
+",
+        );
+    }
+
+    #[test]
+    fn prune_statement_expr() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  1
 ",
             "\
 def f():
