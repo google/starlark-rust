@@ -18,6 +18,7 @@ use crate::environment::Environment;
 use crate::eval::compiler::GlobalCompiler;
 use crate::eval::compiler::LocalCompiler;
 use crate::eval::compiler::LocalOrGlobalCompiler;
+use crate::eval::eval_bin_op;
 use crate::eval::eval_un_op;
 use crate::eval::globals::Globals;
 use crate::eval::locals::Locals;
@@ -557,7 +558,18 @@ impl ExprCompiled {
             ExprCompiled::BinOp(op, left, right) => {
                 let left = Self::optimize_on_freeze(left, captured_env);
                 let right = Self::optimize_on_freeze(right, captured_env);
-                ExprCompiled::BinOp(op, left, right)
+                loop {
+                    if let (Ok(left), Ok(right)) = (left.pure(), right.pure()) {
+                        let left = left.get_ref().clone();
+                        let right = right.get_ref().clone();
+                        if let Ok(r) = eval_bin_op(op, left, right) {
+                            if let Ok(r) = FrozenValue::new(r) {
+                                break ExprCompiled::Value(r);
+                            }
+                        }
+                    }
+                    break ExprCompiled::BinOp(op, left, right);
+                }
             }
             ExprCompiled::UnOp(op, expr) => {
                 let expr = Self::optimize_on_freeze(expr, captured_env);
@@ -950,6 +962,37 @@ def f():
             "\
 def f():
   return 2
+",
+        );
+    }
+
+    #[test]
+    fn inline_bin_op() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  return 10 * 20 + 30
+",
+            "\
+def f():
+  return 230
+",
+        );
+    }
+
+    #[test]
+    fn line_add_is_not_inlined() {
+        // `[] + []` allocates a mutable list,
+        // thus we must not inline addition
+        test_optimize_on_freeze(
+            "\
+L = [1]
+def f():
+  return L + L
+",
+            "\
+def f():
+  return [1] + [1]
 ",
         );
     }
