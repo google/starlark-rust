@@ -29,29 +29,26 @@ pub struct SignatureBuilder {
 
 impl SignatureBuilder {
     pub fn push_normal(&mut self, name: &str) {
-        self.params.push(FunctionParameter::Normal(name.to_owned()));
+        self.params.push(FunctionParameter::Normal(name.into()));
     }
 
     pub fn push_optional(&mut self, name: &str) {
-        self.params
-            .push(FunctionParameter::Optional(name.to_owned()));
+        self.params.push(FunctionParameter::Optional(name.into()));
     }
 
     pub fn push_with_default_value<V: Into<Value>>(&mut self, name: &str, default_value: V) {
         self.params.push(FunctionParameter::WithDefaultValue(
-            name.to_owned(),
+            name.into(),
             default_value.into(),
         ));
     }
 
     pub fn push_kwargs(&mut self, name: &str) {
-        self.params
-            .push(FunctionParameter::KWArgsDict(name.to_owned()));
+        self.params.push(FunctionParameter::KWArgsDict(name.into()));
     }
 
     pub fn push_args(&mut self, name: &str) {
-        self.params
-            .push(FunctionParameter::ArgsArray(name.to_owned()));
+        self.params.push(FunctionParameter::ArgsArray(name.into()));
     }
     pub fn push_slash(&mut self) {
         assert!(self.positional_count.is_none());

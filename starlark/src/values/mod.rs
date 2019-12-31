@@ -152,6 +152,7 @@ enum ValueInner {
     None(NoneType),
     Bool(bool),
     Int(i64),
+    String(RcString),
     Other(Rc<ValueHolder<dyn TypedValueDyn>>),
 }
 
@@ -177,6 +178,7 @@ impl Value {
             ValueInner::None(n) => Ok(ObjectRef::immutable_frozen(n)),
             ValueInner::Int(i) => Ok(ObjectRef::immutable_frozen(i)),
             ValueInner::Bool(b) => Ok(ObjectRef::immutable_frozen(b)),
+            ValueInner::String(s) => Ok(ObjectRef::immutable_frozen(s.as_string())),
             ValueInner::Other(rc) => rc.value.try_borrow(for_iter),
         }
     }
@@ -184,9 +186,10 @@ impl Value {
     /// Get a copy of the object header
     fn object_header_copy(&self) -> ObjectHeader {
         match &self.0 {
-            ValueInner::None(..) | ValueInner::Int(..) | ValueInner::Bool(..) => {
-                ObjectHeader::immutable_frozen()
-            }
+            ValueInner::None(..)
+            | ValueInner::Int(..)
+            | ValueInner::Bool(..)
+            | ValueInner::String(..) => ObjectHeader::immutable_frozen(),
             ValueInner::Other(rc) => rc.value.get_header_copy(),
         }
     }
@@ -249,6 +252,7 @@ impl Value {
             ValueInner::None(n) => DataPtr::from(n),
             ValueInner::Int(i) => DataPtr::from(i),
             ValueInner::Bool(b) => DataPtr::from(b),
+            ValueInner::String(b) => DataPtr::from(b.as_string()),
             ValueInner::Other(rc) => rc.data_ptr(),
         }
     }
@@ -260,24 +264,22 @@ impl Value {
 
     pub(crate) fn inspect(&self) -> StarlarkStruct {
         let header = match &self.0 {
-            ValueInner::Bool(..) | ValueInner::Int(..) | ValueInner::None(..) => {
-                format!("{:?}", ObjectHeader::immutable_frozen_static())
-            }
+            ValueInner::Bool(..)
+            | ValueInner::Int(..)
+            | ValueInner::None(..)
+            | ValueInner::String(..) => format!("{:?}", ObjectHeader::immutable_frozen_static()),
             ValueInner::Other(rc) => format!("{:?}", rc.value.get_header()),
         };
 
         let mut fields = LinkedHashMap::new();
-        fields.insert(
-            "data_ptr".to_owned(),
-            Value::from(self.data_ptr().0 as usize),
-        );
+        fields.insert("data_ptr".into(), Value::from(self.data_ptr().0 as usize));
         let Inspect {
             rust_type_name,
             custom,
         } = self.value_holder().inspect_dyn();
-        fields.insert("rust_type_name".to_owned(), Value::from(rust_type_name));
-        fields.insert("header".to_owned(), Value::from(header));
-        fields.insert("custom".to_owned(), custom);
+        fields.insert("rust_type_name".into(), Value::from(rust_type_name));
+        fields.insert("header".into(), Value::from(header));
+        fields.insert("custom".into(), custom);
         StarlarkStruct::new(fields)
     }
 }
@@ -428,7 +430,7 @@ impl<T: TypedValue> TypedValueDyn for T {
         call_stack: &mut CallStack,
         type_values: &TypeValues,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
@@ -472,7 +474,7 @@ impl<T: TypedValue> TypedValueDyn for T {
         self.set_attr(attribute, new_value)
     }
 
-    fn dir_attr_dyn(&self) -> Result<Vec<String>, ValueError> {
+    fn dir_attr_dyn(&self) -> Result<Vec<RcString>, ValueError> {
         self.dir_attr()
     }
 
@@ -580,7 +582,7 @@ pub(crate) trait TypedValueDyn: 'static {
         call_stack: &mut CallStack,
         type_values: &TypeValues,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult;
@@ -605,7 +607,7 @@ pub(crate) trait TypedValueDyn: 'static {
 
     fn set_attr_dyn(&mut self, attribute: &str, _new_value: Value) -> Result<(), ValueError>;
 
-    fn dir_attr_dyn(&self) -> Result<Vec<String>, ValueError>;
+    fn dir_attr_dyn(&self) -> Result<Vec<RcString>, ValueError>;
 
     fn is_in_dyn(&self, other: &Value) -> Result<bool, ValueError>;
 
@@ -780,7 +782,7 @@ pub trait TypedValue: Sized + 'static {
         _call_stack: &mut CallStack,
         _type_values: &TypeValues,
         _positional: Vec<Value>,
-        _named: LinkedHashMap<String, Value>,
+        _named: LinkedHashMap<RcString, Value>,
         _args: Option<Value>,
         _kwargs: Option<Value>,
     ) -> ValueResult {
@@ -927,7 +929,7 @@ pub trait TypedValue: Sized + 'static {
 
     /// Return a vector of string listing all attribute of the current value, excluding native
     /// methods.
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+    fn dir_attr(&self) -> Result<Vec<RcString>, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: "dir()".to_owned(),
             left: Self::TYPE.to_owned(),
@@ -1161,6 +1163,12 @@ impl Value {
         self.to_str_impl(&mut buf).unwrap();
         buf
     }
+    pub fn to_rc_string(&self) -> RcString {
+        if let ValueInner::String(s) = &self.0 {
+            return s.clone();
+        }
+        RcString::from(self.to_str())
+    }
     pub fn to_repr_impl(&self, buf: &mut String) -> fmt::Result {
         self.value_holder().to_repr_impl_dyn(buf)
     }
@@ -1193,7 +1201,7 @@ impl Value {
         call_stack: &mut CallStack,
         type_values: &TypeValues,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
@@ -1264,7 +1272,7 @@ impl Value {
             Ok(mut v) => v.set_attr_dyn(attribute, new_value),
         }
     }
-    pub fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+    pub fn dir_attr(&self) -> Result<Vec<RcString>, ValueError> {
         self.value_holder().dir_attr_dyn()
     }
     pub fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
@@ -1341,6 +1349,15 @@ impl Value {
         let any = ObjectRefMut::map(object_ref, |o| o.as_any_mut());
         Ok(ObjectRefMut::flat_map(any, |any| any.downcast_mut()))
     }
+
+    /// `downcast_ref` cannot be used, because we are obtaining `RcString`, not `String`
+    pub fn downcast_rc_str(&self) -> Option<&RcString> {
+        if let ValueInner::String(s) = &self.0 {
+            Some(s)
+        } else {
+            None
+        }
+    }
 }
 
 // Submodules
@@ -1370,6 +1387,7 @@ use crate::values::cell::ObjectCell;
 use crate::values::cell::ObjectRef;
 use crate::values::cell::ObjectRefMut;
 use crate::values::none::NoneType;
+use crate::values::string::rc::RcString;
 
 #[cfg(test)]
 mod tests {

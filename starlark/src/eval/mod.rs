@@ -55,6 +55,7 @@ use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
 use crate::values::function::WrappedMethod;
 use crate::values::none::NoneType;
+use crate::values::string::rc::RcString;
 use crate::values::*;
 use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
@@ -360,7 +361,7 @@ fn eval_dot<E: EvaluationContextEnvironment>(
 }
 
 enum TransformedExpr {
-    Dot(Value, String, Span),
+    Dot(Value, RcString, Span),
     ArrayIndirection(Value, Value, Span),
     Slot(usize, AstString),
 }

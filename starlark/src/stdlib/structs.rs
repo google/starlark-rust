@@ -15,6 +15,7 @@
 //! Implementation of `struct` function.
 
 use crate::values::error::ValueError;
+use crate::values::string::rc::RcString;
 use crate::values::*;
 use linked_hash_map::LinkedHashMap;
 use std::fmt;
@@ -22,11 +23,11 @@ use std::fmt::Write as _;
 
 /// `struct()` implementation.
 pub struct StarlarkStruct {
-    fields: LinkedHashMap<String, Value>,
+    fields: LinkedHashMap<RcString, Value>,
 }
 
 impl StarlarkStruct {
-    pub(crate) fn new(fields: LinkedHashMap<String, Value>) -> StarlarkStruct {
+    pub(crate) fn new(fields: LinkedHashMap<RcString, Value>) -> StarlarkStruct {
         StarlarkStruct { fields }
     }
 }
@@ -89,7 +90,7 @@ impl TypedValue for StarlarkStruct {
         Ok(self.fields.contains_key(attribute))
     }
 
-    fn dir_attr(&self) -> Result<Vec<String>, ValueError> {
+    fn dir_attr(&self) -> Result<Vec<RcString>, ValueError> {
         Ok(self.fields.keys().cloned().collect())
     }
 }

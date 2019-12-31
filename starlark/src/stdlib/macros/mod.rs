@@ -92,7 +92,7 @@ macro_rules! starlark_parse_param_type {
         ::std::vec::Vec<$crate::values::Value>
     };
     (**) => {
-        ::linked_hash_map::LinkedHashMap<::std::string::String, $crate::values::Value>
+        ::linked_hash_map::LinkedHashMap<$crate::values::string::rc::RcString, $crate::values::Value>
     };
 }
 
@@ -203,7 +203,7 @@ macro_rules! starlark_signatures {
             #[allow(unused_mut)]
             let mut signature = $crate::stdlib::macros::signature::SignatureBuilder::default();
             starlark_signature!(signature $($signature)*);
-            $env.set(name, $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature.build())).unwrap();
+            $env.set(name, $crate::values::function::NativeFunction::new(name.into(), $name, signature.build())).unwrap();
         }
         $(starlark_signatures!{ $env, $type_values,
             $($rest)+
@@ -216,7 +216,7 @@ macro_rules! starlark_signatures {
             let mut signature = $crate::stdlib::macros::signature::SignatureBuilder::default();
             starlark_signature!(signature $($signature)*);
             $type_values.add_type_value(stringify!($ty), name,
-                $crate::values::function::NativeFunction::new(name.to_owned(), $name, signature.build()));
+                $crate::values::function::NativeFunction::new(name.into(), $name, signature.build()));
         }
         $(starlark_signatures!{ $env, $type_values,
             $($rest)+
@@ -263,7 +263,7 @@ macro_rules! starlark_signatures {
 ///     // Parameter can be any type which implements `TryParamConvertFromValue`.
 ///     // When parameter type is not specified, it is defaulted to `Value`
 ///     // for regular parameters, `Vec<Value>` for `*args`
-///     // and `LinkedHashMap<String, Value>` for `**kwargs`.
+///     // and `LinkedHashMap<RcString, Value>` for `**kwargs`.
 ///     sqr(x: i64) {
 ///         Ok(Value::new(x * x))
 ///     }

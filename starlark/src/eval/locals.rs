@@ -18,6 +18,7 @@ use crate::eval::globals::Globals;
 use crate::stdlib::structs::StarlarkStruct;
 use crate::values::dict::Dictionary;
 use crate::values::inspect::Inspectable;
+use crate::values::string::rc::RcString;
 use crate::values::Value;
 use linked_hash_map::LinkedHashMap;
 use std::collections::hash_map;
@@ -26,7 +27,7 @@ use std::collections::HashMap;
 #[derive(Default, Debug, Clone)]
 struct Scope {
     /// Name to slot mapping in current scope
-    name_to_slot: HashMap<String, usize>,
+    name_to_slot: HashMap<RcString, usize>,
     nested_scopes: Vec<Scope>,
 }
 
@@ -77,7 +78,7 @@ impl Scope {
 
 impl Inspectable for Scope {
     fn inspect(&self) -> Value {
-        let mut fields = LinkedHashMap::<String, Value>::new();
+        let mut fields = LinkedHashMap::<RcString, Value>::new();
 
         let mut name_to_slot = Dictionary::new_typed();
         for (n, s) in &self.name_to_slot {
@@ -104,7 +105,7 @@ impl Locals {
 
 impl Inspectable for Locals {
     fn inspect(&self) -> Value {
-        let mut fields = LinkedHashMap::<String, Value>::new();
+        let mut fields = LinkedHashMap::<RcString, Value>::new();
         fields.insert("count".into(), (self.local_count as i64).into());
         fields.insert("locals".into(), self.locals.inspect());
         Value::new(StarlarkStruct::new(fields))
@@ -134,11 +135,9 @@ impl LocalsBuilder {
     }
 
     /// Register a variable in current scope
-    pub fn register_local(&mut self, name: &str) {
+    pub fn register_local(&mut self, name: RcString) {
         let local_count = self.locals.local_count;
-        if let hash_map::Entry::Vacant(e) =
-            self.current_locals().name_to_slot.entry(name.to_owned())
-        {
+        if let hash_map::Entry::Vacant(e) = self.current_locals().name_to_slot.entry(name) {
             e.insert(local_count);
         }
         self.locals.local_count += 1;
@@ -207,9 +206,9 @@ mod test {
     #[test]
     fn one_level() {
         let mut builder = LocalsBuilder::default();
-        builder.register_local("a");
-        builder.register_local("b");
-        builder.register_local("a");
+        builder.register_local("a".into());
+        builder.register_local("b".into());
+        builder.register_local("a".into());
         let locals = builder.build();
         let mut globals = Globals::default();
         let mut query = LocalsQuery::new(&locals, &mut globals);
@@ -221,9 +220,9 @@ mod test {
     #[test]
     fn override_on_second_level() {
         let mut builder = LocalsBuilder::default();
-        builder.register_local("a");
+        builder.register_local("a".into());
         builder.push_scope();
-        builder.register_local("a");
+        builder.register_local("a".into());
         builder.pop_scope();
         let locals = builder.build();
         let mut globals = Globals::default();
@@ -240,12 +239,12 @@ mod test {
         // Here we have three distinct `a` variables:
         // in the top scope, and in two nested scopes
         let mut builder = LocalsBuilder::default();
-        builder.register_local("a");
+        builder.register_local("a".into());
         builder.push_scope();
-        builder.register_local("a");
+        builder.register_local("a".into());
         builder.pop_scope();
         builder.push_scope();
-        builder.register_local("a");
+        builder.register_local("a".into());
         builder.pop_scope();
         let locals = builder.build();
         let mut globals = Globals::default();

@@ -25,11 +25,11 @@ use std::vec;
 #[derive(Debug, Clone)]
 #[doc(hidden)]
 pub enum FunctionParameter {
-    Normal(String),
-    Optional(String),
-    WithDefaultValue(String, Value),
-    ArgsArray(String),
-    KWArgsDict(String),
+    Normal(RcString),
+    Optional(RcString),
+    WithDefaultValue(RcString, Value),
+    ArgsArray(RcString),
+    KWArgsDict(RcString),
 }
 
 #[derive(Debug, Clone)]
@@ -63,8 +63,8 @@ impl FunctionSignature {
 #[derive(Debug, Clone)]
 #[doc(hidden)]
 pub enum FunctionType {
-    Native(String),
-    Def(String, String),
+    Native(RcString),
+    Def(RcString, RcString),
 }
 
 #[derive(Debug, Clone)]
@@ -72,7 +72,7 @@ pub enum FunctionArg {
     Normal(Value),
     Optional(Option<Value>),
     ArgsArray(Vec<Value>),
-    KWArgsDict(LinkedHashMap<String, Value>),
+    KWArgsDict(LinkedHashMap<RcString, Value>),
 }
 
 impl FunctionArg {
@@ -120,7 +120,7 @@ impl FunctionArg {
     pub fn into_kw_args_dict<T: TryParamConvertFromValue>(
         self,
         param_name: &'static str,
-    ) -> Result<LinkedHashMap<String, T>, ValueError> {
+    ) -> Result<LinkedHashMap<RcString, T>, ValueError> {
         match self {
             FunctionArg::KWArgsDict(dict) => Ok({
                 let mut r = LinkedHashMap::new();
@@ -253,7 +253,7 @@ impl From<FunctionError> for ValueError {
 
 impl NativeFunction {
     pub fn new(
-        name: String,
+        name: RcString,
         function: fn(&mut CallStack, &TypeValues, ParameterParser) -> ValueResult,
         signature: FunctionSignature,
     ) -> Value {
@@ -274,8 +274,8 @@ impl WrappedMethod {
 impl FunctionType {
     fn to_str(&self) -> String {
         match self {
-            FunctionType::Native(ref name) => name.clone(),
-            FunctionType::Def(ref name, ..) => name.clone(),
+            FunctionType::Native(ref name) => name.as_string().clone(),
+            FunctionType::Def(ref name, ..) => name.as_string().clone(),
         }
     }
 
@@ -351,7 +351,7 @@ pub struct ParameterParser<'a> {
     index: usize,
     function_type: &'a FunctionType,
     positional: vec::IntoIter<Value>,
-    kwargs: LinkedHashMap<String, Value>,
+    kwargs: LinkedHashMap<RcString, Value>,
 }
 
 impl<'a> ParameterParser<'a> {
@@ -359,7 +359,7 @@ impl<'a> ParameterParser<'a> {
         signature: &'a FunctionSignature,
         function_type: &'a FunctionType,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs_arg: Option<Value>,
     ) -> Result<ParameterParser<'a>, ValueError> {
@@ -378,8 +378,7 @@ impl<'a> ParameterParser<'a> {
             match x.iter() {
                 Ok(y) => {
                     for n in &y {
-                        if n.get_type() == "string" {
-                            let k = n.to_str();
+                        if let Some(k) = n.downcast_rc_str().cloned() {
                             if let Ok(v) = x.at(n) {
                                 kwargs.insert(k, v);
                             } else {
@@ -454,7 +453,7 @@ impl<'a> ParameterParser<'a> {
         mem::replace(&mut self.positional, Vec::new().into_iter()).collect()
     }
 
-    pub fn next_kwargs_dict(&mut self) -> LinkedHashMap<String, Value> {
+    pub fn next_kwargs_dict(&mut self) -> LinkedHashMap<RcString, Value> {
         self.index += 1;
         mem::replace(&mut self.kwargs, Default::default())
     }
@@ -513,7 +512,7 @@ impl TypedValue for NativeFunction {
         call_stack: &mut CallStack,
         type_values: &TypeValues,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
@@ -556,7 +555,7 @@ impl TypedValue for WrappedMethod {
         call_stack: &mut CallStack,
         type_values: &TypeValues,
         positional: Vec<Value>,
-        named: LinkedHashMap<String, Value>,
+        named: LinkedHashMap<RcString, Value>,
         args: Option<Value>,
         kwargs: Option<Value>,
     ) -> ValueResult {
@@ -581,32 +580,32 @@ mod test {
         assert_eq!(
             "<native function f>()",
             repr(
-                &FunctionType::Native("f".to_owned()),
+                &FunctionType::Native("f".into()),
                 &FunctionSignature::new(vec![], 0)
             )
         );
         assert_eq!(
             "<native function f>(a)",
             repr(
-                &FunctionType::Native("f".to_owned()),
-                &FunctionSignature::new(vec![FunctionParameter::Normal("a".to_owned())], 0)
+                &FunctionType::Native("f".into()),
+                &FunctionSignature::new(vec![FunctionParameter::Normal("a".into())], 0)
             )
         );
         assert_eq!(
             "<native function f>(a, /)",
             repr(
-                &FunctionType::Native("f".to_owned()),
-                &FunctionSignature::new(vec![FunctionParameter::Normal("a".to_owned())], 1)
+                &FunctionType::Native("f".into()),
+                &FunctionSignature::new(vec![FunctionParameter::Normal("a".into())], 1)
             )
         );
         assert_eq!(
             "<native function f>(a, b)",
             repr(
-                &FunctionType::Native("f".to_owned()),
+                &FunctionType::Native("f".into()),
                 &FunctionSignature::new(
                     vec![
-                        FunctionParameter::Normal("a".to_owned()),
-                        FunctionParameter::Normal("b".to_owned()),
+                        FunctionParameter::Normal("a".into()),
+                        FunctionParameter::Normal("b".into()),
                     ],
                     0,
                 )
@@ -615,11 +614,11 @@ mod test {
         assert_eq!(
             "<native function f>(a, /, b)",
             repr(
-                &FunctionType::Native("f".to_owned()),
+                &FunctionType::Native("f".into()),
                 &FunctionSignature::new(
                     vec![
-                        FunctionParameter::Normal("a".to_owned()),
-                        FunctionParameter::Normal("b".to_owned()),
+                        FunctionParameter::Normal("a".into()),
+                        FunctionParameter::Normal("b".into()),
                     ],
                     1,
                 )
@@ -628,11 +627,11 @@ mod test {
         assert_eq!(
             "<native function f>(a, b, /)",
             repr(
-                &FunctionType::Native("f".to_owned()),
+                &FunctionType::Native("f".into()),
                 &FunctionSignature::new(
                     vec![
-                        FunctionParameter::Normal("a".to_owned()),
-                        FunctionParameter::Normal("b".to_owned()),
+                        FunctionParameter::Normal("a".into()),
+                        FunctionParameter::Normal("b".into()),
                     ],
                     2,
                 )
@@ -641,12 +640,12 @@ mod test {
         assert_eq!(
             "<native function f>(a, b, /, **k)",
             repr(
-                &FunctionType::Native("f".to_owned()),
+                &FunctionType::Native("f".into()),
                 &FunctionSignature::new(
                     vec![
-                        FunctionParameter::Normal("a".to_owned()),
-                        FunctionParameter::Normal("b".to_owned()),
-                        FunctionParameter::KWArgsDict("k".to_owned()),
+                        FunctionParameter::Normal("a".into()),
+                        FunctionParameter::Normal("b".into()),
+                        FunctionParameter::KWArgsDict("k".into()),
                     ],
                     2,
                 )
@@ -659,15 +658,15 @@ mod test {
         assert_eq!(
             "<native function f>(?a)",
             repr(
-                &FunctionType::Native("f".to_owned()),
-                &FunctionSignature::new(vec![FunctionParameter::Optional("a".to_owned())], 0)
+                &FunctionType::Native("f".into()),
+                &FunctionSignature::new(vec![FunctionParameter::Optional("a".into())], 0)
             )
         );
         assert_eq!(
             "<native function f>(?a, /)",
             repr(
-                &FunctionType::Native("f".to_owned()),
-                &FunctionSignature::new(vec![FunctionParameter::Optional("a".to_owned())], 1)
+                &FunctionType::Native("f".into()),
+                &FunctionSignature::new(vec![FunctionParameter::Optional("a".into())], 1)
             )
         );
     }
@@ -677,10 +676,10 @@ mod test {
         assert_eq!(
             "<native function f>(a = 10)",
             repr(
-                &FunctionType::Native("f".to_owned()),
+                &FunctionType::Native("f".into()),
                 &FunctionSignature::new(
                     vec![FunctionParameter::WithDefaultValue(
-                        "a".to_owned(),
+                        "a".into(),
                         Value::new(10),
                     )],
                     0,
