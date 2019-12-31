@@ -518,9 +518,17 @@ impl ExprCompiled {
             }
             ExprCompiled::If(cond, then_expr, else_expr) => {
                 let cond = Self::optimize_on_freeze(cond, captured_env);
-                let then_expr = Self::optimize_on_freeze(then_expr, captured_env);
-                let else_expr = Self::optimize_on_freeze(else_expr, captured_env);
-                ExprCompiled::If(cond, then_expr, else_expr)
+                if let Ok(cond) = cond.pure() {
+                    if cond.get_ref().to_bool() {
+                        return Self::optimize_on_freeze(then_expr, captured_env);
+                    } else {
+                        return Self::optimize_on_freeze(else_expr, captured_env);
+                    }
+                } else {
+                    let then_expr = Self::optimize_on_freeze(then_expr, captured_env);
+                    let else_expr = Self::optimize_on_freeze(else_expr, captured_env);
+                    ExprCompiled::If(cond, then_expr, else_expr)
+                }
             }
             ExprCompiled::Or(left, right) => {
                 let left = Self::optimize_on_freeze(left, captured_env);
@@ -897,6 +905,21 @@ def f():
             "\
 def f():
   return 17
+",
+        );
+    }
+
+    #[test]
+    fn inline_if_else() {
+        test_optimize_on_freeze(
+            "\
+L = []
+def f():
+  return 23 if L else 29
+",
+            "\
+def f():
+  return 29
 ",
         );
     }
