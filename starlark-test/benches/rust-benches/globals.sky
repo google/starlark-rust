@@ -1,0 +1,15 @@
+my_module = struct(
+    const = 17,
+    more_consts = (True, None, 19)
+)
+
+d = {
+    "a": 23,
+}
+
+def bench():
+    return (
+        my_module.const,
+        my_module.more_consts[2],
+        d["a"],
+    )
