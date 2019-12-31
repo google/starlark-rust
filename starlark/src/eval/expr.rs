@@ -532,11 +532,27 @@ impl ExprCompiled {
             }
             ExprCompiled::Or(left, right) => {
                 let left = Self::optimize_on_freeze(left, captured_env);
-                ExprCompiled::Or(left, Self::optimize_on_freeze(right, captured_env))
+                if let Ok(left) = left.pure() {
+                    if left.get_ref().to_bool() {
+                        ExprCompiled::Value(left)
+                    } else {
+                        return Self::optimize_on_freeze(right, captured_env);
+                    }
+                } else {
+                    ExprCompiled::Or(left, Self::optimize_on_freeze(right, captured_env))
+                }
             }
             ExprCompiled::And(left, right) => {
                 let left = Self::optimize_on_freeze(left, captured_env);
-                ExprCompiled::And(left, Self::optimize_on_freeze(right, captured_env))
+                if let Ok(left) = left.pure() {
+                    if left.get_ref().to_bool() {
+                        return Self::optimize_on_freeze(right, captured_env);
+                    } else {
+                        ExprCompiled::Value(left)
+                    }
+                } else {
+                    ExprCompiled::And(left, Self::optimize_on_freeze(right, captured_env))
+                }
             }
             ExprCompiled::BinOp(op, left, right) => {
                 let left = Self::optimize_on_freeze(left, captured_env);
@@ -920,6 +936,20 @@ def f():
             "\
 def f():
   return 29
+",
+        );
+    }
+
+    #[test]
+    fn inline_and_or() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  return 1 and 2 or 3
+",
+            "\
+def f():
+  return 2
 ",
         );
     }
