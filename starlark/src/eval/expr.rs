@@ -18,6 +18,7 @@ use crate::environment::Environment;
 use crate::eval::compiler::GlobalCompiler;
 use crate::eval::compiler::LocalCompiler;
 use crate::eval::compiler::LocalOrGlobalCompiler;
+use crate::eval::eval_un_op;
 use crate::eval::globals::Globals;
 use crate::eval::locals::Locals;
 use crate::eval::locals::LocalsQuery;
@@ -536,7 +537,16 @@ impl ExprCompiled {
             }
             ExprCompiled::UnOp(op, expr) => {
                 let expr = Self::optimize_on_freeze(expr, captured_env);
-                ExprCompiled::UnOp(op, expr)
+                loop {
+                    if let Ok(v) = expr.node.pure() {
+                        if let Ok(r) = eval_un_op(op, v.get_ref().clone()) {
+                            if let Ok(r) = FrozenValue::new(r) {
+                                break ExprCompiled::Value(r);
+                            }
+                        }
+                    }
+                    break ExprCompiled::UnOp(op, expr);
+                }
             }
             ExprCompiled::Local(e) => {
                 ExprCompiled::Local(ExprLocal::optimize_on_freeze(e, captured_env))
@@ -875,5 +885,19 @@ def f():
   return False
 ",
         )
+    }
+
+    #[test]
+    fn inline_un_op() {
+        test_optimize_on_freeze(
+            "\
+def f():
+  return +17
+",
+            "\
+def f():
+  return 17
+",
+        );
     }
 }
