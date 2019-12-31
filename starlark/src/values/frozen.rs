@@ -46,6 +46,11 @@ impl FrozenValue {
             Err(())
         }
     }
+
+    /// Get a reference to a [`Value`] held inside this.
+    pub fn get_ref(&self) -> &Value {
+        &self.0
+    }
 }
 
 impl From<FrozenValue> for Value {

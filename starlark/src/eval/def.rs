@@ -17,6 +17,7 @@
 use std::convert::TryInto;
 use std::fmt;
 use std::iter;
+use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -202,8 +203,15 @@ impl DefCompiled {
         }
     }
 
+    fn optimize_on_freeze(&mut self, captured_env: &Environment) {
+        self.suite = BlockCompiled::optimize_on_freeze(
+            mem::replace(&mut self.suite, BlockCompiled::default()),
+            captured_env,
+        );
+    }
+
     pub(crate) fn fmt_for_test(&self, f: &mut dyn fmt::Write, tab: &str) -> fmt::Result {
-        write!(f, "{}def {}(", tab, self.name.node)?;
+        write!(f, "def {}(", self.name.node)?;
         for (i, p) in self.params.iter().enumerate() {
             if i != 0 {
                 write!(f, ", ")?;
@@ -261,7 +269,7 @@ impl Def {
     }
 
     pub fn optimize_on_freeze(&mut self) {
-        // TODO: optimize
+        self.stmt.optimize_on_freeze(&self.captured_env);
     }
 
     #[cfg_attr(not(test), allow(dead_code))]

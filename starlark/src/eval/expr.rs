@@ -14,6 +14,7 @@
 
 //! Interpreter-ready expr
 
+use crate::environment::Environment;
 use crate::eval::compiler::GlobalCompiler;
 use crate::eval::compiler::LocalCompiler;
 use crate::eval::compiler::LocalOrGlobalCompiler;
@@ -381,6 +382,143 @@ impl ExprCompiled {
     ) -> Result<AstExprCompiled, Diagnostic> {
         Self::compile(expr, &mut GlobalCompiler::new(globals))
     }
+
+    fn optimize_on_freeze_exprs(
+        vec: Vec<AstExprCompiled>,
+        captured_env: &Environment,
+    ) -> Vec<AstExprCompiled> {
+        vec.into_iter()
+            .map(|e| ExprCompiled::optimize_on_freeze(e, captured_env))
+            .collect()
+    }
+
+    /// Expression is a constant `Value` and the value is "pure"
+    pub(crate) fn pure(&self) -> Result<FrozenValue, ()> {
+        match self {
+            ExprCompiled::Value(v) if v.get_ref().is_pure() => Ok(v.clone()),
+            _ => Err(()),
+        }
+    }
+
+    pub(crate) fn optimize_on_freeze(
+        expr: AstExprCompiled,
+        captured_env: &Environment,
+    ) -> AstExprCompiled {
+        let span = expr.span;
+        let expr = match expr.node {
+            ExprCompiled::Tuple(items) => {
+                let items = Self::optimize_on_freeze_exprs(items, captured_env);
+                ExprCompiled::Tuple(items)
+            }
+            ExprCompiled::List(items) => {
+                let items = Self::optimize_on_freeze_exprs(items, captured_env);
+                ExprCompiled::List(items)
+            }
+            ExprCompiled::Set(items) => {
+                let items = Self::optimize_on_freeze_exprs(items, captured_env);
+                ExprCompiled::Set(items)
+            }
+            ExprCompiled::Dict(pairs) => {
+                let pairs: Vec<(_, _)> = pairs
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            Self::optimize_on_freeze(k, captured_env),
+                            Self::optimize_on_freeze(v, captured_env),
+                        )
+                    })
+                    .collect();
+                ExprCompiled::Dict(pairs)
+            }
+            ExprCompiled::Dot(object, field) => {
+                let object = ExprCompiled::optimize_on_freeze(object, captured_env);
+                ExprCompiled::Dot(object, field)
+            }
+            ExprCompiled::ArrayIndirection(array, index) => {
+                let array = Self::optimize_on_freeze(array, captured_env);
+                let index = Self::optimize_on_freeze(index, captured_env);
+                ExprCompiled::ArrayIndirection(array, index)
+            }
+            ExprCompiled::Slice(array, a, b, c) => {
+                let array = Self::optimize_on_freeze(array, captured_env);
+                let a = a.map(|a| Self::optimize_on_freeze(a, captured_env));
+                let b = b.map(|b| Self::optimize_on_freeze(b, captured_env));
+                let c = c.map(|c| Self::optimize_on_freeze(c, captured_env));
+                ExprCompiled::Slice(array, a, b, c)
+            }
+            e @ ExprCompiled::Name(..) => e,
+            ExprCompiled::Call(f, positional, named, star, star_star) => {
+                let f = ExprCompiled::optimize_on_freeze(f, captured_env);
+                let positional = Self::optimize_on_freeze_exprs(positional, captured_env);
+                let named = named
+                    .into_iter()
+                    .map(|(k, v)| (k, Self::optimize_on_freeze(v, captured_env)))
+                    .collect();
+                let star = star.map(|e| Self::optimize_on_freeze(e, captured_env));
+                let star_star = star_star.map(|e| Self::optimize_on_freeze(e, captured_env));
+                // TODO: evaluate pure functions
+                ExprCompiled::Call(f, positional, named, star, star_star)
+            }
+            ExprCompiled::Not(expr) => {
+                let expr = Self::optimize_on_freeze(expr, captured_env);
+                ExprCompiled::Not(expr)
+            }
+            ExprCompiled::If(cond, then_expr, else_expr) => {
+                let cond = Self::optimize_on_freeze(cond, captured_env);
+                let then_expr = Self::optimize_on_freeze(then_expr, captured_env);
+                let else_expr = Self::optimize_on_freeze(else_expr, captured_env);
+                ExprCompiled::If(cond, then_expr, else_expr)
+            }
+            ExprCompiled::Or(left, right) => {
+                let left = Self::optimize_on_freeze(left, captured_env);
+                ExprCompiled::Or(left, Self::optimize_on_freeze(right, captured_env))
+            }
+            ExprCompiled::And(left, right) => {
+                let left = Self::optimize_on_freeze(left, captured_env);
+                ExprCompiled::And(left, Self::optimize_on_freeze(right, captured_env))
+            }
+            ExprCompiled::BinOp(op, left, right) => {
+                let left = Self::optimize_on_freeze(left, captured_env);
+                let right = Self::optimize_on_freeze(right, captured_env);
+                ExprCompiled::BinOp(op, left, right)
+            }
+            ExprCompiled::UnOp(op, expr) => {
+                let expr = Self::optimize_on_freeze(expr, captured_env);
+                ExprCompiled::UnOp(op, expr)
+            }
+            ExprCompiled::Local(e) => {
+                ExprCompiled::Local(ExprLocal::optimize_on_freeze(e, captured_env))
+            }
+            ExprCompiled::ListComprehension(expr, clauses) => {
+                let expr = Self::optimize_on_freeze(expr, captured_env);
+                let clauses = ClauseCompiled::optimize_on_freeze_clauses(clauses, captured_env);
+                ExprCompiled::ListComprehension(expr, clauses)
+            }
+            ExprCompiled::SetComprehension(expr, clauses) => {
+                let expr = Self::optimize_on_freeze(expr, captured_env);
+                let clauses = ClauseCompiled::optimize_on_freeze_clauses(clauses, captured_env);
+                ExprCompiled::SetComprehension(expr, clauses)
+            }
+            ExprCompiled::DictComprehension((k, v), clauses) => {
+                let k = Self::optimize_on_freeze(k, captured_env);
+                let v = Self::optimize_on_freeze(v, captured_env);
+                let clauses = ClauseCompiled::optimize_on_freeze_clauses(clauses, captured_env);
+                ExprCompiled::DictComprehension((k, v), clauses)
+            }
+            e @ ExprCompiled::Value(..) => e,
+        };
+        Box::new(Spanned { span, node: expr })
+    }
+}
+
+impl ExprLocal {
+    fn optimize_on_freeze(expr: ExprLocal, captured_env: &Environment) -> ExprLocal {
+        ExprLocal {
+            expr: ExprCompiled::optimize_on_freeze(expr.expr, captured_env),
+            locals: expr.locals,
+            globals: expr.globals,
+        }
+    }
 }
 
 impl Inspectable for ExprCompiled {
@@ -453,6 +591,34 @@ impl AssignTargetExprCompiled {
             },
         })
     }
+
+    pub fn optimize_on_freeze(
+        expr: AstAssignTargetExprCompiled,
+        captured_env: &Environment,
+    ) -> AstAssignTargetExprCompiled {
+        Spanned {
+            span: expr.span,
+            node: match expr.node {
+                e @ AssignTargetExprCompiled::Name(..) => e,
+                AssignTargetExprCompiled::Subtargets(subtargets) => {
+                    let subtargets = subtargets
+                        .into_iter()
+                        .map(|t| Self::optimize_on_freeze(t, captured_env))
+                        .collect();
+                    AssignTargetExprCompiled::Subtargets(subtargets)
+                }
+                AssignTargetExprCompiled::ArrayIndirection(array, index) => {
+                    let array = ExprCompiled::optimize_on_freeze(array, captured_env);
+                    let index = ExprCompiled::optimize_on_freeze(index, captured_env);
+                    AssignTargetExprCompiled::ArrayIndirection(array, index)
+                }
+                AssignTargetExprCompiled::Dot(object, field) => {
+                    let object = ExprCompiled::optimize_on_freeze(object, captured_env);
+                    AssignTargetExprCompiled::Dot(object, field)
+                }
+            },
+        }
+    }
 }
 
 impl AugmentedAssignTargetExprCompiled {
@@ -483,6 +649,59 @@ impl AugmentedAssignTargetExprCompiled {
                 }
             },
         })
+    }
+
+    pub fn optimize_on_freeze(
+        expr: AstAugmentedAssignTargetExprCompiled,
+        captured_env: &Environment,
+    ) -> AstAugmentedAssignTargetExprCompiled {
+        Spanned {
+            span: expr.span,
+            node: match expr.node {
+                e @ AugmentedAssignTargetExprCompiled::Slot(..) => e,
+                AugmentedAssignTargetExprCompiled::ArrayIndirection(array, index) => {
+                    let array = ExprCompiled::optimize_on_freeze(array, captured_env);
+                    let index = ExprCompiled::optimize_on_freeze(index, captured_env);
+                    AugmentedAssignTargetExprCompiled::ArrayIndirection(array, index)
+                }
+                AugmentedAssignTargetExprCompiled::Dot(object, field) => {
+                    let object = ExprCompiled::optimize_on_freeze(object, captured_env);
+                    AugmentedAssignTargetExprCompiled::Dot(object, field)
+                }
+            },
+        }
+    }
+}
+
+impl ClauseCompiled {
+    fn optimize_on_freeze(
+        clause: AstClauseCompiled,
+        captured_env: &Environment,
+    ) -> AstClauseCompiled {
+        Spanned {
+            span: clause.span,
+            node: match clause.node {
+                ClauseCompiled::If(cond) => {
+                    let cond = ExprCompiled::optimize_on_freeze(cond, captured_env);
+                    ClauseCompiled::If(cond)
+                }
+                ClauseCompiled::For(assign, expr) => {
+                    let assign = AssignTargetExprCompiled::optimize_on_freeze(assign, captured_env);
+                    let expr = ExprCompiled::optimize_on_freeze(expr, captured_env);
+                    ClauseCompiled::For(assign, expr)
+                }
+            },
+        }
+    }
+
+    fn optimize_on_freeze_clauses(
+        clauses: Vec<AstClauseCompiled>,
+        captured_env: &Environment,
+    ) -> Vec<AstClauseCompiled> {
+        clauses
+            .into_iter()
+            .map(|c| Self::optimize_on_freeze(c, captured_env))
+            .collect()
     }
 }
 

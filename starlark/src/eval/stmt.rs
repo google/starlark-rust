@@ -14,6 +14,7 @@
 
 //! Interpreter-ready statement
 
+use crate::environment::Environment;
 use crate::eval::compiler::GlobalCompiler;
 use crate::eval::compiler::LocalCompiler;
 use crate::eval::def::DefCompiled;
@@ -61,10 +62,52 @@ pub(crate) enum StatementCompiled {
     Load(AstString, Vec<(AstString, AstString)>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct BlockCompiled(pub(crate) Vec<AstStatementCompiled>);
 
 impl StatementCompiled {
+    fn optimize_on_freeze(
+        stmt: AstStatementCompiled,
+        captured_env: &Environment,
+    ) -> Vec<AstStatementCompiled> {
+        vec![Spanned {
+            span: stmt.span,
+            node: match stmt.node {
+                StatementCompiled::Return(expr) => {
+                    StatementCompiled::Return(ExprCompiled::optimize_on_freeze(expr, captured_env))
+                }
+                StatementCompiled::Expression(expr) => {
+                    let expr = ExprCompiled::optimize_on_freeze(expr, captured_env);
+                    StatementCompiled::Expression(expr)
+                }
+                StatementCompiled::IfElse(cond, then_block, else_block) => {
+                    let then_block = BlockCompiled::optimize_on_freeze(then_block, captured_env);
+                    let else_block = BlockCompiled::optimize_on_freeze(else_block, captured_env);
+                    StatementCompiled::IfElse(cond, then_block, else_block)
+                }
+                StatementCompiled::For(assign, over, block) => {
+                    let assign = AssignTargetExprCompiled::optimize_on_freeze(assign, captured_env);
+                    let block = BlockCompiled::optimize_on_freeze(block, captured_env);
+                    StatementCompiled::For(assign, over, block)
+                }
+                StatementCompiled::Assign(target, expr) => {
+                    let target = AssignTargetExprCompiled::optimize_on_freeze(target, captured_env);
+                    let expr = ExprCompiled::optimize_on_freeze(expr, captured_env);
+                    StatementCompiled::Assign(target, expr)
+                }
+                StatementCompiled::AugmentedAssign(target, op, expr) => {
+                    let target =
+                        AugmentedAssignTargetExprCompiled::optimize_on_freeze(target, captured_env);
+                    let expr = ExprCompiled::optimize_on_freeze(expr, captured_env);
+                    StatementCompiled::AugmentedAssign(target, op, expr)
+                }
+                StatementCompiled::Def(..) => unreachable!(),
+                StatementCompiled::Load(..) => unreachable!(),
+                stmt @ StatementCompiled::Break | stmt @ StatementCompiled::Continue => stmt,
+            },
+        }]
+    }
+
     fn fmt_for_test(&self, f: &mut dyn fmt::Write, tab: &str) -> fmt::Result {
         match self {
             StatementCompiled::Break => writeln!(f, "{}break", tab),
@@ -243,6 +286,19 @@ impl BlockCompiled {
                 Statement::Continue => StatementCompiled::Continue,
             },
         }]))
+    }
+
+    pub(crate) fn optimize_on_freeze(
+        block: BlockCompiled,
+        captured_env: &Environment,
+    ) -> BlockCompiled {
+        BlockCompiled(
+            block
+                .0
+                .into_iter()
+                .flat_map(|stmt| StatementCompiled::optimize_on_freeze(stmt, captured_env))
+                .collect(),
+        )
     }
 
     pub(crate) fn fmt_for_test(&self, f: &mut dyn fmt::Write, indent: &str) -> fmt::Result {
