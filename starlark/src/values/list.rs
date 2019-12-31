@@ -41,12 +41,6 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
 }
 
 impl List {
-    pub fn new() -> Value {
-        Value::new(List {
-            content: Vec::new(),
-        })
-    }
-
     pub fn push(&mut self, value: Value) -> Result<(), ValueError> {
         let value = value.clone_for_container(self)?;
         self.content.push(value);

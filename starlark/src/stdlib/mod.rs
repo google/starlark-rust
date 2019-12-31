@@ -236,13 +236,13 @@ starlark_module! {global_functions =>
     /// # )").unwrap());
     /// ```
     dict(?a, /, **kwargs) {
-        let mut map = Dictionary::new();
+        let map = Dictionary::new();
         if let Some(a) = a {
             match a.get_type() {
                 "dict" => {
                     for k in &a.iter()? {
                         let v = a.at(k.clone())?;
-                        map.set_at(k, v)?;
+                        map.borrow_mut().set_at(k, v)?;
                     }
                 },
                 _ => {
@@ -262,7 +262,7 @@ starlark_module! {global_functions =>
                                         "Non-pair element in first argument".to_owned()
                                     );
                                 }
-                                map.set_at(first.unwrap(), second.unwrap())?;
+                                map.borrow_mut().set_at(first.unwrap(), second.unwrap())?;
                            }
                            Err(..) =>
                                starlark_err!(
@@ -279,9 +279,9 @@ starlark_module! {global_functions =>
            }
        }
        for (k, v) in kwargs {
-           map.set_at(k.into(), v)?;
+           map.borrow_mut().set_at(k.into(), v)?;
        }
-       Ok(map)
+       Ok(map.into())
     }
 
     /// [dir](

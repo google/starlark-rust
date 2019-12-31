@@ -88,6 +88,8 @@ impl TypedValue for i64 {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "int";
 
+    const INLINE: bool = true;
+
     fn new_value(self) -> Value {
         Value(ValueInner::Int(self))
     }

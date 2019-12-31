@@ -99,6 +99,52 @@ use std::marker;
 use std::rc::Rc;
 use std::usize;
 
+/// Similar to [`Value`], but for specific type.
+pub(crate) struct ValueOther<T: TypedValue + ?Sized>(Rc<ValueHolder<T>>);
+
+impl<T: TypedValue + Default> Default for ValueOther<T> {
+    fn default() -> Self {
+        ValueOther::new(T::default())
+    }
+}
+
+impl<T: TypedValue + ?Sized> Clone for ValueOther<T> {
+    fn clone(&self) -> Self {
+        ValueOther(self.0.clone())
+    }
+}
+
+impl<T: TypedValue> ValueOther<T> {
+    pub fn new(v: T) -> ValueOther<T> {
+        assert!(!T::INLINE);
+
+        ValueOther(Rc::new(ValueHolder {
+            value: if T::Holder::MUTABLE {
+                ObjectCell::new_mutable(v)
+            } else {
+                ObjectCell::new_immutable(v)
+            },
+        }))
+    }
+
+    pub fn borrow_mut(&self) -> ObjectRefMut<T> {
+        self.0.value.borrow_mut()
+    }
+}
+
+impl<T: TypedValue + ?Sized> From<ValueOther<T>> for Value {
+    fn from(v: ValueOther<T>) -> Self {
+        Value(ValueInner::Other(v.0))
+    }
+}
+
+impl<T: TypedValue> fmt::Debug for ValueOther<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let value: Value = self.clone().into();
+        fmt::Debug::fmt(&value, f)
+    }
+}
+
 /// ValueInner wraps the actual value or a memory pointer
 /// to the actual value for complex type.
 #[derive(Clone)]
@@ -593,18 +639,16 @@ pub trait TypedValue: Sized + 'static {
     /// Return a string describing the type of self, as returned by the type() function.
     const TYPE: &'static str;
 
+    /// True iff value is stored inline in [`Value`] (instead of in [`Rc`]).
+    #[doc(hidden)]
+    const INLINE: bool = false;
+
     /// Create a value for `TypedValue`.
     ///
     /// This function should be overridden only by builtin types.
     #[doc(hidden)]
     fn new_value(self) -> Value {
-        Value(ValueInner::Other(Rc::new(ValueHolder {
-            value: if Self::Holder::MUTABLE {
-                ObjectCell::new_mutable(self)
-            } else {
-                ObjectCell::new_immutable(self)
-            },
-        })))
+        ValueOther::new(self).into()
     }
 
     /// Return a list of values to be used in freeze or descendant check operations.

@@ -32,6 +32,8 @@ impl TypedValue for bool {
     type Holder = Immutable<Self>;
     const TYPE: &'static str = "bool";
 
+    const INLINE: bool = true;
+
     fn new_value(self) -> Value {
         Value(ValueInner::Bool(self))
     }
