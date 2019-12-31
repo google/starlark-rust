@@ -446,6 +446,21 @@ impl ExprCompiled {
                 let c = c.map(|c| Self::optimize_on_freeze(c, captured_env));
                 ExprCompiled::Slice(array, a, b, c)
             }
+            ExprCompiled::Name(name) if !name.node.local => {
+                match captured_env.get(&name.node.name) {
+                    Ok(value) => {
+                        // We optimize on freeze before actual environment freeze,
+                        // so the value will be frozen anyway.
+                        // But freeze it explicitly to unlock certain optimizations,
+                        // which may check if value is frozen or not.
+                        ExprCompiled::Value(FrozenValue::freeze(value))
+                    }
+                    Err(_) => {
+                        // let it crash at runtime
+                        ExprCompiled::Name(name)
+                    }
+                }
+            }
             e @ ExprCompiled::Name(..) => e,
             ExprCompiled::Call(f, positional, named, star, star_star) => {
                 let f = ExprCompiled::optimize_on_freeze(f, captured_env);
@@ -741,5 +756,40 @@ impl Inspectable for ClauseCompiled {
             ClauseCompiled::For(var, over) => ("for", (var, over).inspect()),
         };
         Value::from((name, param))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::testutil::test_optimize_on_freeze;
+
+    #[test]
+    fn inline_captured_int() {
+        test_optimize_on_freeze(
+            "\
+X = 10
+def f():
+  return X
+",
+            "\
+def f():
+  return 10
+",
+        );
+    }
+
+    #[test]
+    fn inline_captured_list() {
+        test_optimize_on_freeze(
+            "\
+X = [10, True]
+def f():
+  return X
+",
+            "\
+def f():
+  return [10, True]
+",
+        );
     }
 }

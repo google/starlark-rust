@@ -47,6 +47,12 @@ impl FrozenValue {
         }
     }
 
+    /// Freeze a value.
+    pub fn freeze(value: Value) -> FrozenValue {
+        value.freeze();
+        FrozenValue(value)
+    }
+
     /// Get a reference to a [`Value`] held inside this.
     pub fn get_ref(&self) -> &Value {
         &self.0
