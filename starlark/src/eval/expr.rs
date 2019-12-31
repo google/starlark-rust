@@ -35,6 +35,7 @@ use crate::syntax::fmt::comma_separated_fmt;
 use crate::values::frozen::FrozenValue;
 use crate::values::inspect::Inspectable;
 use crate::values::string::rc::RcString;
+use crate::values::tuple::Tuple;
 use crate::values::Value;
 use codemap::Spanned;
 use codemap_diagnostic::Diagnostic;
@@ -400,6 +401,16 @@ impl ExprCompiled {
         }
     }
 
+    fn value_exprs(exprs: &[AstExprCompiled]) -> Result<Vec<Value>, ()> {
+        exprs
+            .iter()
+            .map(|e| match &e.node {
+                ExprCompiled::Value(v) => Ok(v.get_ref().clone()),
+                _ => Err(()),
+            })
+            .collect()
+    }
+
     pub(crate) fn optimize_on_freeze(
         expr: AstExprCompiled,
         captured_env: &Environment,
@@ -408,7 +419,11 @@ impl ExprCompiled {
         let expr = match expr.node {
             ExprCompiled::Tuple(items) => {
                 let items = Self::optimize_on_freeze_exprs(items, captured_env);
-                ExprCompiled::Tuple(items)
+                if let Ok(values) = Self::value_exprs(&items) {
+                    ExprCompiled::Value(FrozenValue::freeze(Value::new(Tuple::new(values))))
+                } else {
+                    ExprCompiled::Tuple(items)
+                }
             }
             ExprCompiled::List(items) => {
                 let items = Self::optimize_on_freeze_exprs(items, captured_env);
