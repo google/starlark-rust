@@ -18,7 +18,6 @@ use super::grammar::{BuildFileParser, StarlarkParser};
 use super::lexer::{Lexer, LexerError, LexerIntoIter, LexerItem, Token};
 use codemap::{CodeMap, Span};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
-use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -145,7 +144,7 @@ macro_rules! iotry {
             Err(err) => {
                 return Err(Diagnostic {
                     level: Level::Error,
-                    message: format!("IOError: {}", err.description()),
+                    message: format!("IOError: {}", err),
                     code: Some(IO_ERROR_CODE.to_owned()),
                     spans: vec![],
                 });
