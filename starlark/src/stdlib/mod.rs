@@ -18,7 +18,6 @@ use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
 use linked_hash_map::LinkedHashMap;
 use std;
 use std::cmp::Ordering;
-use std::error::Error;
 use std::num::NonZeroI64;
 use std::sync;
 
@@ -474,7 +473,7 @@ starlark_module! {global_functions =>
                         "{} is not a valid number in base {}: {}",
                         a.to_repr(),
                         base,
-                        x.description(),
+                        x,
                     ),
                     format!("Not a base {} integer", base)
                 ),
