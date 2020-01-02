@@ -50,6 +50,7 @@ use crate::values::context::EvaluationContextEnvironmentModule;
 use crate::values::context::IndexedGlobals;
 use crate::values::context::IndexedLocals;
 use crate::values::dict::Dictionary;
+use crate::values::error::UnsupportedOperation;
 use crate::values::error::ValueError;
 use crate::values::function::FunctionParameter;
 use crate::values::function::FunctionSignature;
@@ -245,7 +246,7 @@ fn eval_bin_op(op: BinOp, l: Value, r: Value) -> Result<Value, ValueError> {
         BinOp::Division => {
             // No types currently support / so always error.
             return Err(ValueError::OperationNotSupported {
-                op: "/".to_string(),
+                op: UnsupportedOperation::Div,
                 left: l.get_type().to_string(),
                 right: Some(r.get_type().to_string()),
             });

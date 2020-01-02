@@ -86,6 +86,7 @@
 use crate::environment::TypeValues;
 use crate::eval::call_stack;
 use crate::eval::call_stack::CallStack;
+use crate::values::error::UnsupportedOperation;
 use crate::values::error::ValueError;
 use crate::values::iter::{FakeTypedIterable, RefIterable, TypedIterable};
 use codemap_diagnostic::Level;
@@ -418,7 +419,7 @@ impl<T: TypedValue> TypedValueDyn for T {
         match other.downcast_ref::<T>() {
             Some(other) => self.compare(&*other),
             None => Err(ValueError::OperationNotSupported {
-                op: "compare".to_owned(),
+                op: UnsupportedOperation::Compare,
                 left: self.get_type_dyn().to_owned(),
                 right: Some(other.get_type().to_owned()),
             }),
@@ -718,7 +719,7 @@ pub trait TypedValue: Sized + 'static {
     /// (not for string).
     fn to_int(&self) -> Result<i64, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "int()".to_owned(),
+            op: UnsupportedOperation::ToInt,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -757,7 +758,7 @@ pub trait TypedValue: Sized + 'static {
     ///       the trait needs to know the actual type of the value we compare.
     fn compare(&self, _other: &Self) -> Result<Ordering, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "compare".to_owned(),
+            op: UnsupportedOperation::Compare,
             left: Self::TYPE.to_owned(),
             right: Some(Self::TYPE.to_owned()),
         })
@@ -787,7 +788,7 @@ pub trait TypedValue: Sized + 'static {
         _kwargs: Option<Value>,
     ) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "call()".to_owned(),
+            op: UnsupportedOperation::Call,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -798,7 +799,7 @@ pub trait TypedValue: Sized + 'static {
     /// This returns the result of `a[index]` if `a` is indexable.
     fn at(&self, index: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "[]".to_owned(),
+            op: UnsupportedOperation::At,
             left: Self::TYPE.to_owned(),
             right: Some(index.get_type().to_owned()),
         })
@@ -811,7 +812,7 @@ pub trait TypedValue: Sized + 'static {
     /// on this value, even if the value is immutable, e.g. for numbers).
     fn set_at(&mut self, index: Value, _new_value: Value) -> Result<(), ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "[] =".to_owned(),
+            op: UnsupportedOperation::SetAt,
             left: Self::TYPE.to_owned(),
             right: Some(index.get_type().to_owned()),
         })
@@ -865,7 +866,7 @@ pub trait TypedValue: Sized + 'static {
         _stride: Option<Value>,
     ) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "[::]".to_owned(),
+            op: UnsupportedOperation::Slice,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -883,7 +884,7 @@ pub trait TypedValue: Sized + 'static {
     /// Returns the length of the value, if this value is a sequence.
     fn length(&self) -> Result<i64, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "len()".to_owned(),
+            op: UnsupportedOperation::Len,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -895,7 +896,7 @@ pub trait TypedValue: Sized + 'static {
     /// __Note__: this does not handle native methods which are handled through universe.
     fn get_attr(&self, attribute: &str) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: format!(".{}", attribute),
+            op: UnsupportedOperation::GetAttr(attribute.to_owned()),
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -906,7 +907,7 @@ pub trait TypedValue: Sized + 'static {
     /// __Note__: this does not handle native methods which are handled through universe.
     fn has_attr(&self, _attribute: &str) -> Result<bool, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "has_attr()".to_owned(),
+            op: UnsupportedOperation::HasAttr,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -921,7 +922,7 @@ pub trait TypedValue: Sized + 'static {
     /// e.g. for numbers).
     fn set_attr(&mut self, attribute: &str, _new_value: Value) -> Result<(), ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: format!(".{} =", attribute),
+            op: UnsupportedOperation::SetAttr(attribute.to_owned()),
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -931,7 +932,7 @@ pub trait TypedValue: Sized + 'static {
     /// methods.
     fn dir_attr(&self) -> Result<Vec<RcString>, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "dir()".to_owned(),
+            op: UnsupportedOperation::Dir,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -955,7 +956,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "in".to_owned(),
+            op: UnsupportedOperation::In,
             left: other.get_type().to_owned(),
             right: Some(Self::TYPE.to_owned()),
         })
@@ -974,7 +975,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn plus(&self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "+".to_owned(),
+            op: UnsupportedOperation::Plus,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -993,7 +994,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn minus(&self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "-".to_owned(),
+            op: UnsupportedOperation::Minus,
             left: Self::TYPE.to_owned(),
             right: None,
         })
@@ -1012,7 +1013,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn add(&self, _other: &Self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "+".to_owned(),
+            op: UnsupportedOperation::Plus,
             left: Self::TYPE.to_owned(),
             right: Some(Self::TYPE.to_owned()),
         })
@@ -1031,7 +1032,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn sub(&self, _other: &Self) -> Result<Self, ValueError> {
         Err(ValueError::OperationNotSupported {
-            op: "-".to_owned(),
+            op: UnsupportedOperation::Minus,
             left: Self::TYPE.to_owned(),
             right: Some(Self::TYPE.to_owned()),
         })
@@ -1050,7 +1051,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn mul(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "*".to_owned(),
+            op: UnsupportedOperation::Mul,
             left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
@@ -1073,7 +1074,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn percent(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "%".to_owned(),
+            op: UnsupportedOperation::Percent,
             left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
@@ -1092,7 +1093,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn div(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "/".to_owned(),
+            op: UnsupportedOperation::Div,
             left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
@@ -1111,7 +1112,7 @@ pub trait TypedValue: Sized + 'static {
     /// ```
     fn floor_div(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "//".to_owned(),
+            op: UnsupportedOperation::FloorDiv,
             left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
@@ -1122,7 +1123,7 @@ pub trait TypedValue: Sized + 'static {
     /// This is usually the union on set.
     fn pipe(&self, other: Value) -> ValueResult {
         Err(ValueError::OperationNotSupported {
-            op: "|".to_owned(),
+            op: UnsupportedOperation::Pipe,
             left: Self::TYPE.to_owned(),
             right: Some(other.get_type().to_owned()),
         })
@@ -1217,7 +1218,7 @@ impl Value {
         match self.try_value_holder_mut() {
             Err(ObjectBorrowMutError::Immutable) => {
                 return Err(ValueError::OperationNotSupported {
-                    op: "[] =".to_owned(),
+                    op: UnsupportedOperation::SetAt,
                     left: self.get_type().to_owned(),
                     right: Some(index.get_type().to_owned()),
                 });
@@ -1263,7 +1264,7 @@ impl Value {
         match self.try_value_holder_mut() {
             Err(ObjectBorrowMutError::Immutable) => {
                 return Err(ValueError::OperationNotSupported {
-                    op: format!(".{} =", attribute),
+                    op: UnsupportedOperation::SetAttr(attribute.to_owned()),
                     left: self.get_type().to_owned(),
                     right: None,
                 });

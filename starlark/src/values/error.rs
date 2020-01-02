@@ -19,6 +19,7 @@ use crate::values::string::interpolation::StringInterpolationError;
 use crate::values::*;
 use codemap::Span;
 use codemap_diagnostic::{Diagnostic, SpanLabel, SpanStyle};
+use std::fmt;
 
 // TODO: move that code in some common error code list?
 // CV prefix = Critical Value expression
@@ -41,12 +42,62 @@ pub const INTERPOLATION_UNEXPECTED_EOF_CLOSING_PAREN: &str = "CV17";
 pub const INTERPOLATION_UNEXPECTED_EOF_PERCENT: &str = "CV18";
 pub const INTERPOLATION_UNKNOWN_SPECIFIER: &str = "CV19";
 
+/// Value used in diagnostics
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum UnsupportedOperation {
+    Compare,
+    ToInt,
+    Call,
+    At,
+    SetAt,
+    Slice,
+    Len,
+    GetAttr(String),
+    HasAttr,
+    SetAttr(String),
+    Dir,
+    In,
+    Plus,
+    Minus,
+    Mul,
+    Div,
+    FloorDiv,
+    Percent,
+    Pipe,
+}
+
+impl fmt::Display for UnsupportedOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnsupportedOperation::Compare => write!(f, "compare"),
+            UnsupportedOperation::ToInt => write!(f, "int()"),
+            UnsupportedOperation::Call => write!(f, "call()"),
+            UnsupportedOperation::At => write!(f, "[]"),
+            UnsupportedOperation::SetAt => write!(f, "[] ="),
+            UnsupportedOperation::Slice => write!(f, "[::]"),
+            UnsupportedOperation::Len => write!(f, "len()"),
+            UnsupportedOperation::GetAttr(attr) => write!(f, ".{}", attr),
+            UnsupportedOperation::HasAttr => write!(f, "has_attr()"),
+            UnsupportedOperation::SetAttr(attr) => write!(f, ".{} =", attr),
+            UnsupportedOperation::Dir => write!(f, "dir()"),
+            UnsupportedOperation::In => write!(f, "in"),
+            UnsupportedOperation::Plus => write!(f, "+"),
+            UnsupportedOperation::Minus => write!(f, "-"),
+            UnsupportedOperation::Mul => write!(f, "*"),
+            UnsupportedOperation::Div => write!(f, "/"),
+            UnsupportedOperation::FloorDiv => write!(f, "//"),
+            UnsupportedOperation::Percent => write!(f, "%"),
+            UnsupportedOperation::Pipe => write!(f, "|"),
+        }
+    }
+}
+
 /// Error that can be returned by function from the `TypedValue` trait,
 #[derive(Clone, Debug)]
 pub enum ValueError {
     /// The operation is not supported for this type.
     OperationNotSupported {
-        op: String,
+        op: UnsupportedOperation,
         left: String,
         right: Option<String>,
     },

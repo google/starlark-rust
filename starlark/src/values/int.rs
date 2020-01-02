@@ -14,6 +14,7 @@
 
 //! Define the int type for Starlark.
 
+use crate::values::error::UnsupportedOperation;
 use crate::values::error::ValueError;
 use crate::values::frozen::FrozenOnCreation;
 use crate::values::*;
@@ -69,14 +70,14 @@ impl From<i64> for Value {
     }
 }
 
-fn i64_arith_bin_op<F>(left: i64, right: Value, op: &'static str, f: F) -> ValueResult
+fn i64_arith_bin_op<F>(left: i64, right: Value, op: UnsupportedOperation, f: F) -> ValueResult
 where
     F: FnOnce(i64, i64) -> Result<i64, ValueError>,
 {
     match right.downcast_ref::<i64>() {
         Some(right) => Ok(Value::new(f(left, *right)?)),
         None => Err(ValueError::OperationNotSupported {
-            op: op.to_owned(),
+            op,
             left: i64::TYPE.to_owned(),
             right: Some(right.get_type().to_owned()),
         }),
@@ -134,7 +135,7 @@ impl TypedValue for i64 {
         }
     }
     fn percent(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "%", |a, b| {
+        i64_arith_bin_op(*self, other, UnsupportedOperation::Percent, |a, b| {
             if b == 0 {
                 return Err(ValueError::DivisionByZero);
             }
@@ -154,7 +155,7 @@ impl TypedValue for i64 {
         self.floor_div(other)
     }
     fn floor_div(&self, other: Value) -> ValueResult {
-        i64_arith_bin_op(*self, other, "//", |a, b| {
+        i64_arith_bin_op(*self, other, UnsupportedOperation::FloorDiv, |a, b| {
             if b == 0 {
                 return Err(ValueError::DivisionByZero);
             }
