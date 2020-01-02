@@ -186,7 +186,7 @@ impl TypedValue for Set {
         Ok(self.content.len() as i64)
     }
 
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+    fn contains(&self, other: &Value) -> Result<bool, ValueError> {
         Ok(self.content.contains(&HashedValue::new(other.clone())?))
     }
 
