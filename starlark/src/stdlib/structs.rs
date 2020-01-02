@@ -14,6 +14,7 @@
 
 //! Implementation of `struct` function.
 
+use crate::values::error::UnsupportedOperation;
 use crate::values::error::ValueError;
 use crate::values::string::rc::RcString;
 use crate::values::*;
@@ -79,7 +80,7 @@ impl TypedValue for StarlarkStruct {
         match self.fields.get(attribute) {
             Some(v) => Ok(v.clone()),
             None => Err(ValueError::OperationNotSupported {
-                op: attribute.to_owned(),
+                op: UnsupportedOperation::GetAttr(attribute.to_owned()),
                 left: self.to_repr(),
                 right: None,
             }),
