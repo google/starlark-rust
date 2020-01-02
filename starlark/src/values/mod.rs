@@ -479,8 +479,8 @@ impl<T: TypedValue> TypedValueDyn for T {
         self.dir_attr()
     }
 
-    fn is_in_dyn(&self, other: &Value) -> Result<bool, ValueError> {
-        self.is_in(other)
+    fn contains_dyn(&self, other: &Value) -> Result<bool, ValueError> {
+        self.contains(other)
     }
 
     fn plus_dyn(&self) -> Result<Value, ValueError> {
@@ -610,7 +610,7 @@ pub(crate) trait TypedValueDyn: 'static {
 
     fn dir_attr_dyn(&self) -> Result<Vec<RcString>, ValueError>;
 
-    fn is_in_dyn(&self, other: &Value) -> Result<bool, ValueError>;
+    fn contains_dyn(&self, other: &Value) -> Result<bool, ValueError>;
 
     fn plus_dyn(&self) -> ValueResult;
 
@@ -948,13 +948,13 @@ pub trait TypedValue: Sized + 'static {
     /// # use starlark::values::*;
     /// # use starlark::values::string;
     /// // "a" in "abc" == True
-    /// assert!(Value::from("abc").is_in(&Value::from("a")).unwrap().to_bool());
+    /// assert!(Value::from("abc").contains(&Value::from("a")).unwrap().to_bool());
     /// // "b" in "abc" == True
-    /// assert!(Value::from("abc").is_in(&Value::from("b")).unwrap().to_bool());
+    /// assert!(Value::from("abc").contains(&Value::from("b")).unwrap().to_bool());
     /// // "z" in "abc" == False
-    /// assert!(!Value::from("abc").is_in(&Value::from("z")).unwrap().to_bool());
+    /// assert!(!Value::from("abc").contains(&Value::from("z")).unwrap().to_bool());
     /// ```
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+    fn contains(&self, other: &Value) -> Result<bool, ValueError> {
         Err(ValueError::OperationNotSupported {
             op: UnsupportedOperation::In,
             left: other.get_type().to_owned(),
@@ -1276,8 +1276,8 @@ impl Value {
     pub fn dir_attr(&self) -> Result<Vec<RcString>, ValueError> {
         self.value_holder().dir_attr_dyn()
     }
-    pub fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
-        self.value_holder().is_in_dyn(other)
+    pub fn contains(&self, other: &Value) -> Result<bool, ValueError> {
+        self.value_holder().contains_dyn(other)
     }
     pub fn plus(&self) -> ValueResult {
         self.value_holder().plus_dyn()

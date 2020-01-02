@@ -154,7 +154,7 @@ starlark_module! {global =>
         for el in &this.iter()? {
             let mut is_in_any_other = false;
             for other in &others {
-                if other.is_in(&el)?.to_bool() {
+                if other.contains(&el)? {
                     is_in_any_other = true;
                     break;
                 }
@@ -188,7 +188,7 @@ starlark_module! {global =>
         let previous_length = this.len() as usize;
         let mut values = Vec::with_capacity(previous_length);
         for el in this.get_content() {
-            if !other.is_in(el.get_value())?.to_bool() {
+            if !other.contains(el.get_value())? {
                 values.push(el.clone());
             }
         }
@@ -257,7 +257,7 @@ starlark_module! {global =>
         for el in &this.iter()? {
             let mut is_in_every_other = true;
             for other in &others {
-                if !other.is_in(&el)?.to_bool() {
+                if !other.contains(&el)? {
                     is_in_every_other = false;
                     break;
                 }
@@ -292,7 +292,7 @@ starlark_module! {global =>
         let previous_length = this.len();
         let mut values = Vec::with_capacity(previous_length);
         for el in this.get_content() {
-            if other.is_in(el.get_value())?.to_bool() {
+            if other.contains(el.get_value())? {
                 values.push(el.clone());
             }
         }

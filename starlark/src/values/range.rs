@@ -164,7 +164,7 @@ impl TypedValue for Range {
         Ok(self)
     }
 
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+    fn contains(&self, other: &Value) -> Result<bool, ValueError> {
         let other = match other.downcast_ref::<i64>() {
             Some(other) => *other,
             None => {

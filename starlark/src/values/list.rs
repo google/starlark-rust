@@ -183,7 +183,7 @@ impl TypedValue for List {
         Ok(self.content.len() as i64)
     }
 
-    fn is_in(&self, other: &Value) -> Result<bool, ValueError> {
+    fn contains(&self, other: &Value) -> Result<bool, ValueError> {
         for x in self.content.iter() {
             if x.equals(other)? {
                 return Ok(true);
