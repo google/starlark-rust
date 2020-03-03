@@ -27,6 +27,7 @@ pub mod dialect;
 #[doc(hidden)]
 pub mod lexer;
 
+#[allow(unused_parens)] // lalrpop generated code includes unused parens
 mod grammar {
     include!(concat!(env!("OUT_DIR"), "/syntax/grammar.rs"));
 }
