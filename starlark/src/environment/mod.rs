@@ -252,7 +252,6 @@ pub struct TypeValues {
 impl TypeValues {
     /// Get a type value if it exists (e.g. list.index).
     pub fn get_type_value(&self, obj: &Value, id: &str) -> Option<Value> {
-        println!("{:?}", self);
         self.type_objs
             .get(obj.get_type())
             .and_then(|o| o.get(id))
