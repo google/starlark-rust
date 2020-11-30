@@ -227,7 +227,7 @@ fn smoke_test() {
     for p in paths {
         let path_entry = p.unwrap().path();
         if let Some(ext) = path_entry.extension() {
-            if ext.to_string_lossy().ends_with(".bzl") {
+            if ext.to_string_lossy() == "bzl" {
                 if let Result::Err(err) = parse_file(&map, &path_entry, Dialect::Bzl) {
                     diagnostics.push(err);
                 }
