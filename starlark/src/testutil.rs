@@ -19,6 +19,7 @@ use crate::eval;
 use crate::syntax::dialect::Dialect;
 use codemap::CodeMap;
 use codemap_diagnostic::Diagnostic;
+use std::path::Path;
 use std::sync;
 
 /// Execute a starlark snippet with the passed environment.
@@ -28,7 +29,15 @@ pub fn starlark_no_diagnostic(
     type_values: &TypeValues,
 ) -> Result<bool, Diagnostic> {
     let map = sync::Arc::new(sync::Mutex::new(CodeMap::new()));
-    Ok(eval::noload::eval(&map, "<test>", snippet, Dialect::Bzl, env, type_values)?.to_bool())
+    Ok(eval::noload::eval(
+        &map,
+        Path::new("<test>"),
+        snippet,
+        Dialect::Bzl,
+        env,
+        type_values,
+    )?
+    .to_bool())
 }
 
 /// A simple macro to execute a Starlark snippet and fails if the last statement is false.

@@ -88,7 +88,8 @@ fn format_test_content(path: &Path) -> String {
             r#"
 #[test]
 fn test_{}_{}() {{
-    do_conformance_test("{}", {:?})
+    use std::path::Path;
+    do_conformance_test(Path::new("{}"), {:?})
 }}
 "#,
             test_name,

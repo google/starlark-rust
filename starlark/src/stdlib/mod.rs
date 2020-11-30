@@ -19,6 +19,7 @@ use linked_hash_map::LinkedHashMap;
 use std;
 use std::cmp::Ordering;
 use std::num::NonZeroI64;
+use std::path::Path;
 use std::sync;
 
 use crate::environment::{Environment, TypeValues};
@@ -983,7 +984,7 @@ pub fn starlark_default(snippet: &str) -> Result<bool, Diagnostic> {
     let mut test_env = env.freeze().child("test");
     match eval(
         &map,
-        "<test>",
+        Path::new("<test>"),
         snippet,
         Dialect::Bzl,
         &mut test_env,
@@ -1004,6 +1005,7 @@ pub mod tests {
     use crate::eval::noload::eval;
     use codemap::CodeMap;
     use codemap_diagnostic::Diagnostic;
+    use std::path::Path;
     use std::sync;
 
     pub fn starlark_default_fail(snippet: &str) -> Result<bool, Diagnostic> {
@@ -1012,7 +1014,7 @@ pub mod tests {
         let mut env = env.freeze().child("test");
         match eval(
             &map,
-            "<test>",
+            Path::new("<test>"),
             snippet,
             Dialect::Bzl,
             &mut env,

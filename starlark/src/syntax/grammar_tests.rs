@@ -226,9 +226,8 @@ fn smoke_test() {
     let paths = fs::read_dir(d.as_path()).unwrap();
     for p in paths {
         let path_entry = p.unwrap().path();
-        let path = path_entry.to_str().unwrap();
-        if path.ends_with(".bzl") {
-            if let Result::Err(err) = parse_file(&map, path, Dialect::Bzl) {
+        if path_entry.ends_with(".bzl") {
+            if let Result::Err(err) = parse_file(&map, &path_entry, Dialect::Bzl) {
                 diagnostics.push(err);
             }
         }

@@ -51,12 +51,12 @@ use starlark::syntax::lexer::{BufferedLexer, LexerIntoIter, LexerItem};
 use starlark::values::none::NoneType;
 use starlark::values::Value;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 fn print_eval<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: Arc<Mutex<codemap::CodeMap>>,
-    filename: &str,
+    filename: &Path,
     content: &str,
     lexer: T2,
     dialect: Dialect,
@@ -158,7 +158,7 @@ pub fn repl(global_environment: &mut Environment, type_values: &TypeValues, dial
             reader.add_history(hist);
             print_eval(
                 map.clone(),
-                &format!("<{}>", n),
+                Path::new(&format!("<{}>", n)),
                 &content,
                 lexer,
                 dialect,

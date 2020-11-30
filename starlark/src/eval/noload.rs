@@ -21,13 +21,14 @@ use crate::syntax::dialect::Dialect;
 use crate::values::Value;
 use codemap::CodeMap;
 use codemap_diagnostic::{Diagnostic, Level};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 /// File loader which returns error unconditionally.
 pub struct NoLoadFileLoader;
 
 impl FileLoader for NoLoadFileLoader {
-    fn load(&self, _path: &str, _: &TypeValues) -> Result<Environment, EvalException> {
+    fn load(&self, _path: &Path, _: &TypeValues) -> Result<Environment, EvalException> {
         Err(EvalException::DiagnosedError(Diagnostic {
             level: Level::Error,
             message: "ErrorFileLoader does not support loading".to_owned(),
@@ -52,7 +53,7 @@ impl FileLoader for NoLoadFileLoader {
 /// * global: the environment used to resolve type values
 pub fn eval(
     map: &Arc<Mutex<CodeMap>>,
-    path: &str,
+    path: &Path,
     content: &str,
     dialect: Dialect,
     env: &mut Environment,

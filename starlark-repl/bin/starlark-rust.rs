@@ -21,6 +21,7 @@ use starlark::stdlib::global_environment_for_repl_and_tests;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::Value;
 use starlark_repl::{print_function, repl};
+use std::path::Path;
 use std::process::exit;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
@@ -81,7 +82,7 @@ fn main() {
     let free_args_empty = opt.files.is_empty();
     for i in opt.files.into_iter() {
         maybe_print_or_exit(eval_file(
-            &i,
+            Path::new(&i),
             dialect,
             &mut global.child(&i),
             &type_values,
@@ -94,7 +95,7 @@ fn main() {
     }
     if let Some(command) = command {
         maybe_print_or_exit(eval(
-            "[command flag]",
+            Path::new("[command flag]"),
             &command,
             dialect,
             &mut global.child("[command flag]"),

@@ -45,6 +45,7 @@ mod test {
     use crate::values::TypedValue;
     use crate::values::Value;
     use std::iter;
+    use std::path::Path;
 
     #[test]
     fn inspect() {
@@ -69,7 +70,7 @@ mod test {
         env.set("ti", Value::new(TestInspectable {})).unwrap();
         let custom = noload::eval(
             &Default::default(),
-            "test.sky",
+            Path::new("test.sky"),
             "inspect(ti).custom",
             Dialect::Bzl,
             &mut env,

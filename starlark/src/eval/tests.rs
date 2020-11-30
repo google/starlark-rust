@@ -22,6 +22,7 @@ use crate::syntax::dialect::Dialect;
 use crate::testutil::starlark_no_diagnostic;
 use crate::values::Value;
 use codemap::CodeMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -152,8 +153,12 @@ fn test_context_captured() {
     struct TestContextCapturedFileLoader {}
 
     impl FileLoader for TestContextCapturedFileLoader {
-        fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
-            assert_eq!("f.bzl", path);
+        fn load(
+            &self,
+            path: &Path,
+            type_values: &TypeValues,
+        ) -> Result<Environment, EvalException> {
+            assert_eq!("f.bzl", path.to_string_lossy());
             let mut env = Environment::new("new");
             // Check that `x` is captured with the function
             let f_bzl = r#"
@@ -181,7 +186,7 @@ def f(): return x
         Value::new(17),
         eval(
             &Arc::new(Mutex::new(CodeMap::new())),
-            "outer.build",
+            Path::new("outer.build"),
             program,
             Dialect::Build,
             &mut env,
@@ -212,13 +217,17 @@ fn test_type_values_are_imported_from_caller() {
     struct MyFileLoader {}
 
     impl FileLoader for MyFileLoader {
-        fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
-            assert_eq!("utils.bzl", path);
+        fn load(
+            &self,
+            path: &Path,
+            type_values: &TypeValues,
+        ) -> Result<Environment, EvalException> {
+            assert_eq!("utils.bzl", path.to_string_lossy());
 
             let mut env = Environment::new("utils.bzl");
             noload::eval(
                 &Arc::new(Mutex::new(CodeMap::new())),
-                "utils.bzl",
+                Path::new("utils.bzl"),
                 "def truncate_strings(strings, len): return [s.truncate(len) for s in strings]",
                 Dialect::Bzl,
                 &mut env,
@@ -237,7 +246,7 @@ fn test_type_values_are_imported_from_caller() {
     // but this code works.
     let result = eval(
         &Arc::new(Mutex::new(CodeMap::new())),
-        "my.bzl",
+        Path::new("my.bzl"),
         "load('utils.bzl', 'truncate_strings'); truncate_strings(['abc', 'de'], 2)",
         Dialect::Bzl,
         &mut env,

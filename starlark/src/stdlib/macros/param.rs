@@ -135,6 +135,7 @@ mod test {
     use crate::syntax::dialect::Dialect;
     use crate::values::Value;
     use codemap::CodeMap;
+    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     starlark_module! { global =>
@@ -154,7 +155,7 @@ mod test {
 
         let r = eval(
             &Arc::new(Mutex::new(CodeMap::new())),
-            "test_simple.star",
+            Path::new("test_simple.star"),
             "cc_binary(name='star', srcs=['a.cc', 'b.cc'])",
             Dialect::Build,
             &mut child,

@@ -20,6 +20,7 @@ use codemap::{CodeMap, Span};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::eval::module::Module;
@@ -166,7 +167,7 @@ macro_rules! iotry {
 #[doc(hidden)]
 pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: &Arc<Mutex<CodeMap>>,
-    filename: &str,
+    filename: &Path,
     content: &str,
     dialect: Dialect,
     lexer: T2,
@@ -174,7 +175,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     let filespan = {
         map.lock()
             .unwrap()
-            .add_file(filename.to_string(), content.to_string())
+            .add_file(filename.to_string_lossy().to_string(), content.to_string())
             .span
     };
     match {
@@ -199,7 +200,7 @@ pub fn parse_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
 #[doc(hidden)]
 pub fn parse(
     map: &Arc<Mutex<CodeMap>>,
-    filename: &str,
+    filename: &Path,
     content: &str,
     dialect: Dialect,
 ) -> Result<Module, Diagnostic> {
@@ -222,7 +223,7 @@ pub fn parse(
 #[doc(hidden)]
 pub fn parse_file(
     map: &Arc<Mutex<CodeMap>>,
-    path: &str,
+    path: &Path,
     dialect: Dialect,
 ) -> Result<Module, Diagnostic> {
     let mut content = String::new();

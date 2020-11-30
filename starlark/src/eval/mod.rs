@@ -63,6 +63,7 @@ use codemap::{CodeMap, Span, Spanned};
 use codemap_diagnostic::{Diagnostic, Level, SpanLabel, SpanStyle};
 use linked_hash_map::LinkedHashMap;
 use std::cmp::Ordering;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 fn eval_vector<E: EvaluationContextEnvironment>(
@@ -220,7 +221,7 @@ impl Into<Diagnostic> for EvalException {
 /// A trait for loading file using the load statement path.
 pub trait FileLoader {
     /// Open the file given by the load statement `path`.
-    fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException>;
+    fn load(&self, path: &Path, type_values: &TypeValues) -> Result<Environment, EvalException>;
 }
 
 fn eval_un_op(op: UnOp, v: Value) -> Result<Value, ValueError> {
@@ -725,7 +726,7 @@ fn eval_stmt<E: EvaluationContextEnvironment>(
                 .env
                 .assert_module_env()
                 .loader
-                .load(name, context.type_values)?;
+                .load(Path::new(name.as_str()), context.type_values)?;
             loadenv.freeze();
             for &(ref new_name, ref orig_name) in v.iter() {
                 t(
@@ -788,7 +789,7 @@ fn eval_module(
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
 pub fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
     map: &Arc<Mutex<CodeMap>>,
-    filename: &str,
+    filename: &Path,
     content: &str,
     dialect: Dialect,
     lexer: T2,
@@ -822,7 +823,7 @@ pub fn eval_lexer<T1: Iterator<Item = LexerItem>, T2: LexerIntoIter<T1>>(
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
 pub fn eval(
     map: &Arc<Mutex<CodeMap>>,
-    path: &str,
+    path: &Path,
     content: &str,
     build: Dialect,
     env: &mut Environment,
@@ -854,7 +855,7 @@ pub fn eval(
 /// * file_loader: the [`FileLoader`] to react to `load()` statements.
 pub fn eval_file(
     map: &Arc<Mutex<CodeMap>>,
-    path: &str,
+    path: &Path,
     build: Dialect,
     env: &mut Environment,
     type_values: &TypeValues,

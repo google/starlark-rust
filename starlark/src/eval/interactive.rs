@@ -19,6 +19,7 @@ use crate::syntax::dialect::Dialect;
 use crate::values::Value;
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 pub struct EvalError {
@@ -46,7 +47,7 @@ impl EvalError {
 /// * dialect: starlark language dialect
 /// * env: the environment to mutate during the evaluation
 pub fn eval(
-    path: &str,
+    path: &Path,
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
@@ -80,7 +81,7 @@ pub fn eval(
 /// * dialect: Starlark language dialect
 /// * env: the environment to mutate during the evaluation
 pub fn eval_file(
-    path: &str,
+    path: &Path,
     dialect: Dialect,
     env: &mut Environment,
     type_values: &TypeValues,

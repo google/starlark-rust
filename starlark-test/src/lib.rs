@@ -39,6 +39,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 #[cfg(rustc_nightly)]
 use test::Bencher;
@@ -78,7 +79,7 @@ fn assert_diagnostic(
 #[derive(Default)]
 struct ParsedTest {
     error: Option<(usize, String)>,
-    files: HashMap<String, String>,
+    files: HashMap<PathBuf, String>,
 }
 
 fn parse_test(content: &str) -> ParsedTest {
@@ -90,7 +91,7 @@ fn parse_test(content: &str) -> ParsedTest {
             current_file = line[file_prefix.len()..].to_owned();
         } else {
             r.files
-                .entry(current_file.clone())
+                .entry(PathBuf::from(current_file.as_str()))
                 .or_default()
                 .push_str(&format!("{}\n", line));
 
@@ -106,13 +107,15 @@ fn parse_test(content: &str) -> ParsedTest {
 #[derive(Clone)]
 struct HashMapFileLoader {
     parent: Environment,
-    files: HashMap<String, String>,
+    files: HashMap<PathBuf, String>,
     map: Arc<Mutex<CodeMap>>,
 }
 
 impl FileLoader for HashMapFileLoader {
-    fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
-        let mut env = self.parent.child(path);
+    fn load(&self, path: &Path, type_values: &TypeValues) -> Result<Environment, EvalException> {
+        let mut env = self
+            .parent
+            .child(path.to_string_lossy().to_string().as_str());
         let content = match self.files.get(path) {
             Some(content) => content,
             None => {
@@ -137,14 +140,14 @@ impl FileLoader for HashMapFileLoader {
     }
 }
 
-pub fn do_conformance_test(path: &str, content: &str) {
+pub fn do_conformance_test(path: &Path, content: &str) {
     let map = Arc::new(Mutex::new(CodeMap::new()));
     let (global, type_values) = global_environment_for_repl_and_tests();
     global.freeze();
     let mut prelude = global.child("PRELUDE");
     noload::eval(
         &map,
-        "PRELUDE",
+        Path::new("PRELUDE"),
         r#"
 def assert_eq(x, y):
   if x != y:
@@ -163,7 +166,7 @@ def assert_(cond, msg="assertion failed"):
 
     let test = parse_test(content);
 
-    let build = test.files.get("main.sky").expect(&format!(
+    let build = test.files.get(Path::new("main.sky")).expect(&format!(
         "test must contain main.sky file: {:?}",
         test.files.keys().collect::<Vec<_>>()
     ));
@@ -173,7 +176,7 @@ def assert_(cond, msg="assertion failed"):
         path,
         build,
         starlark::syntax::dialect::Dialect::Bzl,
-        &mut prelude.child(path),
+        &mut prelude.child(path.to_string_lossy().to_string().as_str()),
         &type_values,
         &HashMapFileLoader {
             parent: prelude.clone(),
@@ -197,7 +200,7 @@ def assert_(cond, msg="assertion failed"):
                 io::stderr()
                     .write_all(
                         &format!(
-                            "Expected error '{}' at {}:{}, got success",
+                            "Expected error '{}' at {:?}:{}, got success",
                             err, path, offset
                         )
                         .into_bytes(),
@@ -224,7 +227,7 @@ impl Bencher {
     }
 }
 
-pub fn do_bench(bencher: &mut Bencher, path: &str) {
+pub fn do_bench(bencher: &mut Bencher, path: &Path) {
     let mut content = String::new();
     let mut file = File::open(path).unwrap();
     file.read_to_string(&mut content).unwrap();
@@ -236,7 +239,7 @@ pub fn do_bench(bencher: &mut Bencher, path: &str) {
     let mut prelude = global.child("PRELUDE");
     noload::eval(
         &map,
-        "PRELUDE",
+        Path::new("PRELUDE"),
         r#"
 def assert_eq(x, y):
   if x != y:

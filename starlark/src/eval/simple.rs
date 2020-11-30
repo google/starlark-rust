@@ -20,12 +20,13 @@ use crate::values::*;
 use codemap::CodeMap;
 use codemap_diagnostic::Diagnostic;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// A simple FileLoader that load file from disk and cache the result in a hashmap.
 #[derive(Clone)]
 pub struct SimpleFileLoader {
-    map: Arc<Mutex<HashMap<String, Environment>>>,
+    map: Arc<Mutex<HashMap<PathBuf, Environment>>>,
     parent_env: Environment,
     codemap: Arc<Mutex<CodeMap>>,
 }
@@ -41,14 +42,16 @@ impl SimpleFileLoader {
 }
 
 impl FileLoader for SimpleFileLoader {
-    fn load(&self, path: &str, type_values: &TypeValues) -> Result<Environment, EvalException> {
+    fn load(&self, path: &Path, type_values: &TypeValues) -> Result<Environment, EvalException> {
         {
             let lock = self.map.lock().unwrap();
             if lock.contains_key(path) {
                 return Ok(lock.get(path).unwrap().clone());
             }
         } // Release the lock
-        let mut env = self.parent_env.child(path);
+        let mut env = self
+            .parent_env
+            .child(path.to_string_lossy().to_string().as_str());
         if let Err(d) = super::eval_file(
             &self.codemap,
             path,
@@ -82,7 +85,7 @@ impl FileLoader for SimpleFileLoader {
 /// * env: the environment to mutate during the evaluation
 pub fn eval(
     map: &Arc<Mutex<CodeMap>>,
-    path: &str,
+    path: &Path,
     content: &str,
     dialect: Dialect,
     env: &mut Environment,
@@ -113,7 +116,7 @@ pub fn eval(
 /// * env: the environment to mutate during the evaluation
 pub fn eval_file(
     map: &Arc<Mutex<CodeMap>>,
-    path: &str,
+    path: &Path,
     build: Dialect,
     env: &mut Environment,
     type_values: &TypeValues,

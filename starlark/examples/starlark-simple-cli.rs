@@ -23,6 +23,7 @@ extern crate codemap_diagnostic;
 extern crate starlark;
 
 use std::io::{self, Read};
+use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 
@@ -46,7 +47,7 @@ pub fn simple_evaluation(starlark_input: &String) -> Result<String, String> {
     // We don't have a filename since we're not reading from a file, so call it "stdin".
     let result = eval(
         &map,
-        "stdin",
+        Path::new("stdin"),
         &starlark_input,
         Dialect::Bzl,
         &mut env,
