@@ -49,9 +49,7 @@ impl FileLoader for SimpleFileLoader {
                 return Ok(lock.get(path).unwrap().clone());
             }
         } // Release the lock
-        let mut env = self
-            .parent_env
-            .child(path.to_string_lossy().to_string().as_str());
+        let mut env = self.parent_env.child(path.to_string_lossy().as_ref());
         if let Err(d) = super::eval_file(
             &self.codemap,
             path,

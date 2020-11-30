@@ -113,9 +113,7 @@ struct HashMapFileLoader {
 
 impl FileLoader for HashMapFileLoader {
     fn load(&self, path: &Path, type_values: &TypeValues) -> Result<Environment, EvalException> {
-        let mut env = self
-            .parent
-            .child(path.to_string_lossy().to_string().as_str());
+        let mut env = self.parent.child(path.to_string_lossy().as_ref());
         let content = match self.files.get(path) {
             Some(content) => content,
             None => {
@@ -176,7 +174,7 @@ def assert_(cond, msg="assertion failed"):
         path,
         build,
         starlark::syntax::dialect::Dialect::Bzl,
-        &mut prelude.child(path.to_string_lossy().to_string().as_str()),
+        &mut prelude.child(path.to_string_lossy().as_ref()),
         &type_values,
         &HashMapFileLoader {
             parent: prelude.clone(),
@@ -200,8 +198,10 @@ def assert_(cond, msg="assertion failed"):
                 io::stderr()
                     .write_all(
                         &format!(
-                            "Expected error '{}' at {:?}:{}, got success",
-                            err, path, offset
+                            "Expected error '{}' at {}:{}, got success",
+                            err,
+                            path.display(),
+                            offset
                         )
                         .into_bytes(),
                     )

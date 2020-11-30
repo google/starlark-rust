@@ -21,7 +21,7 @@ use starlark::stdlib::global_environment_for_repl_and_tests;
 use starlark::syntax::dialect::Dialect;
 use starlark::values::Value;
 use starlark_repl::{print_function, repl};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
@@ -60,8 +60,8 @@ pub struct Opt {
     )]
     repl: bool,
 
-    #[structopt(name = "FILE", help = "Files to interpret")]
-    files: Vec<String>,
+    #[structopt(name = "FILE", help = "Files to interpret", parse(from_os_str))]
+    files: Vec<PathBuf>,
 }
 
 fn main() {
@@ -82,9 +82,9 @@ fn main() {
     let free_args_empty = opt.files.is_empty();
     for i in opt.files.into_iter() {
         maybe_print_or_exit(eval_file(
-            Path::new(&i),
+            &i,
             dialect,
-            &mut global.child(&i),
+            &mut global.child(i.to_string_lossy().as_ref()),
             &type_values,
             global.clone(),
         ));
