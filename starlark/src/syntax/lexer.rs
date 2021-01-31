@@ -737,6 +737,10 @@ impl Lexer {
                             Err(LexerError::InvalidEscapeSequence(pos, pos2 + 1))
                         }
                     }
+                    '\r' => {
+                        self.pop();
+                        Ok(None)
+                    }
                     'u' => {
                         self.pop();
                         let c = self.next_char();

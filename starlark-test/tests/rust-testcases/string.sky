@@ -17,3 +17,8 @@ assert_eq("ab[1]cd", "ab%scd" % [1])
 ''%(0)     ###   The type 'int' is not iterable
 ---
 ''%(0,)    ###   Too many arguments for format string
+---
+# Issue #280
+# Note: Some editors may auto-replace the \r literal with a \n literal on save, which would defeat the point of this test.
+assert_eq(len("a\b"), 2)
+assert_eq(len("""a\b"""), 2)
