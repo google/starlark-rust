@@ -1,4 +1,0 @@
-# Benching evaluation of empty function
-
-def bench():
-    pass
